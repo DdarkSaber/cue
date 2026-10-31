@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/anilist_client.dart';
@@ -13,6 +16,8 @@ import '../domain/models/settings.dart';
 import '../domain/ranker.dart';
 import '../imports/import_service.dart';
 import '../imports/token_store.dart';
+import '../data/mood_repository.dart';
+import '../domain/mood/mood_engine.dart';
 import '../sync/sync_service.dart';
 import 'config.dart';
 
@@ -130,6 +135,53 @@ final backupServiceProvider = Provider<BackupService>(
 );
 
 final codeStoreProvider = Provider<CodeStore>((ref) => const SecureCodeStore());
+
+final moodRepositoryProvider = Provider<MoodRepository>(
+  (ref) => MoodRepository(ref.watch(databaseProvider)),
+);
+
+/// The live mood learner for the active profile. Learns from past sessions
+/// on first use (or from liked library titles), and closes the session when
+/// the app is hidden.
+final moodEngineProvider = FutureProvider<MoodEngine>((ref) async {
+  final profileId = await ref.watch(profileIdProvider.future);
+  final catalog = ref.read(catalogRepositoryProvider);
+  final engine = MoodEngine(
+    ref.read(moodRepositoryProvider),
+    profileId,
+    catalog.titlesByIds,
+  );
+  await engine.load();
+  if (engine.modes.isEmpty) {
+    final signals = await ref
+        .read(libraryRepositoryProvider)
+        .signals(profileId);
+    final liked = [
+      for (final e in signals.library.entries)
+        if ((e.value.rating?.weight ?? 0) >= 2) e.key,
+    ];
+    await engine.seedFrom(await catalog.titlesByIds(liked));
+  }
+  final life = AppLifecycleListener(
+    onHide: () => unawaited(engine.endSession()),
+  );
+  ref.onDispose(() {
+    life.dispose();
+    unawaited(engine.endSession());
+  });
+  return engine;
+});
+
+/// What Cue currently reads the mood as, for the "Cue read" chip.
+class MoodReadController extends Notifier<MoodTarget> {
+  @override
+  MoodTarget build() => MoodTarget.none;
+  void set(MoodTarget t) => state = t;
+}
+
+final moodReadProvider = NotifierProvider<MoodReadController, MoodTarget>(
+  MoodReadController.new,
+);
 
 /// Read-only MAL sign-in token, on this device only.
 final tokenStoreProvider = Provider<TokenStore>(

@@ -9,6 +9,8 @@ import '../../domain/models/deck_filters.dart';
 import '../../domain/models/decision.dart';
 import '../../domain/models/quick_mood.dart';
 import '../../domain/models/title.dart';
+import '../../domain/mood/mood_engine.dart';
+import '../../domain/mood/sessions.dart' show sessionGap;
 import '../../domain/ranker.dart';
 import '../../domain/reasons.dart';
 
@@ -83,6 +85,8 @@ final deckFiltersProvider =
 /// writes decisions and undoes them.
 class DeckController extends Notifier<DeckState> {
   final SessionMood _session = SessionMood();
+  MoodEngine? _engine;
+  String _typed = '';
   bool _dealing = false;
   bool _again = false;
 
@@ -136,6 +140,27 @@ class DeckController extends Notifier<DeckState> {
     }
   }
 
+  /// The mood learner, with a session open. A new session starts after a
+  /// 45-minute gap or when the typed "Tell me" text changes.
+  Future<MoodEngine?> _mood(DeckFilters f) async {
+    final MoodEngine e;
+    try {
+      e = await ref.read(moodEngineProvider.future);
+    } on Object {
+      return null;
+    }
+    final now = DateTime.now();
+    final text = f.tellMe ?? '';
+    final last = e.lastActivity;
+    final stale = last != null && now.difference(last) > sessionGap;
+    if (!e.inSession || stale || text != _typed) {
+      await e.endSession();
+      e.startSession(now: now, text: text);
+      _typed = text;
+    }
+    return _engine = e;
+  }
+
   Future<void> _dealOnce({required bool keepTop}) async {
     final profileId = await _profile;
     await ref.read(settingsProvider.future);
@@ -179,8 +204,12 @@ class DeckController extends Notifier<DeckState> {
       byId[t.id] = t;
     }
 
+    final mood = await _mood(filters);
+    final target = filters.mood == QuickMood.forYou ? mood?.target : null;
+    ref.read(moodReadProvider.notifier).set(target ?? MoodTarget.none);
+
     final keep = keepTop ? state.top : null;
-    final cards = ranker.deal(
+    final dealt = ranker.deal(
       pool,
       signals,
       filters,
@@ -189,7 +218,12 @@ class DeckController extends Notifier<DeckState> {
       titlesById: byId,
       includeRewatchesDefault: settings.includeRewatches,
       session: _session,
+      target: target,
       skip: {if (keep != null) keep.title.id},
+    );
+    final cards = diversify(
+      dealt,
+      (target?.confidence ?? 0) > 0.4 ? mood?.secondMode : null,
     );
     final keepStill =
         keep != null &&
@@ -301,6 +335,7 @@ class DeckController extends Notifier<DeckState> {
         Decision.notNow => -0.2,
         Decision.watched => 0.1,
       });
+      _engine?.onSwipe(card.title, d);
       final count = state.sessionDecisions + 1;
       state = state.copyWith(
         canUndo: true,
@@ -314,7 +349,10 @@ class DeckController extends Notifier<DeckState> {
       if (total % 10 == 0) {
         await ref.read(libraryRepositoryProvider).recomputeWeights(profileId);
       }
-      if (state.cards.length < refillBelow) unawaited(_deal(keepTop: true));
+      // Re-rank every few swipes so a change of mood shows up quickly.
+      if (state.cards.length < refillBelow || count % 3 == 0) {
+        unawaited(_deal(keepTop: true));
+      }
       return result;
     } on DecisionFailed {
       state = state.copyWith(
