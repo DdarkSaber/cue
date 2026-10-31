@@ -58,10 +58,6 @@ export const emptyUpstream: Upstream = (url) => {
       headers: { "Content-Type": "application/json" },
     });
   switch (url.hostname) {
-    case "graphql.anilist.co":
-      return json({
-        data: { Page: { pageInfo: { hasNextPage: false }, media: [] }, Media: null },
-      });
     case "api.tvmaze.com":
       // Page listings are arrays; page 0 exists, later pages do not.
       return url.pathname === "/shows" && Number(url.searchParams.get("page")) > 0

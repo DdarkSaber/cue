@@ -1,12 +1,4 @@
 import type { Env } from "../env";
-import {
-  ANILIST_KINDS,
-  byMalIds,
-  discoverAniList,
-  searchAniList,
-  searchManyAniList,
-  titleAniList,
-} from "./anilist";
 import { TTL, cached } from "./cache";
 import {
   type TmdbType,
@@ -23,13 +15,19 @@ import type { CatalogItem, CatalogPage, CatalogProvider, MediaKind } from "./typ
 
 type Mood = "hype" | "comfort" | "gripping" | "feels";
 
+/**
+ * Anime and comics come from AniList, which refuses Cloudflare's IPs, so the
+ * app asks AniList itself. The Worker serves only screen titles.
+ */
+const DEVICE_KINDS = new Set<MediaKind>(["anime", "manga", "manhwa", "manhua"]);
+
 export function discover(env: Env, kind: MediaKind, mood: Mood | undefined, page: number) {
   return cached<CatalogPage>(
     env.CATALOG_CACHE,
     `discover:${kind}:${mood ?? "-"}:${page}`,
     TTL.discover,
     async () => {
-      if (ANILIST_KINDS.has(kind)) return discoverAniList(kind, mood, page);
+      if (DEVICE_KINDS.has(kind)) return { items: [], hasNext: false };
       // A TMDB key, when there is one, is richer; without it the key-free
       // sources serve dramas, series and movies.
       if (env.TMDB_API_KEY) return discoverTmdb(env.TMDB_API_KEY, kind, mood, page);
@@ -57,8 +55,6 @@ export function title(env: Env, provider: CatalogProvider, id: string, type: Tit
     TTL.title,
     () => {
       switch (provider) {
-        case "anilist":
-          return titleAniList(id);
         case "tmdb":
           return titleTmdb(env.TMDB_API_KEY, id, type === "series" ? "tv" : type);
         case "cinemeta":
@@ -85,13 +81,8 @@ export function search(env: Env, q: string, kind: MediaKind | undefined) {
     TTL.search,
     async () => {
       const screen = () => searchScreen(env, q, kind);
-      if (kind && ANILIST_KINDS.has(kind)) return searchAniList(q, kind);
-      if (kind) return screen();
-      const [a, b] = await Promise.allSettled([searchAniList(q, undefined), screen()]);
-      return [
-        ...(a.status === "fulfilled" ? a.value.slice(0, 6) : []),
-        ...(b.status === "fulfilled" ? b.value.slice(0, 6) : []),
-      ];
+      if (kind && DEVICE_KINDS.has(kind)) return [];
+      return screen();
     },
   );
 }
@@ -166,30 +157,13 @@ export function providers(env: Env, id: string, type: TitleType, region: string)
 }
 
 /**
- * Batch match for imports. Reading and anime titles go to AniList in one
- * aliased query; screen titles go to TMDB (if keyed) or TVmaze one by one,
- * staying well under the per-request subrequest limit.
+ * Batch match for imports: screen titles only (TMDB if keyed, else TVmaze and
+ * Cinemeta), one by one, well under the per-request subrequest limit. Anime
+ * and comics are matched by the app against AniList directly.
  */
-export async function match(
-  env: Env,
-  items: { q: string; kind?: MediaKind }[],
-  malAnime: number[],
-  malManga: number[],
-) {
-  const isScreen = (k?: MediaKind) => !!k && !ANILIST_KINDS.has(k);
-  // A title with no kind is searched as a screen title only: the app asks
-  // AniList itself, and AniList refuses requests from Cloudflare.
-  const aniIdx = items.map((it, i) => (it.kind && !isScreen(it.kind) ? i : -1)).filter((i) => i >= 0);
-  const screenIdx = items.map((it, i) => (isScreen(it.kind) || !it.kind ? i : -1)).filter((i) => i >= 0);
+export async function match(env: Env, items: { q: string; kind?: MediaKind }[]) {
+  const screenIdx = items.map((it, i) => (it.kind && DEVICE_KINDS.has(it.kind) ? -1 : i)).filter((i) => i >= 0);
   const results: CatalogItem[][] = items.map(() => []);
-
-  const [ani, malA, malM] = await Promise.all([
-    searchManyAniList(aniIdx.map((i) => items[i]!)),
-    byMalIds(malAnime, "ANIME"),
-    byMalIds(malManga, "MANGA"),
-  ]);
-  aniIdx.forEach((i, j) => results[i]!.push(...(ani[j] ?? [])));
-
   // Five at a time: well inside TVmaze's rate limit and the subrequest cap.
   for (let s = 0; s < screenIdx.length; s += 5) {
     await Promise.all(
@@ -204,5 +178,5 @@ export async function match(
       }),
     );
   }
-  return { results, mal: [...malA, ...malM] };
+  return { results, mal: [] as CatalogItem[] };
 }

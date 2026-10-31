@@ -17,8 +17,8 @@ export const mediaKind = z.enum([
 export const tmdbType = z.enum(["tv", "movie", "series"]).default("tv");
 
 export const mood = z.enum(["hype", "comfort", "gripping", "feels"]);
-export const catalogProvider = z.enum(["anilist", "tmdb", "tvmaze", "cinemeta", "mangaupdates"]);
-export const oauthProvider = z.enum(["mal", "anilist", "trakt"]);
+export const catalogProvider = z.enum(["tmdb", "tvmaze", "cinemeta", "mangaupdates"]);
+export const oauthProvider = z.enum(["mal"]);
 const numericId = z.string().regex(/^\d{1,12}$/);
 
 /** Only official catalog image hosts. */
@@ -100,8 +100,6 @@ export const matchBody = z.object({
     )
     .max(15)
     .default([]),
-  malAnime: z.array(z.number().int().positive().max(1e9)).max(50).default([]),
-  malManga: z.array(z.number().int().positive().max(1e9)).max(50).default([]),
 });
 
 /** Alias lookups for imports: at most 8 names per request. */

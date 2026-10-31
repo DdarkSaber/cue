@@ -87,7 +87,7 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
 
   String? get _clientId => switch (widget.provider) {
     SignInProvider.mal => _config?.mal,
-    SignInProvider.anilist => _config?.anilist,
+    SignInProvider.anilist => null,
   };
 
   /// Loaded up front so a row can say "Not set up" before it is opened.
@@ -139,15 +139,12 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
       final result = await authorize(url, widget.provider.id, state: state);
       if (result == null) throw const CatalogUnavailable('cancelled');
       final gateway = ref.read(catalogGatewayProvider);
-      // AniList hands back the token itself; the others a one-time code.
-      final token = widget.provider == SignInProvider.anilist
-          ? result
-          : await gateway.exchangeCode(
-              widget.provider.id,
-              code: result,
-              redirectUri: redirect,
-              codeVerifier: verifier,
-            );
+      final token = await gateway.exchangeCode(
+        widget.provider.id,
+        code: result,
+        redirectUri: redirect,
+        codeVerifier: verifier,
+      );
       await ref.read(tokenStoreProvider).write(widget.provider.id, token);
       if (mounted) setState(() => _token = token);
       final name = await _lookUpName(token);

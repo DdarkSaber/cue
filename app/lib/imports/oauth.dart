@@ -26,10 +26,8 @@ String redirectUriFor(String provider) =>
 /// Opens the provider's own sign-in page in the system browser (never a
 /// password field in Cue) and returns the authorization code.
 ///
-/// MAL and Trakt echo the `state` Cue sent; a missing or different one means
-/// the redirect did not come from this sign-in, so the code is refused.
-/// AniList refuses the Worker's IPs, so it uses the implicit grant and Cue
-/// receives the token itself (no secret involved); it does not echo state.
+/// MAL echoes the `state` Cue sent; a missing or different one means the
+/// redirect did not come from this sign-in, so the code is refused.
 Future<String?> authorize(Uri url, String provider, {String? state}) async {
   final result = await FlutterWebAuth2.authenticate(
     url: url.toString(),
@@ -37,42 +35,22 @@ Future<String?> authorize(Uri url, String provider, {String? state}) async {
   );
   final back = Uri.parse(result);
   if (back.queryParameters['error'] != null) return null;
-  if (provider == 'anilist') {
-    // Implicit grant: the token comes back in the URL fragment.
-    return Uri(query: back.fragment).queryParameters['access_token'];
-  }
   if (state != null && back.queryParameters['state'] != state) return null;
   return back.queryParameters['code'];
 }
 
-/// Authorize URLs for each provider. MAL documents only the plain PKCE
-/// method; Trakt supports S256; AniList uses its secret via the Worker.
+/// MAL's authorize URL. MAL documents only the plain PKCE method.
 Uri authorizeUrl(
   String provider, {
   required String clientId,
   required String redirectUri,
   required String verifier,
   required String state,
-}) => switch (provider) {
-  'mal' => Uri.https('myanimelist.net', '/v1/oauth2/authorize', {
-    'response_type': 'code',
-    'client_id': clientId,
-    'redirect_uri': redirectUri,
-    'code_challenge': verifier,
-    'code_challenge_method': 'plain',
-    'state': state,
-  }),
-  'anilist' => Uri.https('anilist.co', '/api/v2/oauth/authorize', {
-    'client_id': clientId,
-    'redirect_uri': redirectUri,
-    'response_type': 'token',
-  }),
-  _ => Uri.https('trakt.tv', '/oauth/authorize', {
-    'response_type': 'code',
-    'client_id': clientId,
-    'redirect_uri': redirectUri,
-    'code_challenge': pkceS256(verifier),
-    'code_challenge_method': 'S256',
-    'state': state,
-  }),
-};
+}) => Uri.https('myanimelist.net', '/v1/oauth2/authorize', {
+  'response_type': 'code',
+  'client_id': clientId,
+  'redirect_uri': redirectUri,
+  'code_challenge': verifier,
+  'code_challenge_method': 'plain',
+  'state': state,
+});

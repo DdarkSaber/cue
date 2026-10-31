@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { normalizeAniList } from "../src/catalog/anilist";
 import { normalizeTmdb } from "../src/catalog/tmdb";
 import { normalizeTvmaze } from "../src/catalog/tvmaze";
 import { plainText } from "../src/catalog/types";
@@ -31,56 +30,6 @@ const anilistMedia = {
     { name: "Minor", rank: 20, isAdult: false, isMediaSpoiler: false },
   ],
 };
-
-describe("AniList normalisation", () => {
-  it("maps a Korean comic to manhwa and keeps unknown counts null", () => {
-    const item = normalizeAniList(anilistMedia);
-    expect(item).toMatchObject({
-      provider: "anilist",
-      providerId: "101",
-      idMal: 55,
-      kind: "manhwa",
-      status: "ongoing",
-      chapters: null,
-      episodes: null,
-      year: 2018,
-      score: 84,
-      adult: false,
-      franchiseKey: null,
-    });
-  });
-
-  it("drops spoiler and low-rank tags", () => {
-    expect(normalizeAniList(anilistMedia).tags).toEqual(["tower"]);
-  });
-
-  it("marks adult-tagged titles as adult", () => {
-    const item = normalizeAniList({
-      ...anilistMedia,
-      tags: [{ name: "Nudity", rank: 80, isAdult: true, isMediaSpoiler: false }],
-    });
-    expect(item.adult).toBe(true);
-  });
-
-  it("uses the earliest prequel as the franchise key", () => {
-    const item = normalizeAniList({
-      ...anilistMedia,
-      relations: {
-        edges: [
-          { relationType: "PREQUEL", node: { id: 40, type: "MANGA" } },
-          { relationType: "ADAPTATION", node: { id: 7, type: "ANIME" } },
-        ],
-      },
-    });
-    expect(item.franchiseKey).toBe("anilist:40");
-  });
-
-  it("strips markup from synopses", () => {
-    expect(plainText(anilistMedia.description)).toBe(
-      "A synthetic story.\nSecond line & more.",
-    );
-  });
-});
 
 describe("TMDB and TVmaze normalisation", () => {
   it("maps a Korean TV row to kdrama with a 0-100 score", () => {
@@ -136,43 +85,14 @@ describe("TMDB and TVmaze normalisation", () => {
 });
 
 describe("catalog routes", () => {
-  it("discover returns normalised AniList items", async () => {
-    mockUpstream(vi, (url) =>
-      url.hostname === "graphql.anilist.co"
-        ? Response.json({
-            data: { Page: { pageInfo: { hasNextPage: true }, media: [anilistMedia] } },
-          })
-        : emptyUpstream(url),
-    );
-    const res = await call("/catalog/discover?kind=manhwa");
-    expect(res.status).toBe(200);
-    expect(res.headers.get("Cache-Control")).toBe("public, max-age=3600");
-    const body = (await res.json()) as { items: { kind: string }[]; hasNext: boolean };
-    expect(body.hasNext).toBe(true);
-    expect(body.items[0]!.kind).toBe("manhwa");
-  });
-
-  it("sends a fixed GraphQL query with only variables from the request", async () => {
-    const calls = mockUpstream(vi);
-    await call("/catalog/discover?kind=manhua&mood=comfort&page=3");
-    const sent = JSON.parse(String(calls[0]!.init!.body));
-    expect(sent.variables).toMatchObject({
-      page: 3,
-      type: "MANGA",
-      country: "CN",
-      genres: ["Slice of Life", "Comedy"],
-    });
-    expect(sent.query).toContain("isAdult: false");
-  });
-
   it("serves the second identical request from KV", async () => {
     const kv = fakeKv();
     const env = fakeEnv({ CATALOG_CACHE: kv });
     const calls = mockUpstream(vi);
-    await call("/catalog/discover?kind=anime", {}, env);
-    await call("/catalog/discover?kind=anime", {}, env);
+    await call("/catalog/search?q=synthetic&kind=movie", {}, env);
+    await call("/catalog/search?q=synthetic&kind=movie", {}, env);
     expect(calls).toHaveLength(1);
-    expect([...kv.store.keys()]).toEqual(["v1:discover:anime:-:1"]);
+    expect([...kv.store.keys()]).toEqual(["v1:search:movie:synthetic"]);
   });
 
   it("uses TMDB with the key and never leaks it to the client", async () => {
@@ -206,7 +126,7 @@ describe("catalog routes", () => {
 
   it("maps provider failures to 502 without details", async () => {
     mockUpstream(vi, () => new Response("boom secret", { status: 500 }));
-    const res = await call("/catalog/discover?kind=anime");
+    const res = await call("/catalog/search?q=synthetic&kind=movie");
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ error: "upstream_error" });
   });
@@ -215,7 +135,7 @@ describe("catalog routes", () => {
     const calls = mockUpstream(vi, () =>
       new Response(null, { status: 302, headers: { Location: "https://evil.example" } }),
     );
-    const res = await call("/catalog/discover?kind=anime");
+    const res = await call("/catalog/search?q=synthetic&kind=movie");
     expect(res.status).toBe(502);
     expect(calls).toHaveLength(1);
     expect(calls[0]!.init!.redirect).toBe("manual");
@@ -255,29 +175,6 @@ describe("image proxy", () => {
 });
 
 describe("batch match for imports", () => {
-  it("sends titles as variables in one aliased AniList query", async () => {
-    const calls = mockUpstream(vi);
-    const res = await postJson("/catalog/match", {
-      items: [
-        { q: "Synthetic One", kind: "anime" },
-        { q: 'Two") { evil }', kind: "manhwa" },
-      ],
-    });
-    expect(res.status).toBe(200);
-    const sent = JSON.parse(String(calls[0]!.init!.body));
-    expect(sent.variables).toEqual({ q0: "Synthetic One", q1: 'Two") { evil }' });
-    expect(sent.query).not.toContain("evil");
-    expect(sent.query).toContain("s1: Page(page: 1, perPage: 3)");
-    expect(sent.query).toContain("countryOfOrigin: KR");
-  });
-
-  it("looks MAL ids up in one call per type", async () => {
-    const calls = mockUpstream(vi);
-    await postJson("/catalog/match", { malAnime: [1, 2], malManga: [3] });
-    const bodies = calls.map((c) => JSON.parse(String(c.init!.body)));
-    expect(bodies.filter((b) => b.variables?.ids)).toHaveLength(2);
-  });
-
   it("caps a batch at 15 titles", async () => {
     mockUpstream(vi);
     const items = Array.from({ length: 16 }, (_, i) => ({ q: `t${i}` }));

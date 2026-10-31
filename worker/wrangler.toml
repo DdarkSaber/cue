@@ -8,7 +8,6 @@ compatibility_date = "2026-08-15"
 ALLOWED_ORIGINS = "https://cue-next.cue-worker.workers.dev,http://localhost:7357,http://127.0.0.1:7357"
 # Public OAuth client id (it is visible in the sign-in URL). The secret is a wrangler secret.
 MAL_CLIENT_ID = "5910123f3d7045299259209ddff88344"
-ANILIST_CLIENT_ID = "55585"
 
 # Public catalog cache only. Never personal data.
 [[kv_namespaces]]
@@ -35,4 +34,4 @@ namespace_id = "1002"
 simple = { limit = 600, period = 60 }
 
 # Secrets (set with `wrangler secret put`, never committed):
-#   TMDB_API_KEY (M1), MAL/ANILIST/TRAKT client secrets (M6), GEMINI/GROQ keys (M7)
+#   TMDB_API_KEY (M1), MAL_CLIENT_SECRET (M6), GEMINI/GROQ keys (M7)

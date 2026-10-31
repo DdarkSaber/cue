@@ -14,10 +14,6 @@ declare global {
       /** Secrets for sign-in imports. Absent ones keep that source off. */
       MAL_CLIENT_ID?: string;
       MAL_CLIENT_SECRET?: string;
-      ANILIST_CLIENT_ID?: string;
-      ANILIST_CLIENT_SECRET?: string;
-      TRAKT_CLIENT_ID?: string;
-      TRAKT_CLIENT_SECRET?: string;
     }
     interface GlobalProps {
       mainModule: typeof import("./index");

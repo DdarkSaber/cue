@@ -131,7 +131,7 @@ final backupServiceProvider = Provider<BackupService>(
 
 final codeStoreProvider = Provider<CodeStore>((ref) => const SecureCodeStore());
 
-/// Read-only sign-in tokens for MAL, AniList and Trakt, on this device only.
+/// Read-only MAL sign-in token, on this device only.
 final tokenStoreProvider = Provider<TokenStore>(
   (ref) => const SecureTokenStore(),
 );

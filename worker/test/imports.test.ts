@@ -34,30 +34,9 @@ const anilistList = {
 };
 
 describe("list imports", () => {
-  it("reads a public AniList list by username without any key", async () => {
-    mockUpstream(vi, (url) =>
-      url.hostname === "graphql.anilist.co" ? Response.json(anilistList) : emptyUpstream(url),
-    );
-    const res = await call("/import/anilist/user/synthetic_user");
-    expect(res.status).toBe(200);
-    expect(res.headers.get("Cache-Control")).toBe("no-store");
-    const { entries } = (await res.json()) as { entries: Record<string, unknown>[] };
-    expect(entries[0]).toMatchObject({
-      anilistId: 11,
-      malId: 22,
-      kind: "manhwa",
-      status: "completed",
-      score: 9,
-      repeat: 1,
-      completedAt: "2024-05-02",
-    });
-    // Unscored stays unscored; unknown date stays unknown.
-    expect(entries[1]).toMatchObject({ title: "Romaji Only", score: null, completedAt: null, progress: null });
-  });
-
   it("rejects usernames that are not plain names", async () => {
     for (const bad of ["a", "has space", "x".repeat(33), "../etc"]) {
-      expect((await call(`/import/anilist/user/${encodeURIComponent(bad)}`)).status).toBe(400);
+      expect((await call(`/import/mal/user/${encodeURIComponent(bad)}`)).status).toBe(400);
     }
   });
 
@@ -83,14 +62,10 @@ describe("list imports", () => {
   it("signed-in lists need a bearer token and never log it", async () => {
     const lines: string[] = [];
     vi.spyOn(console, "log").mockImplementation((m: unknown) => lines.push(String(m)));
-    mockUpstream(vi, (url) =>
-      url.hostname === "graphql.anilist.co"
-        ? Response.json({ data: { Viewer: { name: "someone" }, ...anilistList.data } })
-        : emptyUpstream(url),
-    );
-    expect((await postJson("/import/anilist/list", {})).status).toBe(400);
+    mockUpstream(vi, () => Response.json({ data: [] }));
+    expect((await postJson("/import/mal/list", {})).status).toBe(400);
     const token = "secret-token-value-123";
-    const res = await call("/import/anilist/list", {
+    const res = await call("/import/mal/list", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, Origin: APP_ORIGIN },
     });
@@ -107,8 +82,8 @@ describe("list imports", () => {
   });
 
   it("oauth config reports only what is set up", async () => {
-    const res = await call("/oauth/config", {}, fakeEnv({ ANILIST_CLIENT_ID: "123" }));
-    expect(await res.json()).toEqual({ mal: null, anilist: "123", trakt: null });
+    const res = await call("/oauth/config", {}, fakeEnv({ MAL_CLIENT_ID: "123" }));
+    expect(await res.json()).toEqual({ mal: "123" });
   });
 
   it("token exchange returns the access token only", async () => {

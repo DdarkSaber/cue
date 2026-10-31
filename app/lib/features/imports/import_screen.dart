@@ -1015,8 +1015,7 @@ String importSourceName(String type) => switch (type) {
   'generic_csv' => 'CSV file',
   'mihon_backup' => 'Mihon backup',
   'mal_api' => 'MyAnimeList sign-in',
-  'anilist_api' => 'AniList sign-in',
-  'trakt_api' => 'Trakt sign-in',
+  'anilist_api' => 'AniList list',
   'sync' => 'sync',
   _ => 'Import',
 };

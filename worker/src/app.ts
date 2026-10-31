@@ -113,7 +113,7 @@ export function createApp() {
   app.post("/catalog/match", async (c) => {
     const b = check(c, matchBody, await jsonBody(c));
     if (!b.ok) return b.res;
-    const out = await catalog.match(c.env, b.data.items, b.data.malAnime, b.data.malManga);
+    const out = await catalog.match(c.env, b.data.items);
     return c.json(out);
   });
 
@@ -138,12 +138,6 @@ export function createApp() {
   });
 
   // List imports. Tokens are used for this request only; nothing is kept.
-  app.get("/import/anilist/user/:name", async (c) => {
-    const p = check(c, userParams, c.req.param());
-    if (!p.ok) return p.res;
-    return c.json({ entries: await lists.anilistByUser(p.data.name) });
-  });
-
   app.get("/import/mal/user/:name", async (c) => {
     const p = check(c, userParams, c.req.param());
     if (!p.ok) return p.res;
@@ -156,12 +150,7 @@ export function createApp() {
     if (!p.ok) return p.res;
     const token = bearer(c.req.header("Authorization"));
     if (!token) return fail(c, 400, "invalid_request", { fields: ["authorization"] });
-    const name =
-      p.data.provider === "mal"
-        ? await lists.malMe(token)
-        : p.data.provider === "trakt"
-          ? await lists.traktMe(c.env, token)
-          : null;
+    const name = await lists.malMe(token);
     return c.json({ name });
   });
 
@@ -170,12 +159,7 @@ export function createApp() {
     if (!p.ok) return p.res;
     const token = bearer(c.req.header("Authorization"));
     if (!token) return fail(c, 400, "invalid_request", { fields: ["authorization"] });
-    const entries =
-      p.data.provider === "anilist"
-        ? await lists.anilistViewer(token)
-        : p.data.provider === "mal"
-          ? await lists.malViewer(token)
-          : await lists.traktViewer(c.env, token);
+    const entries = await lists.malViewer(token);
     return c.json({ entries });
   });
 

@@ -38,23 +38,25 @@ describe("fixed endpoints only", () => {
   });
 
   it("a title the provider does not have is 404", async () => {
-    const res = await call("/catalog/title/anilist/154587");
+    const res = await call("/catalog/title/cinemeta/tt0000001?type=movie");
     expect(res.status).toBe(404);
   });
 
   it("POST /oauth/:provider/token refuses callbacks that are not Cue's", async () => {
-    const res = await postJson("/oauth/anilist/token", {
+    const res = await postJson("/oauth/mal/token", {
       code: "abc",
-      redirectUri: "https://cue.example/oauth/anilist",
+      codeVerifier: "v".repeat(64),
+      redirectUri: "https://cue.example/oauth/mal",
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid_request", fields: ["redirectUri"] });
   });
 
   it("POST /oauth/:provider/token answers 503 until the provider is set up", async () => {
-    const res = await postJson("/oauth/anilist/token", {
+    const res = await postJson("/oauth/mal/token", {
       code: "abc",
-      redirectUri: "cue://oauth/anilist",
+      codeVerifier: "v".repeat(64),
+      redirectUri: "cue://oauth/mal",
     });
     expect(res.status).toBe(503);
   });
@@ -93,8 +95,8 @@ describe("input validation", () => {
     ["/catalog/discover?kind=anime&page=0", ["page"]],
     ["/catalog/discover?kind=anime&page=51", ["page"]],
     ["/catalog/title/imdb/1", ["provider"]],
-    ["/catalog/title/anilist/abc", ["id"]],
-    ["/catalog/title/anilist/1234567890123", ["id"]],
+    ["/catalog/title/tvmaze/abc", ["id"]],
+    ["/catalog/title/tvmaze/1234567890123", ["id"]],
     ["/catalog/search", ["q"]],
     ["/catalog/search?q=%20%20", ["q"]],
     [`/catalog/search?q=${"a".repeat(201)}`, ["q"]],

@@ -156,10 +156,8 @@ class MatchResponse {
 
 /// Which sign-in sources the Worker has client ids for.
 class OAuthConfigDto {
-  const OAuthConfigDto({this.mal, this.anilist, this.trakt});
+  const OAuthConfigDto({this.mal});
   final String? mal;
-  final String? anilist;
-  final String? trakt;
 }
 
 abstract class CatalogGateway {
@@ -312,11 +310,7 @@ class HttpCatalogGateway implements CatalogGateway {
   @override
   Future<OAuthConfigDto> oauthConfig() async {
     final b = (await _get('/oauth/config', const {})) as Map? ?? const {};
-    return OAuthConfigDto(
-      mal: b['mal'] as String?,
-      anilist: b['anilist'] as String?,
-      trakt: b['trakt'] as String?,
-    );
+    return OAuthConfigDto(mal: b['mal'] as String?);
   }
 
   @override

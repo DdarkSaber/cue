@@ -2,7 +2,7 @@ import '../../domain/models/library.dart';
 import '../../domain/models/title.dart';
 import '../records.dart';
 
-/// Normalises list entries from the Worker's MAL, AniList and Trakt routes.
+/// Normalises list entries from MAL (through the Worker) and AniList.
 /// Same rules as files: unscored is unrated, unknown dates stay unknown.
 ParsedImport parseListEntries(
   String provider,
@@ -24,15 +24,12 @@ ParsedImport parseListEntries(
     final completed = _date(e['completedAt'] as String?);
     final anilistId = (e['anilistId'] as num?)?.toInt();
     final malId = (e['malId'] as num?)?.toInt();
-    final traktId = (e['traktId'] as num?)?.toInt();
     records.add(
       NormalizedRecord(
         sourceEntryKey: anilistId != null
             ? 'anilist:$anilistId'
             : malId != null
             ? 'mal:${kind == MediaKind.anime ? 'anime' : 'manga'}:$malId'
-            : traktId != null
-            ? 'trakt:${kind.name}:$traktId'
             : 'title:${title.toLowerCase()}',
         title: title,
         kind: kind == MediaKind.unknown ? null : kind,
@@ -49,7 +46,6 @@ ParsedImport parseListEntries(
         progressValue: (e['progress'] as num?)?.toDouble(),
         actualWatchedAt: completed,
         activityDate: completed,
-        plays: (e['plays'] as num?)?.toInt(),
       ),
     );
   }
@@ -69,8 +65,6 @@ LibraryState _state(String s) => switch (s) {
   'paused' || 'on_hold' => LibraryState.onHold,
   'dropped' => LibraryState.dropped,
   'planning' || 'plan_to_watch' || 'plan_to_read' => LibraryState.planned,
-  // Trakt history: watched at least once; completion unknown.
-  'watched' => LibraryState.seen,
   _ => LibraryState.none,
 };
 
