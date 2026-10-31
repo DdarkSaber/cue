@@ -11,8 +11,30 @@ import 'catalog_gateway.dart';
 /// so these fixed, public, read-only queries run here instead of the Worker.
 /// Only titles, ids and public usernames are ever sent.
 class AniListClient {
-  AniListClient({http.Client? client}) : _client = client ?? http.Client();
+  AniListClient({
+    http.Client? client,
+    Future<void> Function(Duration)? sleep,
+    DateTime Function()? clock,
+  }) : _client = client ?? http.Client(),
+       _sleep = sleep ?? Future<void>.delayed,
+       _now = clock ?? DateTime.now;
   final http.Client _client;
+  final Future<void> Function(Duration) _sleep;
+  final DateTime Function() _now;
+
+  /// Minimum gap between calls. AniList currently allows 30 a minute; the
+  /// gap follows whatever limit its response headers report.
+  Duration _gap = Duration.zero;
+  DateTime? _last;
+
+  Future<void> _pace() async {
+    final last = _last;
+    if (last != null && _gap > Duration.zero) {
+      final wait = _gap - _now().difference(last);
+      if (wait > Duration.zero) await _sleep(wait);
+    }
+    _last = _now();
+  }
 
   static final endpoint = Uri.parse('https://graphql.anilist.co');
 
@@ -88,25 +110,37 @@ class AniListClient {
     Map<String, Object?> variables, {
     String? token,
   }) async {
-    final http.Response res;
-    try {
-      res = await _client
-          .post(
-            endpoint,
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'Authorization': ?(token == null ? null : 'Bearer $token'),
-            },
-            body: jsonEncode({'query': query, 'variables': variables}),
-          )
-          .timeout(const Duration(seconds: 12));
-    } on TimeoutException {
-      throw const CatalogUnavailable('offline');
-    } on Exception {
-      throw const CatalogUnavailable('offline');
+    late http.Response res;
+    // A 429 waits as long as AniList asks, then tries again (three times).
+    for (var attempt = 0; ; attempt++) {
+      await _pace();
+      try {
+        res = await _client
+            .post(
+              endpoint,
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': ?(token == null ? null : 'Bearer $token'),
+              },
+              body: jsonEncode({'query': query, 'variables': variables}),
+            )
+            .timeout(const Duration(seconds: 12));
+      } on TimeoutException {
+        throw const CatalogUnavailable('offline');
+      } on Exception {
+        throw const CatalogUnavailable('offline');
+      }
+      final limit = int.tryParse(res.headers['x-ratelimit-limit'] ?? '');
+      if (limit != null && limit > 0) {
+        _gap = Duration(milliseconds: (60000 / limit).ceil() + 50);
+      }
+      if (res.statusCode != 429) break;
+      if (attempt >= 3) throw const CatalogUnavailable('rate_limited');
+      final after = int.tryParse(res.headers['retry-after'] ?? '') ?? 60;
+      // Without a readable header (some browsers hide it) assume the long wait.
+      await _sleep(Duration(seconds: after.clamp(1, 65)));
     }
-    if (res.statusCode == 429) throw const CatalogUnavailable('rate_limited');
     if (res.statusCode == 404) return null;
     if (res.statusCode != 200) throw const CatalogUnavailable('upstream_error');
     try {
@@ -156,7 +190,10 @@ class AniListClient {
     final data = await _query(_search, {
       'q': q,
       'type': k?.type,
-      'country': kind != null && kind != MediaKind.anime ? k?.country : null,
+      // Manga comes from anywhere; only manhwa and manhua are narrowed.
+      'country': kind == MediaKind.manhwa || kind == MediaKind.manhua
+          ? k?.country
+          : null,
     });
     final p = data?['Page'] as Map?;
     return [
@@ -164,7 +201,7 @@ class AniListClient {
     ];
   }
 
-  /// Several searches in one request (15 x 3 stays under AniList's query
+  /// Several searches in one request (12 x 5 stays under AniList's query
   /// complexity cap of 500). Titles travel as variables only.
   Future<List<List<CatalogItemDto>>> searchMany(List<MatchQuery> items) async {
     if (items.isEmpty) return const [];
@@ -177,11 +214,11 @@ class AniListClient {
       vars['q$i'] = items[i].q;
       decls.add('\$q$i: String');
       final type = k == null ? '' : ', type: ${k.type}';
-      final country = k?.country != null && kind != MediaKind.anime
+      final country = kind == MediaKind.manhwa || kind == MediaKind.manhua
           ? ', countryOfOrigin: ${k!.country}'
           : '';
       parts.add(
-        's$i: Page(page: 1, perPage: 3) { media(search: \$q$i$type$country, isAdult: false) { $_fields } }',
+        's$i: Page(page: 1, perPage: 5) { media(search: \$q$i$type$country, isAdult: false) { $_fields } }',
       );
     }
     final data = await _query(

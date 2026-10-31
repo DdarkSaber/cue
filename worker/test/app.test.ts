@@ -28,7 +28,6 @@ describe("fixed endpoints only", () => {
   });
 
   it.each([
-    "/catalog/discover?kind=kdrama",
     "/catalog/title/tmdb/1399",
     "/catalog/providers/1399?region=IN",
     "/catalog/providers/1399",

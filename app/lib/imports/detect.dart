@@ -8,10 +8,19 @@ import 'adapters/generic_csv.dart';
 import 'adapters/mal_xml.dart';
 import 'adapters/mihon_backup.dart';
 import 'adapters/netflix_csv.dart';
+import 'adapters/xlsx_import.dart';
+import 'adapters/xlsx_sheets.dart';
 import 'records.dart';
 
 /// Formats the upload button recognises, from bytes rather than the name.
-enum DetectedFormat { malXml, netflixCsv, cueBackup, mihonBackup, genericCsv }
+enum DetectedFormat {
+  malXml,
+  netflixCsv,
+  cueBackup,
+  mihonBackup,
+  genericCsv,
+  xlsx,
+}
 
 /// Result of detection: the format and the (decompressed) bytes.
 class Detected {
@@ -23,7 +32,7 @@ class Detected {
 const supportedList =
     'MyAnimeList XML (.xml or .xml.gz), Netflix viewing activity (.csv), '
     'Mihon or Tachiyomi backup (.tachibk), Cue backup (.json), or any CSV '
-    'with a title column.';
+    'with a title column, or an Excel spreadsheet (.xlsx) with a Title column.';
 
 /// Unwraps gzip with size and ratio bounds.
 Uint8List gunzipBounded(Uint8List input) {
@@ -54,6 +63,15 @@ Detected detect(Uint8List raw, String filename) {
   if (raw.length > 2 && raw[0] == 0x1F && raw[1] == 0x8B) {
     bytes = gunzipBounded(raw);
     wasGzip = true;
+  }
+  if (!wasGzip && looksLikeXlsx(bytes)) {
+    // A zip is only read when it is a spreadsheet.
+    if (latin1.decode(bytes, allowInvalid: true).contains('xl/workbook.xml')) {
+      return Detected(DetectedFormat.xlsx, bytes);
+    }
+    throw const ImportRejected(
+      'Cue does not recognise this zip file. $supportedList',
+    );
   }
   final head = latin1.decode(
     bytes.sublist(0, bytes.length < 4096 ? bytes.length : 4096),
@@ -111,6 +129,7 @@ ParsedImport parseDetected(
       dayFirst: dayFirst,
     ),
     DetectedFormat.cueBackup => CueBackupAdapter().parse(d.bytes),
+    DetectedFormat.xlsx => XlsxImportAdapter().parse(d.bytes),
     DetectedFormat.mihonBackup => MihonBackupAdapter().parse(d.bytes),
     DetectedFormat.genericCsv => GenericCsvAdapter().parse(
       d.bytes,

@@ -14,10 +14,10 @@ export const mediaKind = z.enum([
 ]);
 
 /** TMDB splits ids by type; other providers ignore it. */
-export const tmdbType = z.enum(["tv", "movie"]).default("tv");
+export const tmdbType = z.enum(["tv", "movie", "series"]).default("tv");
 
 export const mood = z.enum(["hype", "comfort", "gripping", "feels"]);
-export const catalogProvider = z.enum(["anilist", "tmdb", "tvmaze"]);
+export const catalogProvider = z.enum(["anilist", "tmdb", "tvmaze", "cinemeta"]);
 export const oauthProvider = z.enum(["mal", "anilist", "trakt"]);
 const numericId = z.string().regex(/^\d{1,12}$/);
 
@@ -26,6 +26,7 @@ export const IMAGE_HOSTS = new Set([
   "s4.anilist.co",
   "image.tmdb.org",
   "static.tvmaze.com",
+  "images.metahub.space",
 ]);
 
 export function isAllowedImageUrl(raw: string): boolean {
@@ -52,7 +53,8 @@ export const discoverQuery = z.object({
 
 export const titleParams = z.object({
   provider: catalogProvider,
-  id: numericId,
+  // Numeric ids, or IMDb ids (tt1234567) for Cinemeta.
+  id: z.string().regex(/^(tt)?\d{1,12}$/),
 });
 export const titleQuery = z.object({ type: tmdbType });
 

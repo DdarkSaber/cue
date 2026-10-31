@@ -63,7 +63,13 @@ export const emptyUpstream: Upstream = (url) => {
         data: { Page: { pageInfo: { hasNextPage: false }, media: [] }, Media: null },
       });
     case "api.tvmaze.com":
-      return json([]);
+      // Page listings are arrays; page 0 exists, later pages do not.
+      return url.pathname === "/shows" && Number(url.searchParams.get("page")) > 0
+        ? new Response(null, { status: 404 })
+        : json([]);
+    case "cinemeta-catalogs.strem.io":
+    case "v3-cinemeta.strem.io":
+      return json({ metas: [] });
     case "api.themoviedb.org":
       return json({ page: 1, total_pages: 1, results: [] });
     default:

@@ -101,8 +101,9 @@ class CueBackupAdapter {
   /// Only ids in Cue's own shape ("anilist:1", "tmdb:tv:9", "tvmaze:3").
   static String? _cueId(Object? v) {
     if (v is! String) return null;
-    return RegExp(r'^(anilist|tvmaze):\d{1,12}$|^tmdb:(tv|movie):\d{1,12}$')
-            .hasMatch(v)
+    return RegExp(
+          r'^(anilist|tvmaze):\d{1,12}$|^tmdb:(tv|movie):\d{1,12}$|^cinemeta:(movie|series):tt\d{1,12}$',
+        ).hasMatch(v)
         ? v
         : null;
   }

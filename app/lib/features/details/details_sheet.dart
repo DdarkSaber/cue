@@ -182,6 +182,7 @@ class _DetailsBodyState extends ConsumerState<DetailsBody> {
   static String _source(Title t) {
     if (t.id.startsWith('anilist:')) return 'AniList';
     if (t.id.startsWith('tmdb:')) return 'TMDB';
+    if (t.id.startsWith('cinemeta:')) return 'Stremio Cinemeta';
     if (t.id.startsWith('tvmaze:')) return 'TVmaze';
     return 'imported';
   }

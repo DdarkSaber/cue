@@ -12,7 +12,7 @@ Free and non-commercial. No accounts, ads, analytics or trackers.
 ```
 Flutter app (Android, web; iOS later)                Cloudflare Worker (TypeScript)
   deck, gestures, ranker, imports, sync    HTTPS       fixed endpoints only
-  local database (Drift / SQLite)       ----------->   /catalog/*  TMDB, TVmaze (+ KV cache)
+  local database (Drift / SQLite)       ----------->   /catalog/*  TVmaze, Cinemeta (+ KV cache)
   AniList queries (fixed, public)                      /oauth/*    token exchange
        |                                               /import/*   MAL, Trakt list reads
        v HTTPS                                         /sync/*     encrypted blobs (D1)
@@ -22,10 +22,10 @@ Flutter app (Android, web; iOS later)                Cloudflare Worker (TypeScri
 - **Swipes.** Default: right = Will try, down = Not now (hidden 14 days), up = Watched / Read it (seen, not "completed"), left = Not interested (until restored). Settings > Swipe actions lets you remap any direction. Buttons, arrow keys and screen-reader actions do the same thing, and Undo always works, even after a restart.
 - **Recommendations are rules, not a model.** The ranker runs on the device: hard filters (hidden, deferred, saved, seen titles and the filter sheet), then a score from tags you rated well, the mood you picked, catalog quality, freshness and a little exploration. A small in-session lean follows what you keep or skip right now (never stored). Each card gets one true reason line, never a fake match percentage.
 - **Moods are tag sets.** Hype, Comfort, Gripping and Feels map to catalog tags. "Tell me what you feel like" is read on the device with keyword rules. AI parsing is not used.
-- **AniList is called from the device.** AniList refuses requests from Cloudflare Workers, allows browser origins and needs no key, so anime and reading lookups go straight from the app with fixed queries. Everything else goes through the Worker.
-- **Imports are local.** Files (MAL XML, Netflix CSV, Mihon backup, CSV, Cue backup) are detected by their bytes, parsed on the device, matched (catalog id first, then exact title, else a review queue), previewed, and committed in one batch you can undo. Sign-in sources use the provider's own page with PKCE, read once, keep no login. AniList lists also work by public username.
+- **Sources, none needing a key or an account.** AniList for anime, manga, manhwa and manhua; TVmaze for K/C/J-dramas and series; Stremio's public Cinemeta catalog for movies (an unofficial source). AniList refuses requests from Cloudflare Workers, allows browser origins and allows only about 30 calls a minute, so the app calls it directly with fixed queries and paces itself. Everything else goes through the Worker. A TMDB key, if you ever add one, takes over dramas, series and movies.
+- **Imports are local.** Files (Excel .xlsx, MAL XML, Netflix CSV, Mihon backup, CSV, Cue backup) are detected by their bytes, parsed on the device, matched (catalog id first, then exact title, then a similar title you tick yourself, else a review queue), previewed, and committed in one batch you can undo. Sign-in sources use the provider's own page with PKCE, read once, keep no login. AniList lists also work by public username.
 - **Sync is optional and end-to-end encrypted.** A 32-character code encrypts the library on the device (AES-256-GCM, keys from HKDF). The Worker stores only ciphertext and a hash of the write token.
-- **Posters** come only from AniList, TMDB or TVmaze.
+- **Posters** come from AniList, TVmaze or Cinemeta (and TMDB if keyed).
 
 ## Keys (all optional, all free)
 
@@ -33,7 +33,7 @@ Never in the app. Set them on the Worker from `worker/` with `npx wrangler secre
 
 | Secret | Turns on | Register at |
 |---|---|---|
-| `TMDB_API_KEY` | Movies, series, K/C/J-dramas, where to watch | themoviedb.org > Settings > API (non-commercial) |
+| `TMDB_API_KEY` | Optional. Richer data and where-to-watch; dramas, series and movies work without it | themoviedb.org > Settings > API (needs personal details) |
 | `MAL_CLIENT_ID` (+ `MAL_CLIENT_SECRET` for "web" apps) | MyAnimeList sign-in and username import | myanimelist.net/apiconfig |
 | `ANILIST_CLIENT_ID`, `ANILIST_CLIENT_SECRET` | AniList sign-in (username import needs nothing) | anilist.co/settings/developer |
 | `TRAKT_CLIENT_ID`, `TRAKT_CLIENT_SECRET` | Trakt sign-in | trakt.tv/oauth/applications |
@@ -58,6 +58,15 @@ flutter analyze && flutter test
 flutter run -d <emulator-id>              # debug build talks to 10.0.2.2:8787
 tool/build_web.sh http://127.0.0.1:8787   # web build for the local Worker
 ```
+
+## Check an import file against the live catalogs
+
+```sh
+cd app
+CUE_LIVE_FILE=path/to/your-list.xlsx flutter test test/live/import_check_test.dart
+```
+
+Prints match rates per kind (exact, similar, none, not checked) and lists the misses. The file is read from the path you give and never stored in the repo.
 
 ## Deploy (Cloudflare free plan)
 

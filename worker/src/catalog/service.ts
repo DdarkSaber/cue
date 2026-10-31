@@ -15,7 +15,8 @@ import {
   searchTmdb,
   titleTmdb,
 } from "./tmdb";
-import { searchTvmaze, titleTvmaze } from "./tvmaze";
+import { CINEMETA_KINDS, cinemetaType, discoverCinemeta, searchCinemeta, titleCinemeta } from "./cinemeta";
+import { discoverTvmaze, searchTvmaze, titleTvmaze, tvmazeLastPage } from "./tvmaze";
 import type { CatalogItem, CatalogPage, CatalogProvider, MediaKind } from "./types";
 
 type Mood = "hype" | "comfort" | "gripping" | "feels";
@@ -25,14 +26,29 @@ export function discover(env: Env, kind: MediaKind, mood: Mood | undefined, page
     env.CATALOG_CACHE,
     `discover:${kind}:${mood ?? "-"}:${page}`,
     TTL.discover,
-    () =>
-      ANILIST_KINDS.has(kind)
-        ? discoverAniList(kind, mood, page)
-        : discoverTmdb(env.TMDB_API_KEY, kind, mood, page),
+    async () => {
+      if (ANILIST_KINDS.has(kind)) return discoverAniList(kind, mood, page);
+      // A TMDB key, when there is one, is richer; without it the key-free
+      // sources serve dramas, series and movies.
+      if (env.TMDB_API_KEY) return discoverTmdb(env.TMDB_API_KEY, kind, mood, page);
+      if (CINEMETA_KINDS.has(kind)) return discoverCinemeta("movie", mood, page);
+      const last = await cachedLastPage(env);
+      return discoverTvmaze(kind, mood, page, last);
+    },
   );
 }
 
-export function title(env: Env, provider: CatalogProvider, id: string, type: TmdbType) {
+/** The newest TVmaze page, remembered for three days. */
+async function cachedLastPage(env: Env): Promise<number> {
+  const { value } = await cached<number>(env.CATALOG_CACHE, "tvmaze:last", 3 * 24 * 60 * 60, () =>
+    tvmazeLastPage(),
+  );
+  return value;
+}
+
+export type TitleType = TmdbType | "series";
+
+export function title(env: Env, provider: CatalogProvider, id: string, type: TitleType) {
   return cached<CatalogItem | null>(
     env.CATALOG_CACHE,
     `title:${provider}:${provider === "tmdb" ? type : "-"}:${id}`,
@@ -42,7 +58,9 @@ export function title(env: Env, provider: CatalogProvider, id: string, type: Tmd
         case "anilist":
           return titleAniList(id);
         case "tmdb":
-          return titleTmdb(env.TMDB_API_KEY, id, type);
+          return titleTmdb(env.TMDB_API_KEY, id, type === "series" ? "tv" : type);
+        case "cinemeta":
+          return titleCinemeta(id, type === "movie" ? "movie" : "series");
         case "tvmaze":
           return titleTvmaze(id);
       }
@@ -62,10 +80,7 @@ export function search(env: Env, q: string, kind: MediaKind | undefined) {
     `search:${kind ?? "-"}:${norm}`,
     TTL.search,
     async () => {
-      const screen = async () => {
-        if (kind === "movie" && !env.TMDB_API_KEY) return [];
-        return env.TMDB_API_KEY ? searchTmdb(env.TMDB_API_KEY, q, kind) : searchTvmaze(q);
-      };
+      const screen = () => searchScreen(env, q, kind);
       if (kind && ANILIST_KINDS.has(kind)) return searchAniList(q, kind);
       if (kind) return screen();
       const [a, b] = await Promise.allSettled([searchAniList(q, undefined), screen()]);
@@ -77,12 +92,32 @@ export function search(env: Env, q: string, kind: MediaKind | undefined) {
   );
 }
 
-export function providers(env: Env, id: string, type: TmdbType, region: string) {
+/**
+ * Screen titles: a TMDB key when there is one, otherwise TVmaze for series
+ * and dramas and Cinemeta for movies. With no kind, both free sources.
+ */
+export async function searchScreen(
+  env: Env,
+  q: string,
+  kind: MediaKind | undefined,
+): Promise<CatalogItem[]> {
+  if (env.TMDB_API_KEY) return searchTmdb(env.TMDB_API_KEY, q, kind);
+  if (kind === "movie") return searchCinemeta(q, "movie");
+  if (kind) return searchTvmaze(q);
+  const [tv, film] = await Promise.allSettled([searchTvmaze(q), searchCinemeta(q, "movie")]);
+  return [
+    ...(tv.status === "fulfilled" ? tv.value.slice(0, 4) : []),
+    ...(film.status === "fulfilled" ? film.value.slice(0, 3) : []),
+  ];
+}
+
+export function providers(env: Env, id: string, type: TitleType, region: string) {
+  const t: TmdbType = type === "series" ? "tv" : type;
   return cached(
     env.CATALOG_CACHE,
-    `providers:${type}:${id}:${region}`,
+    `providers:${t}:${id}:${region}`,
     TTL.providers,
-    () => providersTmdb(env.TMDB_API_KEY, id, type, region),
+    () => providersTmdb(env.TMDB_API_KEY, id, t, region),
   );
 }
 
@@ -109,17 +144,19 @@ export async function match(
   ]);
   aniIdx.forEach((i, j) => results[i]!.push(...(ani[j] ?? [])));
 
-  for (const i of screenIdx) {
-    const it = items[i]!;
-    if (it.kind === "movie" && !env.TMDB_API_KEY) continue;
-    try {
-      const found = env.TMDB_API_KEY
-        ? await searchTmdb(env.TMDB_API_KEY, it.q, it.kind)
-        : await searchTvmaze(it.q);
-      results[i]!.push(...found.slice(0, 4));
-    } catch {
-      // One failed lookup leaves that title unresolved, not the batch.
-    }
+  // Five at a time: well inside TVmaze's rate limit and the subrequest cap.
+  for (let s = 0; s < screenIdx.length; s += 5) {
+    await Promise.all(
+      screenIdx.slice(s, s + 5).map(async (i) => {
+        const it = items[i]!;
+        try {
+          const found = await searchScreen(env, it.q, it.kind);
+          results[i]!.push(...found.slice(0, 6));
+        } catch {
+          // One failed lookup leaves that title unresolved, not the batch.
+        }
+      }),
+    );
   }
   return { results, mal: [...malA, ...malM] };
 }

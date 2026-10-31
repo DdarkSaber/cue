@@ -197,7 +197,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       ),
       _Step.matching => _Progress(
         label:
-            'Matching ${_progress.$1} of ${_progress.$2} against the catalog…',
+            'Matching ${_progress.$1} of ${_progress.$2} against the catalog…'
+            '${_progress.$2 > 150 ? '\nAnime and comic lookups are limited to about 30 a minute, so a big list takes a couple of minutes. You can leave this screen open.' : ''}',
         value: _progress.$2 == 0 ? null : _progress.$1 / _progress.$2,
       ),
       _Step.preview => _Preview(
@@ -687,6 +688,39 @@ class _Preview extends StatelessWidget {
           'Ratings from the file stay separate from catalog scores.',
           style: _muted,
         ),
+        if (staged.similar > 0)
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: staged.matched
+                .where((m) => m.matchClass == MatchClass.similar)
+                .every((m) => m.included),
+            onChanged: (v) {
+              for (final m in staged.matched.where(
+                (m) => m.matchClass == MatchClass.similar,
+              )) {
+                m.included = v;
+              }
+              onChanged();
+            },
+            title: Text(
+              'Include ${staged.similar} similar titles',
+              style: const TextStyle(fontSize: 15),
+            ),
+            subtitle: const Text(
+              'Close but not identical, such as a fan name for the official one. Look through the list before ticking; each shows the title it would link to.',
+              style: TextStyle(fontSize: 13, color: CueColors.textMuted),
+            ),
+            activeThumbColor: CueColors.onActionPrimary,
+            activeTrackColor: CueColors.actionPrimary,
+          ),
+        if (staged.unchecked > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              '${staged.unchecked} titles could not be checked just now (offline or busy). They wait in Library, or cancel and try again.',
+              style: const TextStyle(fontSize: 14, color: CueColors.notNow),
+            ),
+          ),
         if (titleMatches.isNotEmpty)
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
@@ -784,7 +818,10 @@ class _RecordListState extends State<_RecordList> {
                   MatchClass.exactId => 'matched by id',
                   MatchClass.confirmed => 'confirmed',
                   MatchClass.suggested => 'matched by title',
-                  MatchClass.unresolved => 'needs review',
+                  MatchClass.similar =>
+                    'similar: ${m.candidateName ?? 'a catalog title'}',
+                  MatchClass.unresolved =>
+                    m.unchecked ? 'not checked' : 'needs review',
                 },
                 if (m.record.plays != null) '${m.record.plays} plays',
               ].join(' · '),
@@ -929,6 +966,7 @@ String importSourceName(String type) => switch (type) {
   'mal_xml' => 'MyAnimeList file',
   'netflix_csv' => 'Netflix activity',
   'cue_backup' => 'Cue backup',
+  'xlsx' => 'Spreadsheet',
   'generic_csv' => 'CSV file',
   'mihon_backup' => 'Mihon backup',
   'mal_api' => 'MyAnimeList sign-in',

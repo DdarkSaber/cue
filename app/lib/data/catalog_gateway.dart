@@ -89,7 +89,10 @@ class MatchQuery {
 }
 
 class MatchResponse {
-  const MatchResponse(this.results, this.mal);
+  const MatchResponse(this.results, this.mal, {this.failed = const {}});
+
+  /// Query positions whose lookup failed (offline, busy): not "no match".
+  final Set<int> failed;
 
   /// Candidates per query, in order.
   final List<List<CatalogItemDto>> results;
@@ -283,7 +286,7 @@ class HttpCatalogGateway implements CatalogGateway {
               'malManga': malManga,
             }),
           )
-          .timeout(const Duration(seconds: 20));
+          .timeout(const Duration(seconds: 45));
     } on TimeoutException {
       throw const CatalogUnavailable('offline');
     } on Exception {
@@ -427,21 +430,30 @@ class HybridCatalogGateway implements CatalogGateway {
         out[aniIdx[j]].addAll(r[j]);
       }
     }
-    if (screenIdx.isNotEmpty) {
-      try {
-        final r = await worker.match([for (final i in screenIdx) items[i]]);
-        for (var j = 0; j < screenIdx.length && j < r.results.length; j++) {
-          out[screenIdx[j]].addAll(r.results[j]);
+    final failed = <int>{};
+    // Smaller batches, each retried once: a cold catalog can be slow, and a
+    // failed batch is reported as "not checked", never as "no match".
+    for (var s = 0; s < screenIdx.length; s += 8) {
+      final chunk = screenIdx.skip(s).take(8).toList();
+      var ok = false;
+      for (var attempt = 0; attempt < 2 && !ok; attempt++) {
+        try {
+          final r = await worker.match([for (final i in chunk) items[i]]);
+          for (var j = 0; j < chunk.length && j < r.results.length; j++) {
+            out[chunk[j]].addAll(r.results[j]);
+          }
+          ok = true;
+        } on CatalogUnavailable {
+          // Try once more, then give up on this batch.
         }
-      } on CatalogUnavailable {
-        // Screen titles stay unresolved; anime and reading still match.
       }
+      if (!ok) failed.addAll(chunk);
     }
     final mal = [
       ...await anilist.byMalIds(malAnime, 'ANIME'),
       ...await anilist.byMalIds(malManga, 'MANGA'),
     ];
-    return MatchResponse(out, mal);
+    return MatchResponse(out, mal, failed: failed);
   }
 
   @override

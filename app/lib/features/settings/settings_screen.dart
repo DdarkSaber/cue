@@ -273,7 +273,7 @@ class PreferencesPage extends ConsumerWidget {
         ),
         const SizedBox(height: 6),
         const Text(
-          'Movies, series and K, C and J-dramas need the TMDB catalog key on the Worker; until it is set they stay empty.',
+          'Dramas and series come from TVmaze and movies from Stremio Cinemeta, so nothing needs a key or an account.',
           style: TextStyle(fontSize: 13, color: CueColors.textMuted),
         ),
         const SizedBox(height: CueSpace.md),
@@ -533,7 +533,7 @@ class _PrivacyPageState extends ConsumerState<PrivacyPage> {
         ),
         const CueSectionLabel('What leaves the device'),
         const Text(
-          'Anime, manga, manhwa and manhua lookups go straight from this device to AniList (it does not accept requests through Cloudflare). Dramas, series and movies go through the Cue Worker to TMDB or TVmaze. Lookups include title names or catalog ids, never your history. AniList and the poster hosts can see your IP address, like any website you visit.',
+          'Anime, manga, manhwa and manhua lookups go straight from this device to AniList (it does not accept requests through Cloudflare). Dramas, series and movies go through the Cue Worker to TVmaze or Stremio Cinemeta. Lookups include title names or catalog ids, never your history. AniList and the poster hosts can see your IP address, like any website you visit.',
           style: _body,
         ),
         const SizedBox(height: CueSpace.sm),
@@ -597,9 +597,8 @@ class AboutPage extends StatelessWidget {
         const CueSectionLabel('Credits'),
         const Text(
           'Anime, manga, manhwa and manhua data and artwork from AniList.\n'
-          'This product uses the TMDB API but is not endorsed or certified by TMDB.\n'
-          'Where-to-watch data from JustWatch, through TMDB.\n'
-          'Show data from TVmaze (CC BY-SA).\n'
+          'Movie titles, ratings and posters from Stremio Cinemeta (an unofficial source).\n'
+          'Show artwork and details from TVmaze, used under CC BY-SA.\n'
           'DM Sans by Colophon Foundry, under the SIL Open Font License.',
           style: _body,
         ),

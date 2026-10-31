@@ -195,7 +195,7 @@ class CatalogRepository {
             final provider = '${e.key}';
             await _identity(id, provider, '${e.value}', switch (provider) {
               'mal' => kind.isReading ? 'manga' : 'anime',
-              'tmdb' => id.split(':')[1],
+              'tmdb' || 'cinemeta' => id.split(':')[1],
               _ => '',
             });
           }
@@ -207,7 +207,12 @@ class CatalogRepository {
   /// Posters only from the official catalog hosts.
   static String? _allowedPoster(String? url) {
     final u = url == null ? null : Uri.tryParse(url);
-    const hosts = {'s4.anilist.co', 'image.tmdb.org', 'static.tvmaze.com'};
+    const hosts = {
+      's4.anilist.co',
+      'image.tmdb.org',
+      'static.tvmaze.com',
+      'images.metahub.space',
+    };
     return u != null && u.scheme == 'https' && hosts.contains(u.host)
         ? url
         : null;

@@ -33,7 +33,19 @@ class StagedImport {
       included.where((m) => !existing.contains(m.titleId)).length;
   int get readyUpdates =>
       included.where((m) => existing.contains(m.titleId)).length;
-  int get needsReview => matched.where((m) => !m.resolved).length;
+
+  /// Not matched, or offered as similar and not ticked: these wait in Library.
+  int get needsReview => matched
+      .where(
+        (m) =>
+            !m.resolved || (m.matchClass == MatchClass.similar && !m.included),
+      )
+      .length;
+  int get similar =>
+      matched.where((m) => m.matchClass == MatchClass.similar).length;
+
+  /// Titles whose lookup failed (offline, busy), not "no match".
+  int get unchecked => matched.where((m) => m.unchecked).length;
   int get byTitle =>
       matched.where((m) => m.matchClass == MatchClass.suggested).length;
   int get byId =>
@@ -168,6 +180,14 @@ class ImportService {
       final seenTitles = <String>{};
       for (final m in s.matched) {
         final r = m.record;
+        // A similar title is linked, and its catalog row added, only when the
+        // person ticked it; otherwise the entry waits in the review queue.
+        String? tid = m.titleId;
+        if (m.matchClass == MatchClass.similar) {
+          tid = m.included
+              ? (await catalog.upsert([m.candidate!])).first
+              : null;
+        }
         await db
             .into(db.sourceObservations)
             .insert(
@@ -176,20 +196,20 @@ class ImportService {
                 batchId: batchId,
                 sourceEntryKey: r.sourceEntryKey,
                 rawTitle: r.title,
-                titleId: Value(m.titleId),
+                titleId: Value(tid),
                 matchClass: m.matchClass.name,
                 status: r.state.code,
                 ratingOriginal: Value(r.ratingOriginal),
                 ratingScale: Value(r.ratingScale),
                 progress: Value(r.progressValue),
                 activityDate: Value(r.activityDate),
-                included: Value(m.included && m.resolved),
+                included: Value(m.included && tid != null),
               ),
               mode: InsertMode.insertOrReplace,
             );
-        if (!m.included || !m.resolved) continue;
-        final result = await _merge(profileId, m.titleId!, r, batchId, now);
-        if (seenTitles.add(m.titleId!)) {
+        if (!m.included || tid == null) continue;
+        final result = await _merge(profileId, tid, r, batchId, now);
+        if (seenTitles.add(tid)) {
           switch (result) {
             case _Merge.added:
               added++;
