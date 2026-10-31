@@ -212,6 +212,7 @@ class CatalogRepository {
       'image.tmdb.org',
       'static.tvmaze.com',
       'images.metahub.space',
+      'cdn.mangaupdates.com',
     };
     return u != null && u.scheme == 'https' && hosts.contains(u.host)
         ? url

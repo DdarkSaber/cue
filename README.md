@@ -14,7 +14,7 @@ Flutter app (Android, web; iOS later)                Cloudflare Worker (TypeScri
   deck, gestures, ranker, imports, sync    HTTPS       fixed endpoints only
   local database (Drift / SQLite)       ----------->   /catalog/*  TVmaze, Cinemeta (+ KV cache)
   AniList queries (fixed, public)                      /oauth/*    token exchange
-       |                                               /import/*   MAL, Trakt list reads
+       |                                               /import/*   MAL list reads
        v HTTPS                                         /sync/*     encrypted blobs (D1)
   graphql.anilist.co
 ```
@@ -23,7 +23,7 @@ Flutter app (Android, web; iOS later)                Cloudflare Worker (TypeScri
 - **Recommendations are rules, not a model.** The ranker runs on the device: hard filters (hidden, deferred, saved, seen titles and the filter sheet), then a score from tags you rated well, the mood you picked, catalog quality, freshness and a little exploration. A small in-session lean follows what you keep or skip right now (never stored). Each card gets one true reason line, never a fake match percentage.
 - **Moods are tag sets.** Hype, Comfort, Gripping and Feels map to catalog tags. "Tell me what you feel like" is read on the device with keyword rules. AI parsing is not used.
 - **Sources, none needing a key or an account.** AniList for anime, manga, manhwa and manhua; TVmaze for K/C/J-dramas and series; Stremio's public Cinemeta catalog for movies (an unofficial source). AniList refuses requests from Cloudflare Workers, allows browser origins and allows only about 30 calls a minute, so the app calls it directly with fixed queries and paces itself. Everything else goes through the Worker. A TMDB key, if you ever add one, takes over dramas, series and movies.
-- **Imports are local.** Files (Excel .xlsx, MAL XML, Netflix CSV, Mihon backup, CSV, Cue backup) are detected by their bytes, parsed on the device, matched (catalog id first, then exact title, then a similar title you tick yourself, else a review queue), previewed, and committed in one batch you can undo. Sign-in sources use the provider's own page with PKCE, read once, keep no login. AniList lists also work by public username.
+- **Imports are local.** Files (Excel .xlsx, MAL XML, Netflix CSV, Mihon backup, CSV, Cue backup) are detected by their bytes, parsed on the device, matched (catalog id first, then exact title, then a similar title you tick yourself, else a review queue), previewed, and committed in one batch you can undo. MAL sign-in uses MAL's own page with PKCE and keeps a read-only token on the device (Sign out removes it). AniList is public username only, because AniList refuses Cloudflare's IPs.
 - **One title, many names.** Comics have an official, a licensed, a romanised and several fan names, and each database keeps a different set. Matching compares a name against every title and AniList synonym, cleans quotes, parentheses and season suffixes, and for comics still unmatched asks MangaDex (through the Worker) for the work's other names and its AniList link, filtered by language so a manhwa is never a manhua. Anything uncertain is offered unticked, never linked silently.
 - **Sync is optional and end-to-end encrypted.** A 32-character code encrypts the library on the device (AES-256-GCM, keys from HKDF). The Worker stores only ciphertext and a hash of the write token.
 - **Posters** come from AniList, TVmaze or Cinemeta (and TMDB if keyed).
@@ -36,8 +36,6 @@ Never in the app. Set them on the Worker from `worker/` with `npx wrangler secre
 |---|---|---|
 | `TMDB_API_KEY` | Optional. Richer data and where-to-watch; dramas, series and movies work without it | themoviedb.org > Settings > API (needs personal details) |
 | `MAL_CLIENT_ID` (+ `MAL_CLIENT_SECRET` for "web" apps) | MyAnimeList sign-in and username import | myanimelist.net/apiconfig |
-| `ANILIST_CLIENT_ID`, `ANILIST_CLIENT_SECRET` | AniList sign-in (username import needs nothing) | anilist.co/settings/developer |
-| `TRAKT_CLIENT_ID`, `TRAKT_CLIENT_SECRET` | Trakt sign-in | trakt.tv/oauth/applications |
 
 Redirect URIs to register: `cue://oauth/<provider>` (Android) and `https://cue-next.cue-worker.workers.dev/auth.html` (web). Without a key, that source shows as "not set up" and the rest keeps working.
 

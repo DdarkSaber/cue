@@ -50,3 +50,5 @@ docs/
 CLAUDE.md
 .claude/
 skills-lock.json
+
+graphify-out/
