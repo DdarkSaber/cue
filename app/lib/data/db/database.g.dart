@@ -7080,6 +7080,838 @@ class ImportChangesCompanion extends UpdateCompanion<ImportChange> {
   }
 }
 
+class $MoodStatesTable extends MoodStates
+    with TableInfo<$MoodStatesTable, MoodState> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $MoodStatesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _profileIdMeta = const VerificationMeta(
+    'profileId',
+  );
+  @override
+  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
+    'profile_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES profiles (id)',
+    ),
+  );
+  static const VerificationMeta _modesJsonMeta = const VerificationMeta(
+    'modesJson',
+  );
+  @override
+  late final GeneratedColumn<String> modesJson = GeneratedColumn<String>(
+    'modes_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _wordsJsonMeta = const VerificationMeta(
+    'wordsJson',
+  );
+  @override
+  late final GeneratedColumn<String> wordsJson = GeneratedColumn<String>(
+    'words_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    profileId,
+    modesJson,
+    wordsJson,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'mood_states';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<MoodState> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('profile_id')) {
+      context.handle(
+        _profileIdMeta,
+        profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_profileIdMeta);
+    }
+    if (data.containsKey('modes_json')) {
+      context.handle(
+        _modesJsonMeta,
+        modesJson.isAcceptableOrUnknown(data['modes_json']!, _modesJsonMeta),
+      );
+    }
+    if (data.containsKey('words_json')) {
+      context.handle(
+        _wordsJsonMeta,
+        wordsJson.isAcceptableOrUnknown(data['words_json']!, _wordsJsonMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {profileId};
+  @override
+  MoodState map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return MoodState(
+      profileId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}profile_id'],
+      )!,
+      modesJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}modes_json'],
+      )!,
+      wordsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}words_json'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $MoodStatesTable createAlias(String alias) {
+    return $MoodStatesTable(attachedDatabase, alias);
+  }
+}
+
+class MoodState extends DataClass implements Insertable<MoodState> {
+  final String profileId;
+  final String modesJson;
+  final String wordsJson;
+  final DateTime updatedAt;
+  const MoodState({
+    required this.profileId,
+    required this.modesJson,
+    required this.wordsJson,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['profile_id'] = Variable<String>(profileId);
+    map['modes_json'] = Variable<String>(modesJson);
+    map['words_json'] = Variable<String>(wordsJson);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  MoodStatesCompanion toCompanion(bool nullToAbsent) {
+    return MoodStatesCompanion(
+      profileId: Value(profileId),
+      modesJson: Value(modesJson),
+      wordsJson: Value(wordsJson),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory MoodState.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return MoodState(
+      profileId: serializer.fromJson<String>(json['profileId']),
+      modesJson: serializer.fromJson<String>(json['modesJson']),
+      wordsJson: serializer.fromJson<String>(json['wordsJson']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'profileId': serializer.toJson<String>(profileId),
+      'modesJson': serializer.toJson<String>(modesJson),
+      'wordsJson': serializer.toJson<String>(wordsJson),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  MoodState copyWith({
+    String? profileId,
+    String? modesJson,
+    String? wordsJson,
+    DateTime? updatedAt,
+  }) => MoodState(
+    profileId: profileId ?? this.profileId,
+    modesJson: modesJson ?? this.modesJson,
+    wordsJson: wordsJson ?? this.wordsJson,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  MoodState copyWithCompanion(MoodStatesCompanion data) {
+    return MoodState(
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
+      modesJson: data.modesJson.present ? data.modesJson.value : this.modesJson,
+      wordsJson: data.wordsJson.present ? data.wordsJson.value : this.wordsJson,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MoodState(')
+          ..write('profileId: $profileId, ')
+          ..write('modesJson: $modesJson, ')
+          ..write('wordsJson: $wordsJson, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(profileId, modesJson, wordsJson, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is MoodState &&
+          other.profileId == this.profileId &&
+          other.modesJson == this.modesJson &&
+          other.wordsJson == this.wordsJson &&
+          other.updatedAt == this.updatedAt);
+}
+
+class MoodStatesCompanion extends UpdateCompanion<MoodState> {
+  final Value<String> profileId;
+  final Value<String> modesJson;
+  final Value<String> wordsJson;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const MoodStatesCompanion({
+    this.profileId = const Value.absent(),
+    this.modesJson = const Value.absent(),
+    this.wordsJson = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  MoodStatesCompanion.insert({
+    required String profileId,
+    this.modesJson = const Value.absent(),
+    this.wordsJson = const Value.absent(),
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : profileId = Value(profileId),
+       updatedAt = Value(updatedAt);
+  static Insertable<MoodState> custom({
+    Expression<String>? profileId,
+    Expression<String>? modesJson,
+    Expression<String>? wordsJson,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (profileId != null) 'profile_id': profileId,
+      if (modesJson != null) 'modes_json': modesJson,
+      if (wordsJson != null) 'words_json': wordsJson,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  MoodStatesCompanion copyWith({
+    Value<String>? profileId,
+    Value<String>? modesJson,
+    Value<String>? wordsJson,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return MoodStatesCompanion(
+      profileId: profileId ?? this.profileId,
+      modesJson: modesJson ?? this.modesJson,
+      wordsJson: wordsJson ?? this.wordsJson,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (profileId.present) {
+      map['profile_id'] = Variable<String>(profileId.value);
+    }
+    if (modesJson.present) {
+      map['modes_json'] = Variable<String>(modesJson.value);
+    }
+    if (wordsJson.present) {
+      map['words_json'] = Variable<String>(wordsJson.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MoodStatesCompanion(')
+          ..write('profileId: $profileId, ')
+          ..write('modesJson: $modesJson, ')
+          ..write('wordsJson: $wordsJson, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $MoodSessionsTable extends MoodSessions
+    with TableInfo<$MoodSessionsTable, MoodSessionRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $MoodSessionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _profileIdMeta = const VerificationMeta(
+    'profileId',
+  );
+  @override
+  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
+    'profile_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES profiles (id)',
+    ),
+  );
+  static const VerificationMeta _startedAtMeta = const VerificationMeta(
+    'startedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> startedAt = GeneratedColumn<DateTime>(
+    'started_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _endedAtMeta = const VerificationMeta(
+    'endedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> endedAt = GeneratedColumn<DateTime>(
+    'ended_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _typedMeta = const VerificationMeta('typed');
+  @override
+  late final GeneratedColumn<String> typed = GeneratedColumn<String>(
+    'typed',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _modeIdMeta = const VerificationMeta('modeId');
+  @override
+  late final GeneratedColumn<String> modeId = GeneratedColumn<String>(
+    'mode_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _positivesMeta = const VerificationMeta(
+    'positives',
+  );
+  @override
+  late final GeneratedColumn<int> positives = GeneratedColumn<int>(
+    'positives',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _negativesMeta = const VerificationMeta(
+    'negatives',
+  );
+  @override
+  late final GeneratedColumn<int> negatives = GeneratedColumn<int>(
+    'negatives',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    profileId,
+    startedAt,
+    endedAt,
+    typed,
+    modeId,
+    positives,
+    negatives,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'mood_sessions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<MoodSessionRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('profile_id')) {
+      context.handle(
+        _profileIdMeta,
+        profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_profileIdMeta);
+    }
+    if (data.containsKey('started_at')) {
+      context.handle(
+        _startedAtMeta,
+        startedAt.isAcceptableOrUnknown(data['started_at']!, _startedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_startedAtMeta);
+    }
+    if (data.containsKey('ended_at')) {
+      context.handle(
+        _endedAtMeta,
+        endedAt.isAcceptableOrUnknown(data['ended_at']!, _endedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_endedAtMeta);
+    }
+    if (data.containsKey('typed')) {
+      context.handle(
+        _typedMeta,
+        typed.isAcceptableOrUnknown(data['typed']!, _typedMeta),
+      );
+    }
+    if (data.containsKey('mode_id')) {
+      context.handle(
+        _modeIdMeta,
+        modeId.isAcceptableOrUnknown(data['mode_id']!, _modeIdMeta),
+      );
+    }
+    if (data.containsKey('positives')) {
+      context.handle(
+        _positivesMeta,
+        positives.isAcceptableOrUnknown(data['positives']!, _positivesMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_positivesMeta);
+    }
+    if (data.containsKey('negatives')) {
+      context.handle(
+        _negativesMeta,
+        negatives.isAcceptableOrUnknown(data['negatives']!, _negativesMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_negativesMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  MoodSessionRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return MoodSessionRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      profileId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}profile_id'],
+      )!,
+      startedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}started_at'],
+      )!,
+      endedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}ended_at'],
+      )!,
+      typed: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}typed'],
+      ),
+      modeId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mode_id'],
+      ),
+      positives: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}positives'],
+      )!,
+      negatives: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}negatives'],
+      )!,
+    );
+  }
+
+  @override
+  $MoodSessionsTable createAlias(String alias) {
+    return $MoodSessionsTable(attachedDatabase, alias);
+  }
+}
+
+class MoodSessionRow extends DataClass implements Insertable<MoodSessionRow> {
+  final String id;
+  final String profileId;
+  final DateTime startedAt;
+  final DateTime endedAt;
+  final String? typed;
+  final String? modeId;
+  final int positives;
+  final int negatives;
+  const MoodSessionRow({
+    required this.id,
+    required this.profileId,
+    required this.startedAt,
+    required this.endedAt,
+    this.typed,
+    this.modeId,
+    required this.positives,
+    required this.negatives,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['profile_id'] = Variable<String>(profileId);
+    map['started_at'] = Variable<DateTime>(startedAt);
+    map['ended_at'] = Variable<DateTime>(endedAt);
+    if (!nullToAbsent || typed != null) {
+      map['typed'] = Variable<String>(typed);
+    }
+    if (!nullToAbsent || modeId != null) {
+      map['mode_id'] = Variable<String>(modeId);
+    }
+    map['positives'] = Variable<int>(positives);
+    map['negatives'] = Variable<int>(negatives);
+    return map;
+  }
+
+  MoodSessionsCompanion toCompanion(bool nullToAbsent) {
+    return MoodSessionsCompanion(
+      id: Value(id),
+      profileId: Value(profileId),
+      startedAt: Value(startedAt),
+      endedAt: Value(endedAt),
+      typed: typed == null && nullToAbsent
+          ? const Value.absent()
+          : Value(typed),
+      modeId: modeId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(modeId),
+      positives: Value(positives),
+      negatives: Value(negatives),
+    );
+  }
+
+  factory MoodSessionRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return MoodSessionRow(
+      id: serializer.fromJson<String>(json['id']),
+      profileId: serializer.fromJson<String>(json['profileId']),
+      startedAt: serializer.fromJson<DateTime>(json['startedAt']),
+      endedAt: serializer.fromJson<DateTime>(json['endedAt']),
+      typed: serializer.fromJson<String?>(json['typed']),
+      modeId: serializer.fromJson<String?>(json['modeId']),
+      positives: serializer.fromJson<int>(json['positives']),
+      negatives: serializer.fromJson<int>(json['negatives']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'profileId': serializer.toJson<String>(profileId),
+      'startedAt': serializer.toJson<DateTime>(startedAt),
+      'endedAt': serializer.toJson<DateTime>(endedAt),
+      'typed': serializer.toJson<String?>(typed),
+      'modeId': serializer.toJson<String?>(modeId),
+      'positives': serializer.toJson<int>(positives),
+      'negatives': serializer.toJson<int>(negatives),
+    };
+  }
+
+  MoodSessionRow copyWith({
+    String? id,
+    String? profileId,
+    DateTime? startedAt,
+    DateTime? endedAt,
+    Value<String?> typed = const Value.absent(),
+    Value<String?> modeId = const Value.absent(),
+    int? positives,
+    int? negatives,
+  }) => MoodSessionRow(
+    id: id ?? this.id,
+    profileId: profileId ?? this.profileId,
+    startedAt: startedAt ?? this.startedAt,
+    endedAt: endedAt ?? this.endedAt,
+    typed: typed.present ? typed.value : this.typed,
+    modeId: modeId.present ? modeId.value : this.modeId,
+    positives: positives ?? this.positives,
+    negatives: negatives ?? this.negatives,
+  );
+  MoodSessionRow copyWithCompanion(MoodSessionsCompanion data) {
+    return MoodSessionRow(
+      id: data.id.present ? data.id.value : this.id,
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
+      startedAt: data.startedAt.present ? data.startedAt.value : this.startedAt,
+      endedAt: data.endedAt.present ? data.endedAt.value : this.endedAt,
+      typed: data.typed.present ? data.typed.value : this.typed,
+      modeId: data.modeId.present ? data.modeId.value : this.modeId,
+      positives: data.positives.present ? data.positives.value : this.positives,
+      negatives: data.negatives.present ? data.negatives.value : this.negatives,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MoodSessionRow(')
+          ..write('id: $id, ')
+          ..write('profileId: $profileId, ')
+          ..write('startedAt: $startedAt, ')
+          ..write('endedAt: $endedAt, ')
+          ..write('typed: $typed, ')
+          ..write('modeId: $modeId, ')
+          ..write('positives: $positives, ')
+          ..write('negatives: $negatives')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    profileId,
+    startedAt,
+    endedAt,
+    typed,
+    modeId,
+    positives,
+    negatives,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is MoodSessionRow &&
+          other.id == this.id &&
+          other.profileId == this.profileId &&
+          other.startedAt == this.startedAt &&
+          other.endedAt == this.endedAt &&
+          other.typed == this.typed &&
+          other.modeId == this.modeId &&
+          other.positives == this.positives &&
+          other.negatives == this.negatives);
+}
+
+class MoodSessionsCompanion extends UpdateCompanion<MoodSessionRow> {
+  final Value<String> id;
+  final Value<String> profileId;
+  final Value<DateTime> startedAt;
+  final Value<DateTime> endedAt;
+  final Value<String?> typed;
+  final Value<String?> modeId;
+  final Value<int> positives;
+  final Value<int> negatives;
+  final Value<int> rowid;
+  const MoodSessionsCompanion({
+    this.id = const Value.absent(),
+    this.profileId = const Value.absent(),
+    this.startedAt = const Value.absent(),
+    this.endedAt = const Value.absent(),
+    this.typed = const Value.absent(),
+    this.modeId = const Value.absent(),
+    this.positives = const Value.absent(),
+    this.negatives = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  MoodSessionsCompanion.insert({
+    required String id,
+    required String profileId,
+    required DateTime startedAt,
+    required DateTime endedAt,
+    this.typed = const Value.absent(),
+    this.modeId = const Value.absent(),
+    required int positives,
+    required int negatives,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       profileId = Value(profileId),
+       startedAt = Value(startedAt),
+       endedAt = Value(endedAt),
+       positives = Value(positives),
+       negatives = Value(negatives);
+  static Insertable<MoodSessionRow> custom({
+    Expression<String>? id,
+    Expression<String>? profileId,
+    Expression<DateTime>? startedAt,
+    Expression<DateTime>? endedAt,
+    Expression<String>? typed,
+    Expression<String>? modeId,
+    Expression<int>? positives,
+    Expression<int>? negatives,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (profileId != null) 'profile_id': profileId,
+      if (startedAt != null) 'started_at': startedAt,
+      if (endedAt != null) 'ended_at': endedAt,
+      if (typed != null) 'typed': typed,
+      if (modeId != null) 'mode_id': modeId,
+      if (positives != null) 'positives': positives,
+      if (negatives != null) 'negatives': negatives,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  MoodSessionsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? profileId,
+    Value<DateTime>? startedAt,
+    Value<DateTime>? endedAt,
+    Value<String?>? typed,
+    Value<String?>? modeId,
+    Value<int>? positives,
+    Value<int>? negatives,
+    Value<int>? rowid,
+  }) {
+    return MoodSessionsCompanion(
+      id: id ?? this.id,
+      profileId: profileId ?? this.profileId,
+      startedAt: startedAt ?? this.startedAt,
+      endedAt: endedAt ?? this.endedAt,
+      typed: typed ?? this.typed,
+      modeId: modeId ?? this.modeId,
+      positives: positives ?? this.positives,
+      negatives: negatives ?? this.negatives,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (profileId.present) {
+      map['profile_id'] = Variable<String>(profileId.value);
+    }
+    if (startedAt.present) {
+      map['started_at'] = Variable<DateTime>(startedAt.value);
+    }
+    if (endedAt.present) {
+      map['ended_at'] = Variable<DateTime>(endedAt.value);
+    }
+    if (typed.present) {
+      map['typed'] = Variable<String>(typed.value);
+    }
+    if (modeId.present) {
+      map['mode_id'] = Variable<String>(modeId.value);
+    }
+    if (positives.present) {
+      map['positives'] = Variable<int>(positives.value);
+    }
+    if (negatives.present) {
+      map['negatives'] = Variable<int>(negatives.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MoodSessionsCompanion(')
+          ..write('id: $id, ')
+          ..write('profileId: $profileId, ')
+          ..write('startedAt: $startedAt, ')
+          ..write('endedAt: $endedAt, ')
+          ..write('typed: $typed, ')
+          ..write('modeId: $modeId, ')
+          ..write('positives: $positives, ')
+          ..write('negatives: $negatives, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$CueDatabase extends GeneratedDatabase {
   _$CueDatabase(QueryExecutor e) : super(e);
   $CueDatabaseManager get managers => $CueDatabaseManager(this);
@@ -7102,6 +7934,8 @@ abstract class _$CueDatabase extends GeneratedDatabase {
   late final $SourceObservationsTable sourceObservations =
       $SourceObservationsTable(this);
   late final $ImportChangesTable importChanges = $ImportChangesTable(this);
+  late final $MoodStatesTable moodStates = $MoodStatesTable(this);
+  late final $MoodSessionsTable moodSessions = $MoodSessionsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -7122,6 +7956,8 @@ abstract class _$CueDatabase extends GeneratedDatabase {
     importBatches,
     sourceObservations,
     importChanges,
+    moodStates,
+    moodSessions,
   ];
 }
 
@@ -8861,6 +9697,42 @@ final class $$ProfilesTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$MoodStatesTable, List<MoodState>>
+  _moodStatesRefsTable(_$CueDatabase db) => MultiTypedResultKey.fromTable(
+    db.moodStates,
+    aliasName: 'profiles__id__mood_states__profile_id',
+  );
+
+  $$MoodStatesTableProcessedTableManager get moodStatesRefs {
+    final manager = $$MoodStatesTableTableManager(
+      $_db,
+      $_db.moodStates,
+    ).filter((f) => f.profileId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_moodStatesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$MoodSessionsTable, List<MoodSessionRow>>
+  _moodSessionsRefsTable(_$CueDatabase db) => MultiTypedResultKey.fromTable(
+    db.moodSessions,
+    aliasName: 'profiles__id__mood_sessions__profile_id',
+  );
+
+  $$MoodSessionsTableProcessedTableManager get moodSessionsRefs {
+    final manager = $$MoodSessionsTableTableManager(
+      $_db,
+      $_db.moodSessions,
+    ).filter((f) => f.profileId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_moodSessionsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$ProfilesTableFilterComposer
@@ -9088,6 +9960,56 @@ class $$ProfilesTableFilterComposer
           }) => $$ImportBatchesTableFilterComposer(
             $db: $db,
             $table: $db.importBatches,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> moodStatesRefs(
+    Expression<bool> Function($$MoodStatesTableFilterComposer f) f,
+  ) {
+    final $$MoodStatesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.moodStates,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MoodStatesTableFilterComposer(
+            $db: $db,
+            $table: $db.moodStates,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> moodSessionsRefs(
+    Expression<bool> Function($$MoodSessionsTableFilterComposer f) f,
+  ) {
+    final $$MoodSessionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.moodSessions,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MoodSessionsTableFilterComposer(
+            $db: $db,
+            $table: $db.moodSessions,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -9358,6 +10280,56 @@ class $$ProfilesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> moodStatesRefs<T extends Object>(
+    Expression<T> Function($$MoodStatesTableAnnotationComposer a) f,
+  ) {
+    final $$MoodStatesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.moodStates,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MoodStatesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.moodStates,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> moodSessionsRefs<T extends Object>(
+    Expression<T> Function($$MoodSessionsTableAnnotationComposer a) f,
+  ) {
+    final $$MoodSessionsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.moodSessions,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MoodSessionsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.moodSessions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$ProfilesTableTableManager
@@ -9382,6 +10354,8 @@ class $$ProfilesTableTableManager
             bool exclusionsRefs,
             bool tagWeightsRefs,
             bool importBatchesRefs,
+            bool moodStatesRefs,
+            bool moodSessionsRefs,
           })
         > {
   $$ProfilesTableTableManager(_$CueDatabase db, $ProfilesTable table)
@@ -9445,6 +10419,8 @@ class $$ProfilesTableTableManager
                 exclusionsRefs = false,
                 tagWeightsRefs = false,
                 importBatchesRefs = false,
+                moodStatesRefs = false,
+                moodSessionsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -9457,6 +10433,8 @@ class $$ProfilesTableTableManager
                     if (exclusionsRefs) db.exclusions,
                     if (tagWeightsRefs) db.tagWeights,
                     if (importBatchesRefs) db.importBatches,
+                    if (moodStatesRefs) db.moodStates,
+                    if (moodSessionsRefs) db.moodSessions,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -9621,6 +10599,46 @@ class $$ProfilesTableTableManager
                           referencedColumn: 'profile_id',
                           typedResults: items,
                         ),
+                      if (moodStatesRefs)
+                        await $_getPrefetchedDataByColumns<
+                          Profile,
+                          $ProfilesTable,
+                          MoodState,
+                          $MoodStatesTable
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ProfilesTableReferences
+                              ._moodStatesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ProfilesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).moodStatesRefs,
+                          currentColumn: 'id',
+                          referencedColumn: 'profile_id',
+                          typedResults: items,
+                        ),
+                      if (moodSessionsRefs)
+                        await $_getPrefetchedDataByColumns<
+                          Profile,
+                          $ProfilesTable,
+                          MoodSessionRow,
+                          $MoodSessionsTable
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ProfilesTableReferences
+                              ._moodSessionsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ProfilesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).moodSessionsRefs,
+                          currentColumn: 'id',
+                          referencedColumn: 'profile_id',
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -9650,6 +10668,8 @@ typedef $$ProfilesTableProcessedTableManager =
         bool exclusionsRefs,
         bool tagWeightsRefs,
         bool importBatchesRefs,
+        bool moodStatesRefs,
+        bool moodSessionsRefs,
       })
     >;
 typedef $$ProfileSettingsTableCreateCompanionBuilder =
@@ -13345,6 +14365,672 @@ typedef $$ImportChangesTableProcessedTableManager =
       ImportChange,
       PrefetchHooks Function({bool batchId})
     >;
+typedef $$MoodStatesTableCreateCompanionBuilder = MoodStatesCompanion Function({
+  required String profileId,
+  Value<String> modesJson,
+  Value<String> wordsJson,
+  required DateTime updatedAt,
+  Value<int> rowid,
+});
+typedef $$MoodStatesTableUpdateCompanionBuilder = MoodStatesCompanion Function({
+  Value<String> profileId,
+  Value<String> modesJson,
+  Value<String> wordsJson,
+  Value<DateTime> updatedAt,
+  Value<int> rowid,
+});
+
+final class $$MoodStatesTableReferences
+    extends BaseReferences<_$CueDatabase, $MoodStatesTable, MoodState> {
+  $$MoodStatesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $ProfilesTable _profileIdTable(_$CueDatabase db) =>
+      db.profiles.createAlias('mood_states__profile_id__profiles__id');
+
+  $$ProfilesTableProcessedTableManager get profileId {
+    final $_column = $_itemColumn<String>('profile_id')!;
+
+    final manager = $$ProfilesTableTableManager(
+      $_db,
+      $_db.profiles,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_profileIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$MoodStatesTableFilterComposer
+    extends Composer<_$CueDatabase, $MoodStatesTable> {
+  $$MoodStatesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get modesJson => $composableBuilder(
+    column: $table.modesJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get wordsJson => $composableBuilder(
+    column: $table.wordsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ProfilesTableFilterComposer get profileId {
+    final $$ProfilesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableFilterComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$MoodStatesTableOrderingComposer
+    extends Composer<_$CueDatabase, $MoodStatesTable> {
+  $$MoodStatesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get modesJson => $composableBuilder(
+    column: $table.modesJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get wordsJson => $composableBuilder(
+    column: $table.wordsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ProfilesTableOrderingComposer get profileId {
+    final $$ProfilesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableOrderingComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$MoodStatesTableAnnotationComposer
+    extends Composer<_$CueDatabase, $MoodStatesTable> {
+  $$MoodStatesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get modesJson =>
+      $composableBuilder(column: $table.modesJson, builder: (column) => column);
+
+  GeneratedColumn<String> get wordsJson =>
+      $composableBuilder(column: $table.wordsJson, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$ProfilesTableAnnotationComposer get profileId {
+    final $$ProfilesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$MoodStatesTableTableManager
+    extends
+        RootTableManager<
+          _$CueDatabase,
+          $MoodStatesTable,
+          MoodState,
+          $$MoodStatesTableFilterComposer,
+          $$MoodStatesTableOrderingComposer,
+          $$MoodStatesTableAnnotationComposer,
+          $$MoodStatesTableCreateCompanionBuilder,
+          $$MoodStatesTableUpdateCompanionBuilder,
+          (MoodState, $$MoodStatesTableReferences),
+          MoodState,
+          PrefetchHooks Function({bool profileId})
+        > {
+  $$MoodStatesTableTableManager(_$CueDatabase db, $MoodStatesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$MoodStatesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$MoodStatesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$MoodStatesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> profileId = const Value.absent(),
+                Value<String> modesJson = const Value.absent(),
+                Value<String> wordsJson = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => MoodStatesCompanion(
+                profileId: profileId,
+                modesJson: modesJson,
+                wordsJson: wordsJson,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String profileId,
+                Value<String> modesJson = const Value.absent(),
+                Value<String> wordsJson = const Value.absent(),
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => MoodStatesCompanion.insert(
+                profileId: profileId,
+                modesJson: modesJson,
+                wordsJson: wordsJson,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$MoodStatesTable, MoodState>(table),
+                  $$MoodStatesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({profileId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (profileId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.profileId,
+                        referencedTable: $$MoodStatesTableReferences
+                            ._profileIdTable(db),
+                        referencedColumn: $$MoodStatesTableReferences
+                            ._profileIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$MoodStatesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$CueDatabase,
+      $MoodStatesTable,
+      MoodState,
+      $$MoodStatesTableFilterComposer,
+      $$MoodStatesTableOrderingComposer,
+      $$MoodStatesTableAnnotationComposer,
+      $$MoodStatesTableCreateCompanionBuilder,
+      $$MoodStatesTableUpdateCompanionBuilder,
+      (MoodState, $$MoodStatesTableReferences),
+      MoodState,
+      PrefetchHooks Function({bool profileId})
+    >;
+typedef $$MoodSessionsTableCreateCompanionBuilder =
+    MoodSessionsCompanion Function({
+      required String id,
+      required String profileId,
+      required DateTime startedAt,
+      required DateTime endedAt,
+      Value<String?> typed,
+      Value<String?> modeId,
+      required int positives,
+      required int negatives,
+      Value<int> rowid,
+    });
+typedef $$MoodSessionsTableUpdateCompanionBuilder =
+    MoodSessionsCompanion Function({
+      Value<String> id,
+      Value<String> profileId,
+      Value<DateTime> startedAt,
+      Value<DateTime> endedAt,
+      Value<String?> typed,
+      Value<String?> modeId,
+      Value<int> positives,
+      Value<int> negatives,
+      Value<int> rowid,
+    });
+
+final class $$MoodSessionsTableReferences
+    extends BaseReferences<_$CueDatabase, $MoodSessionsTable, MoodSessionRow> {
+  $$MoodSessionsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $ProfilesTable _profileIdTable(_$CueDatabase db) =>
+      db.profiles.createAlias('mood_sessions__profile_id__profiles__id');
+
+  $$ProfilesTableProcessedTableManager get profileId {
+    final $_column = $_itemColumn<String>('profile_id')!;
+
+    final manager = $$ProfilesTableTableManager(
+      $_db,
+      $_db.profiles,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_profileIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$MoodSessionsTableFilterComposer
+    extends Composer<_$CueDatabase, $MoodSessionsTable> {
+  $$MoodSessionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get startedAt => $composableBuilder(
+    column: $table.startedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get endedAt => $composableBuilder(
+    column: $table.endedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get typed => $composableBuilder(
+    column: $table.typed,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get modeId => $composableBuilder(
+    column: $table.modeId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get positives => $composableBuilder(
+    column: $table.positives,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get negatives => $composableBuilder(
+    column: $table.negatives,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ProfilesTableFilterComposer get profileId {
+    final $$ProfilesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableFilterComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$MoodSessionsTableOrderingComposer
+    extends Composer<_$CueDatabase, $MoodSessionsTable> {
+  $$MoodSessionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get startedAt => $composableBuilder(
+    column: $table.startedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get endedAt => $composableBuilder(
+    column: $table.endedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get typed => $composableBuilder(
+    column: $table.typed,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get modeId => $composableBuilder(
+    column: $table.modeId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get positives => $composableBuilder(
+    column: $table.positives,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get negatives => $composableBuilder(
+    column: $table.negatives,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ProfilesTableOrderingComposer get profileId {
+    final $$ProfilesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableOrderingComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$MoodSessionsTableAnnotationComposer
+    extends Composer<_$CueDatabase, $MoodSessionsTable> {
+  $$MoodSessionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get startedAt =>
+      $composableBuilder(column: $table.startedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get endedAt =>
+      $composableBuilder(column: $table.endedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get typed =>
+      $composableBuilder(column: $table.typed, builder: (column) => column);
+
+  GeneratedColumn<String> get modeId =>
+      $composableBuilder(column: $table.modeId, builder: (column) => column);
+
+  GeneratedColumn<int> get positives =>
+      $composableBuilder(column: $table.positives, builder: (column) => column);
+
+  GeneratedColumn<int> get negatives =>
+      $composableBuilder(column: $table.negatives, builder: (column) => column);
+
+  $$ProfilesTableAnnotationComposer get profileId {
+    final $$ProfilesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$MoodSessionsTableTableManager
+    extends
+        RootTableManager<
+          _$CueDatabase,
+          $MoodSessionsTable,
+          MoodSessionRow,
+          $$MoodSessionsTableFilterComposer,
+          $$MoodSessionsTableOrderingComposer,
+          $$MoodSessionsTableAnnotationComposer,
+          $$MoodSessionsTableCreateCompanionBuilder,
+          $$MoodSessionsTableUpdateCompanionBuilder,
+          (MoodSessionRow, $$MoodSessionsTableReferences),
+          MoodSessionRow,
+          PrefetchHooks Function({bool profileId})
+        > {
+  $$MoodSessionsTableTableManager(_$CueDatabase db, $MoodSessionsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$MoodSessionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$MoodSessionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$MoodSessionsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> profileId = const Value.absent(),
+                Value<DateTime> startedAt = const Value.absent(),
+                Value<DateTime> endedAt = const Value.absent(),
+                Value<String?> typed = const Value.absent(),
+                Value<String?> modeId = const Value.absent(),
+                Value<int> positives = const Value.absent(),
+                Value<int> negatives = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => MoodSessionsCompanion(
+                id: id,
+                profileId: profileId,
+                startedAt: startedAt,
+                endedAt: endedAt,
+                typed: typed,
+                modeId: modeId,
+                positives: positives,
+                negatives: negatives,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String profileId,
+                required DateTime startedAt,
+                required DateTime endedAt,
+                Value<String?> typed = const Value.absent(),
+                Value<String?> modeId = const Value.absent(),
+                required int positives,
+                required int negatives,
+                Value<int> rowid = const Value.absent(),
+              }) => MoodSessionsCompanion.insert(
+                id: id,
+                profileId: profileId,
+                startedAt: startedAt,
+                endedAt: endedAt,
+                typed: typed,
+                modeId: modeId,
+                positives: positives,
+                negatives: negatives,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$MoodSessionsTable, MoodSessionRow>(table),
+                  $$MoodSessionsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({profileId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (profileId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.profileId,
+                        referencedTable: $$MoodSessionsTableReferences
+                            ._profileIdTable(db),
+                        referencedColumn: $$MoodSessionsTableReferences
+                            ._profileIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$MoodSessionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$CueDatabase,
+      $MoodSessionsTable,
+      MoodSessionRow,
+      $$MoodSessionsTableFilterComposer,
+      $$MoodSessionsTableOrderingComposer,
+      $$MoodSessionsTableAnnotationComposer,
+      $$MoodSessionsTableCreateCompanionBuilder,
+      $$MoodSessionsTableUpdateCompanionBuilder,
+      (MoodSessionRow, $$MoodSessionsTableReferences),
+      MoodSessionRow,
+      PrefetchHooks Function({bool profileId})
+    >;
 
 class $CueDatabaseManager {
   final _$CueDatabase _db;
@@ -13379,4 +15065,8 @@ class $CueDatabaseManager {
       $$SourceObservationsTableTableManager(_db, _db.sourceObservations);
   $$ImportChangesTableTableManager get importChanges =>
       $$ImportChangesTableTableManager(_db, _db.importChanges);
+  $$MoodStatesTableTableManager get moodStates =>
+      $$MoodStatesTableTableManager(_db, _db.moodStates);
+  $$MoodSessionsTableTableManager get moodSessions =>
+      $$MoodSessionsTableTableManager(_db, _db.moodSessions);
 }

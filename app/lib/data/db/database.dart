@@ -24,6 +24,8 @@ part 'database.g.dart';
     ImportBatches,
     SourceObservations,
     ImportChanges,
+    MoodStates,
+    MoodSessions,
   ],
 )
 class CueDatabase extends _$CueDatabase {
@@ -41,7 +43,7 @@ class CueDatabase extends _$CueDatabase {
   );
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -59,6 +61,12 @@ class CueDatabase extends _$CueDatabase {
         'CREATE INDEX IF NOT EXISTS idx_catalog_kind '
         'ON catalog_titles (media_kind)',
       );
+    },
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.createTable(moodStates);
+        await m.createTable(moodSessions);
+      }
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');

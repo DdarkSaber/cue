@@ -4,6 +4,9 @@ import 'models/deck_filters.dart';
 import 'models/library.dart';
 import 'models/quick_mood.dart';
 import 'models/title.dart';
+import 'mood/mood_features.dart';
+import 'mood/mood_target.dart';
+import 'mood/vec.dart';
 import 'mood_tags.dart';
 import 'reasons.dart';
 
@@ -153,12 +156,16 @@ class Ranker {
     ProfileSignals s,
     DeckFilters f, {
     SessionMood? session,
+    MoodTarget? target,
   }) {
     final features = t.features;
     final taste = s.evidenceTitles < coldStartBelow
         ? 0.5
         : _cosine(features, s.weights);
     final mood = switch (f.mood) {
+      // The learned mood steers the default deck.
+      QuickMood.forYou when target != null && target.confidence > 0 =>
+        0.5 + 0.5 * cosineSet(moodFeatures(t), target.vec),
       QuickMood.forYou => 0.5,
       QuickMood.revisit => _revisitMood(t, s, f),
       final m => moodOverlap(features, m),
@@ -176,8 +183,11 @@ class Ranker {
     final novelty = 1 / (1 + rated / 5);
     final penalty = _penalty(features, s.weights);
     final lean = session?.lean(features) ?? 0;
-    return 0.40 * taste +
-        0.20 * mood +
+    final learned = f.mood == QuickMood.forYou && (target?.confidence ?? 0) > 0;
+    final moodW = learned ? 0.10 + 0.25 * target!.confidence : 0.20;
+    final tasteW = max(0.25, 0.40 - (moodW - 0.20));
+    return tasteW * taste +
+        moodW * mood +
         0.15 * quality +
         0.15 * freshness +
         0.10 * novelty -
@@ -225,6 +235,7 @@ class Ranker {
     required Map<String, Title> titlesById,
     bool includeRewatchesDefault = false,
     SessionMood? session,
+    MoodTarget? target,
     Set<String> skip = const {},
     int size = deckSize,
   }) {
@@ -242,7 +253,9 @@ class Ranker {
         continue;
       }
       // Tiny jitter so equal scores do not always deal in the same order.
-      final sc = score(t, s, f, session: session) + _random.nextDouble() * 0.02;
+      final sc =
+          score(t, s, f, session: session, target: target) +
+          _random.nextDouble() * 0.02;
       scored.add(RankedCard(t, sc, ''));
     }
     scored.sort((a, b) => b.score.compareTo(a.score));

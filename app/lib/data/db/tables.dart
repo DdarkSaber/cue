@@ -175,6 +175,38 @@ class TagWeights extends Table {
 }
 
 // ---------------------------------------------------------------------------
+// Mood learning (local only; see design/mood)
+// ---------------------------------------------------------------------------
+
+/// The learned modes and word meanings for a profile, as JSON.
+@DataClassName('MoodState')
+class MoodStates extends Table {
+  TextColumn get profileId => text().references(Profiles, #id)();
+  TextColumn get modesJson => text().withDefault(const Constant('[]'))();
+  TextColumn get wordsJson => text().withDefault(const Constant('{}'))();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {profileId};
+}
+
+/// One finished deck session, for review and for rebuilding the modes.
+@DataClassName('MoodSessionRow')
+class MoodSessions extends Table {
+  TextColumn get id => text()();
+  TextColumn get profileId => text().references(Profiles, #id)();
+  DateTimeColumn get startedAt => dateTime()();
+  DateTimeColumn get endedAt => dateTime()();
+  TextColumn get typed => text().nullable()();
+  TextColumn get modeId => text().nullable()();
+  IntColumn get positives => integer()();
+  IntColumn get negatives => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+// ---------------------------------------------------------------------------
 // Imports
 // ---------------------------------------------------------------------------
 
