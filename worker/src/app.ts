@@ -24,7 +24,7 @@ import {
 import { check, jsonBody } from "./validate";
 
 /**
- * The fixed endpoint set from CUE-HANDOFF 7.4. Nothing else is routable:
+ * The fixed endpoint set. Nothing else is routable:
  * no URL pass-through, no arbitrary GraphQL. Handlers land in M1, M6, M7;
  * until then each validates its input and answers 501.
  */

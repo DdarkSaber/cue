@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers.dart';
 
-/// UI-state checklist (docs/checklists/ui-states.md) items reachable in M0,
+/// UI-state checklist items reachable in M0,
 /// plus behaviours found in the M0 design and accessibility review.
 void main() {
   group('empty states say why and offer one next step', () {

@@ -16,8 +16,8 @@ Flutter app (Android, web; iOS later)          Cloudflare Worker (TypeScript)
 ```
 
 - **Swipes.** Right = Will try (shortlist). Down = Not now (hidden 14 days). Up = Watched / Read it (seen, not "completed"). Left = Not interested (until restored). Buttons, arrow keys and screen-reader actions do the same thing, and Undo always works.
-- **Recommendations are rules, not a model.** The ranker runs on the device: hard filters (exclusions, deferrals, seen titles, the filter sheet), then a score built from tag overlap with the titles you rated, the mood you picked, catalog quality, freshness and a little exploration. Each card gets one templated reason line that is true ("Hype like X, which you rewatched"), never a fake match percentage. Details: `docs/CUE-HANDOFF.md` section 7.2.
-- **Moods are tag sets, not sentiment analysis.** Hype, Comfort, Gripping and Feels each map to a list of catalog tags (section 7.2). The "Tell me what you feel like" box is parsed on the device with keyword rules first. Only if those find nothing, and only if the person turns AI on in Settings, the sentence alone (max 200 characters, no history) goes to `/ai/mood`, which asks Gemini (then Groq) to turn it into filters. Without a key, everything still works on rules.
+- **Recommendations are rules, not a model.** The ranker runs on the device: hard filters (exclusions, deferrals, seen titles, the filter sheet), then a score built from tag overlap with the titles you rated, the mood you picked, catalog quality, freshness and a little exploration. Each card gets one templated reason line that is true ("Hype like X, which you rewatched"), never a fake match percentage.
+- **Moods are tag sets, not sentiment analysis.** Hype, Comfort, Gripping and Feels each map to a list of catalog tags. The "Tell me what you feel like" box is parsed on the device with keyword rules first. Only if those find nothing, and only if the person turns AI on in Settings, the sentence alone (max 200 characters, no history) goes to `/ai/mood`, which asks Gemini (then Groq) to turn it into filters. Without a key, everything still works on rules.
 - **Imports are local.** Files (MAL XML, Netflix CSV, Mihon backup, CSV, Cue backup) are parsed on the device, previewed, then committed in one batch that can be undone. Sign-in sources (MAL, AniList, Trakt) use the provider's own page with PKCE and are read-only.
 - **Posters** come only from AniList, TMDB or TVmaze, proxied through an allowlist.
 
@@ -61,7 +61,6 @@ npx wrangler dev                          # local Worker on :8787
 ```
 app/        Flutter app (lib/app, lib/features, lib/domain, lib/data, lib/imports)
 worker/     Cloudflare Worker (Hono, zod, Vitest)
-docs/       Product handoff, specs, design prototype, checklists
 fixtures/   Synthetic sample files only
 ```
 
@@ -85,5 +84,3 @@ fixtures/   Synthetic sample files only
 | M5 | Library, Will try, Settings (export, delete, motion, privacy) | |
 | M6 | Sign-in imports (MAL, AniList, Trakt), Mihon adapter | |
 | M7 | Optional AI mood parsing, reading badges, polish, Play Store internal release | |
-
-Source of truth for decisions: `docs/CUE-HANDOFF.md`.

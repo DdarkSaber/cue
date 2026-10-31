@@ -7,7 +7,7 @@ compatibility_date = "2026-08-15"
 [vars]
 ALLOWED_ORIGINS = "http://localhost:7357,http://127.0.0.1:7357"
 
-# Public catalog cache only (CUE-HANDOFF 7.4). Never personal data.
+# Public catalog cache only. Never personal data.
 # Replace the id with the real namespace before the first deploy (M1).
 [[kv_namespaces]]
 binding = "CATALOG_CACHE"

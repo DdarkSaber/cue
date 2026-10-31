@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-/** Media kinds the catalog can discover (CUE-HANDOFF 5.1, minus movie/unknown). */
+/** Media kinds the catalog can discover (minus movie/unknown). */
 export const mediaKind = z.enum([
   "anime",
   "manga",
@@ -17,7 +17,7 @@ export const catalogProvider = z.enum(["anilist", "tmdb", "tvmaze"]);
 export const oauthProvider = z.enum(["mal", "anilist", "trakt"]);
 const numericId = z.string().regex(/^\d{1,12}$/);
 
-/** Only official catalog image hosts (CUE-HANDOFF 7.4). */
+/** Only official catalog image hosts. */
 export const IMAGE_HOSTS = new Set([
   "s4.anilist.co",
   "image.tmdb.org",

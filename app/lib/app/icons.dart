@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-/// Stroke icons ported from the design prototype (docs/design/index.html).
+/// Stroke icons ported from the design prototype.
 /// Each is SVG path data on a 24x24 grid, drawn with a 1.6 round stroke.
 enum CueIcons {
   tune('M4 7h7m5 0h4M4 17h3m5 0h8M11 4v6M7 14v6'),

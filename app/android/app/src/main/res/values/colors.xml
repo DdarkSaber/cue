@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Cinema bg token (CUE-HANDOFF 4.1), so launch never flashes white. -->
+    <!-- Cinema bg token, so launch never flashes white. -->
     <color name="cue_bg">#080A0D</color>
 </resources>

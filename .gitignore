@@ -44,3 +44,9 @@ app/test/**/failures/
 Thumbs.db
 .vscode/
 .playwright-mcp/
+
+# --- Build-time material: kept locally, never committed ---
+docs/
+CLAUDE.md
+.claude/
+skills-lock.json

@@ -12,7 +12,7 @@ import {
 
 afterEach(() => vi.restoreAllMocks());
 
-describe("fixed endpoints only (CUE-HANDOFF 7.4)", () => {
+describe("fixed endpoints only", () => {
   it.each([
     "/catalog/discover?kind=anime",
     "/catalog/discover?kind=manhwa&mood=hype&page=2",

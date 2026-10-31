@@ -5,7 +5,7 @@ import '../../app/layout.dart';
 import '../../app/tokens.dart';
 import '../../app/widgets.dart';
 
-/// The four fixed decisions, in on-screen order (section 1 and 7.1).
+/// The four fixed decisions, in on-screen order.
 enum DeckAction {
   notInterested('Not interested', CueIcons.close, CueColors.notInterested),
   notNow('Not now', CueIcons.down, CueColors.notNow),

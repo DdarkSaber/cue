@@ -1,6 +1,6 @@
 import 'dart:ui' show Color;
 
-/// Cinema design tokens. Source: docs/CUE-HANDOFF.md section 4.
+/// Cinema design tokens.
 /// Values here are the single source for colour, spacing, shape and motion.
 abstract final class CueColors {
   static const bg = Color(0xFF080A0D);
@@ -17,7 +17,7 @@ abstract final class CueColors {
   static const watched = Color(0xFFC6D8ED);
   static const notInterested = Color(0xFFE8C7D0);
 
-  /// Toasts use surfaceHigh at 95% opacity (section 4.1).
+  /// Toasts use surfaceHigh at 95% opacity.
   static const toast = Color(0xF21F262E);
 }
 
@@ -40,17 +40,17 @@ abstract final class CueRadius {
 }
 
 abstract final class CueSize {
-  /// Minimum interactive target (section 7.9).
+  /// Minimum interactive target.
   static const double minTarget = 48;
 
-  /// Width at which the desktop split layout starts (section 4.5).
+  /// Width at which the desktop split layout starts.
   static const double desktopBreakpoint = 1000;
 
   /// Width below which the phone layout applies (prototype breakpoint).
   static const double phoneBreakpoint = 700;
 }
 
-/// Gesture and motion numbers (section 4.4). Distances in logical px.
+/// Gesture and motion numbers. Distances in logical px.
 abstract final class CueMotion {
   static const double touchSlop = 8;
   static const double previewDistance = 18;

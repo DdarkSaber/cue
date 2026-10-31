@@ -6,7 +6,7 @@ version: 0.0.1+1
 environment:
   sdk: ^3.13.7
 
-# Only packages approved in docs/CUE-HANDOFF.md section 6.2 (plus approved companions).
+# Keep dependencies minimal; add a package only with a clear need.
 dependencies:
   flutter:
     sdk: flutter

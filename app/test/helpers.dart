@@ -7,7 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
-/// Viewports from CUE-HANDOFF section 7.11.
+/// Phone, tablet and desktop test viewports.
 const phoneSmall = Size(360, 740);
 const phoneLarge = Size(390, 844);
 const desktop = Size(1440, 1000);

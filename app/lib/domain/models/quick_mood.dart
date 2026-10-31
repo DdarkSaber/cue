@@ -1,4 +1,4 @@
-/// Quick moods on the chip rail under the header (CUE-HANDOFF section 1).
+/// Quick moods on the chip rail under the header.
 enum QuickMood {
   forYou('For you'),
   hype('Hype'),

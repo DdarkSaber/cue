@@ -4,7 +4,7 @@ import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('Cinema colour tokens match CUE-HANDOFF 4.1', () {
+  group('Cinema colour tokens', () {
     const expected = {
       'bg': (CueColors.bg, 0xFF080A0D),
       'surface': (CueColors.surface, 0xFF171B20),
@@ -46,7 +46,7 @@ void main() {
     );
   });
 
-  group('motion numbers match CUE-HANDOFF 4.4', () {
+  group('motion numbers', () {
     test('commit distance is 25% of the card, clamped 72..120', () {
       expect(CueMotion.commitDistance(200), 72);
       expect(CueMotion.commitDistance(400), 100);

@@ -19,7 +19,7 @@ export function allowedOrigins(raw: string | undefined): Set<string> {
 
 /**
  * Logs one line per request: method, matched route pattern, status, duration.
- * Never the query string, body, headers or client IP (CUE-HANDOFF 7.4, 7.10).
+ * Never the query string, body, headers or client IP.
  */
 export const requestLog: MiddlewareHandler<AppEnv> = async (c, next) => {
   const start = Date.now();

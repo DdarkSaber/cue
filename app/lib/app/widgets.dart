@@ -11,7 +11,7 @@ WidgetStateProperty<BorderSide?> _side(BorderSide rest) =>
       (s) => s.contains(WidgetState.focused) ? _focusSide : rest,
     );
 
-/// Press feedback: a small local scale to 0.96 (spec 01 section 6, "button
+/// Press feedback: a small local scale to 0.96 ("button
 /// press"). Off when the control is disabled or the system asks for less
 /// motion; the colour/overlay change still shows the press.
 class PressScale extends StatefulWidget {

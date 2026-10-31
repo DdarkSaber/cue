@@ -20,7 +20,7 @@ const navDestinations = [
 ];
 
 /// Floating glass nav: a dock at the bottom on phones, a pill at the top
-/// centre on desktop (section 4.5).
+/// centre on desktop.
 class NavDock extends StatelessWidget {
   const NavDock({
     super.key,

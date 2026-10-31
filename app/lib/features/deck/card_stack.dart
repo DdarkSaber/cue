@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../../app/layout.dart';
 import '../../app/tokens.dart';
 
-/// The deck area. In M0 it shows the card-shaped loading state (spec 01
-/// section 2: no blocking welcome screen) with the next card peeking below.
+/// The deck area. In M0 it shows the card-shaped loading state (no blocking
+/// welcome screen) with the next card peeking below.
 class CardStack extends StatelessWidget {
   const CardStack({super.key});
 
@@ -17,7 +17,7 @@ class CardStack extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Next card: scaled to 0.972 and nudged down (section 4.4).
+          // Next card: scaled to 0.972 and nudged down.
           Transform.translate(
             offset: const Offset(0, 7),
             child: Transform.scale(
