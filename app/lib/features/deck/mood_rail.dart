@@ -8,13 +8,46 @@ import '../../app/widgets.dart';
 import '../../domain/models/quick_mood.dart';
 import 'deck_controller.dart';
 
-/// Horizontal chip rail. One tap re-deals for that mood; no sheet.
-class MoodRail extends ConsumerWidget {
+/// Horizontal chip rail. One tap re-deals for that mood; no sheet. The
+/// selected chip scrolls into view, so Revisit (the last chip) is never
+/// selected off-screen after Library deals it.
+class MoodRail extends ConsumerStatefulWidget {
   const MoodRail({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MoodRail> createState() => _MoodRailState();
+}
+
+class _MoodRailState extends ConsumerState<MoodRail> {
+  final _keys = {for (final m in QuickMood.values) m: GlobalKey()};
+
+  void _reveal(QuickMood mood) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _keys[mood]?.currentContext;
+      if (ctx == null || !ctx.mounted) return;
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.5,
+        duration: MediaQuery.disableAnimationsOf(ctx)
+            ? Duration.zero
+            : const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _reveal(ref.read(deckFiltersProvider).mood);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final selected = ref.watch(deckFiltersProvider.select((f) => f.mood));
+    ref.listen(deckFiltersProvider.select((f) => f.mood), (_, mood) {
+      _reveal(mood);
+    });
     return Semantics(
       container: true,
       label: 'Quick mood',
@@ -27,11 +60,14 @@ class MoodRail extends ConsumerWidget {
           spacing: CueSpace.sm,
           children: [
             for (final mood in QuickMood.values)
-              MoodPill(
-                mood: mood,
-                selected: mood == selected,
-                onTap: () =>
-                    ref.read(deckFiltersProvider.notifier).setMood(mood),
+              KeyedSubtree(
+                key: _keys[mood],
+                child: MoodPill(
+                  mood: mood,
+                  selected: mood == selected,
+                  onTap: () =>
+                      ref.read(deckFiltersProvider.notifier).setMood(mood),
+                ),
               ),
           ],
         ),
