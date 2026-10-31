@@ -351,11 +351,6 @@ class _ChooseSource extends StatelessWidget {
         const CueSectionLabel('Bring it straight from a service'),
         for (final p in SignInProvider.values)
           SignInSourceRow(provider: p, onRecords: onRecords),
-        const SourceRow(
-          name: 'MyDramaList',
-          status: 'Use a file',
-          detail: 'MyDramaList has no official API or sign-in, and Cue will never ask for your password. If you can export or copy your list into a CSV or spreadsheet with a Title column, upload it above.',
-        ),
         SourceRow(
           name: 'Netflix',
           status: 'Get my file',
@@ -373,11 +368,6 @@ class _ChooseSource extends StatelessWidget {
             label: 'Upload the file',
             onPressed: onUpload,
           ),
-        ),
-        const SourceRow(
-          name: 'Prime Video',
-          status: 'Not yet supported',
-          detail: 'Amazon data exports vary by region and have not been verified yet. A CSV with a title column works through Upload any file.',
         ),
       ],
     );

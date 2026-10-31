@@ -12,8 +12,7 @@ import '../../data/profile_repository.dart' show randomId;
 
 enum SignInProvider {
   mal('mal', 'MyAnimeList', byUsername: true),
-  anilist('anilist', 'AniList', byUsername: true),
-  trakt('trakt', 'Trakt', byUsername: false);
+  anilist('anilist', 'AniList', byUsername: true);
 
   const SignInProvider(this.id, this.label, {required this.byUsername});
   final String id;
@@ -89,7 +88,6 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
   String? get _clientId => switch (widget.provider) {
     SignInProvider.mal => _config?.mal,
     SignInProvider.anilist => _config?.anilist,
-    SignInProvider.trakt => _config?.trakt,
   };
 
   /// Loaded up front so a row can say "Not set up" before it is opened.
