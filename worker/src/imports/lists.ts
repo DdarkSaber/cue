@@ -186,7 +186,27 @@ export async function malViewer(token: string) {
   return [...a, ...m];
 }
 
+/** The signed-in MAL user's name, to show which account Cue is using. */
+export async function malMe(token: string): Promise<string | null> {
+  const me = (await fetchJson("https://api.myanimelist.net/v2/users/@me", {
+    headers: { Authorization: `Bearer ${token}` },
+  })) as Row | null;
+  return typeof me?.name === "string" ? me.name : null;
+}
+
 // --- Trakt -------------------------------------------------------------------
+
+export async function traktMe(env: Env, token: string): Promise<string | null> {
+  if (!env.TRAKT_CLIENT_ID) throw new NotConfiguredError("trakt");
+  const me = (await fetchJson("https://api.trakt.tv/users/settings", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "trakt-api-version": "2",
+      "trakt-api-key": env.TRAKT_CLIENT_ID,
+    },
+  })) as Row | null;
+  return typeof me?.user?.username === "string" ? me.user.username : null;
+}
 
 export async function traktViewer(env: Env, token: string) {
   if (!env.TRAKT_CLIENT_ID) throw new NotConfiguredError("trakt");

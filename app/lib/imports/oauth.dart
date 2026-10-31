@@ -28,7 +28,8 @@ String redirectUriFor(String provider) =>
 ///
 /// MAL and Trakt echo the `state` Cue sent; a missing or different one means
 /// the redirect did not come from this sign-in, so the code is refused.
-/// AniList does not echo it.
+/// AniList refuses the Worker's IPs, so it uses the implicit grant and Cue
+/// receives the token itself (no secret involved); it does not echo state.
 Future<String?> authorize(Uri url, String provider, {String? state}) async {
   final result = await FlutterWebAuth2.authenticate(
     url: url.toString(),
@@ -36,9 +37,11 @@ Future<String?> authorize(Uri url, String provider, {String? state}) async {
   );
   final back = Uri.parse(result);
   if (back.queryParameters['error'] != null) return null;
-  if (state != null && provider != 'anilist') {
-    if (back.queryParameters['state'] != state) return null;
+  if (provider == 'anilist') {
+    // Implicit grant: the token comes back in the URL fragment.
+    return Uri(query: back.fragment).queryParameters['access_token'];
   }
+  if (state != null && back.queryParameters['state'] != state) return null;
   return back.queryParameters['code'];
 }
 
@@ -62,7 +65,7 @@ Uri authorizeUrl(
   'anilist' => Uri.https('anilist.co', '/api/v2/oauth/authorize', {
     'client_id': clientId,
     'redirect_uri': redirectUri,
-    'response_type': 'code',
+    'response_type': 'token',
   }),
   _ => Uri.https('trakt.tv', '/oauth/authorize', {
     'response_type': 'code',

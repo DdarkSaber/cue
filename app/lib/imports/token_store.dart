@@ -7,6 +7,10 @@ abstract class TokenStore {
   Future<String?> read(String provider);
   Future<void> write(String provider, String token);
   Future<void> delete(String provider);
+
+  /// The account name shown next to "Signed in" (not a secret).
+  Future<String?> readName(String provider);
+  Future<void> writeName(String provider, String name);
 }
 
 class SecureTokenStore implements TokenStore {
@@ -20,7 +24,17 @@ class SecureTokenStore implements TokenStore {
   Future<void> write(String provider, String token) =>
       _storage.write(key: _key(provider), value: token);
   @override
-  Future<void> delete(String provider) => _storage.delete(key: _key(provider));
+  Future<void> delete(String provider) async {
+    await _storage.delete(key: _key(provider));
+    await _storage.delete(key: '${_key(provider)}_name');
+  }
+
+  @override
+  Future<String?> readName(String provider) =>
+      _storage.read(key: '${_key(provider)}_name');
+  @override
+  Future<void> writeName(String provider, String name) =>
+      _storage.write(key: '${_key(provider)}_name', value: name);
 }
 
 class MemoryTokenStore implements TokenStore {
@@ -31,5 +45,15 @@ class MemoryTokenStore implements TokenStore {
   Future<void> write(String provider, String token) async =>
       _tokens[provider] = token;
   @override
-  Future<void> delete(String provider) async => _tokens.remove(provider);
+  Future<void> delete(String provider) async {
+    _tokens.remove(provider);
+    _names.remove(provider);
+  }
+
+  final _names = <String, String>{};
+  @override
+  Future<String?> readName(String provider) async => _names[provider];
+  @override
+  Future<void> writeName(String provider, String name) async =>
+      _names[provider] = name;
 }

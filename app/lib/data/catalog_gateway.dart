@@ -195,6 +195,9 @@ abstract class CatalogGateway {
     String token,
   );
 
+  /// The account name behind a sign-in token, or null when unknown.
+  Future<String?> signedInName(String provider, String token);
+
   /// Batch match for imports: up to 15 titles and 50 MAL ids per type.
   Future<MatchResponse> match(
     List<MatchQuery> items, {
@@ -355,6 +358,14 @@ class HttpCatalogGateway implements CatalogGateway {
     final req = http.Request('POST', Uri.parse('$base/import/$provider/list'))
       ..headers['Authorization'] = 'Bearer $token';
     return _entries(await _send(req));
+  }
+
+  @override
+  Future<String?> signedInName(String provider, String token) async {
+    final req = http.Request('POST', Uri.parse('$base/import/$provider/me'))
+      ..headers['Authorization'] = 'Bearer $token';
+    final b = await _send(req);
+    return b is Map ? b['name'] as String? : null;
   }
 
   @override
@@ -610,4 +621,10 @@ class HybridCatalogGateway implements CatalogGateway {
   ) => provider == 'anilist'
       ? anilist.lists(token: token)
       : worker.listSignedIn(provider, token);
+
+  @override
+  Future<String?> signedInName(String provider, String token) =>
+      provider == 'anilist'
+      ? anilist.viewerName(token)
+      : worker.signedInName(provider, token);
 }

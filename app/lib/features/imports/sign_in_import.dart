@@ -46,13 +46,37 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
   final _name = TextEditingController();
   OAuthConfigDto? _config;
   String? _token;
+  String? _account;
 
   @override
   void initState() {
     super.initState();
-    ref.read(tokenStoreProvider).read(widget.provider.id).then((t) {
-      if (mounted && t != null) setState(() => _token = t);
-    });
+    _loadSignIn();
+  }
+
+  Future<void> _loadSignIn() async {
+    final store = ref.read(tokenStoreProvider);
+    final id = widget.provider.id;
+    final token = await store.read(id);
+    if (!mounted || token == null) return;
+    setState(() => _token = token);
+    final name = await store.readName(id) ?? await _lookUpName(token);
+    if (mounted && name != null) setState(() => _account = name);
+  }
+
+  /// Best effort: the list import never depends on knowing the name.
+  Future<String?> _lookUpName(String token) async {
+    try {
+      final name = await ref
+          .read(catalogGatewayProvider)
+          .signedInName(widget.provider.id, token);
+      if (name != null && name.isNotEmpty) {
+        await ref.read(tokenStoreProvider).writeName(widget.provider.id, name);
+      }
+      return name;
+    } on Object {
+      return null;
+    }
   }
 
   @override
@@ -109,19 +133,22 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
       state: state,
     );
     await _run(() async {
-      final code = await authorize(url, widget.provider.id, state: state);
-      if (code == null) throw const CatalogUnavailable('cancelled');
+      final result = await authorize(url, widget.provider.id, state: state);
+      if (result == null) throw const CatalogUnavailable('cancelled');
       final gateway = ref.read(catalogGatewayProvider);
-      final token = await gateway.exchangeCode(
-        widget.provider.id,
-        code: code,
-        redirectUri: redirect,
-        codeVerifier: widget.provider == SignInProvider.anilist
-            ? null
-            : verifier,
-      );
+      // AniList hands back the token itself; the others a one-time code.
+      final token = widget.provider == SignInProvider.anilist
+          ? result
+          : await gateway.exchangeCode(
+              widget.provider.id,
+              code: result,
+              redirectUri: redirect,
+              codeVerifier: verifier,
+            );
       await ref.read(tokenStoreProvider).write(widget.provider.id, token);
       if (mounted) setState(() => _token = token);
+      final name = await _lookUpName(token);
+      if (mounted && name != null) setState(() => _account = name);
       return gateway.listSignedIn(widget.provider.id, token);
     });
   }
@@ -146,7 +173,12 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
 
   Future<void> _signOut() async {
     await ref.read(tokenStoreProvider).delete(widget.provider.id);
-    if (mounted) setState(() => _token = null);
+    if (mounted) {
+      setState(() {
+        _token = null;
+        _account = null;
+      });
+    }
   }
 
   Future<void> _run(Future<List<Map<String, dynamic>>> Function() load) async {
@@ -231,7 +263,13 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
                         ),
                       ),
                       Text(
-                        p.byUsername ? 'Sign in or username' : 'Sign in',
+                        _token != null
+                            ? (_account != null
+                                  ? 'Signed in as $_account'
+                                  : 'Signed in')
+                            : p.byUsername
+                            ? 'Sign in or username'
+                            : 'Sign in',
                         style: const TextStyle(
                           fontSize: 13,
                           color: CueColors.textMuted,
@@ -268,7 +306,9 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
                     ),
                   if (_token != null) ...[
                     Text(
-                      'Signed in to ${p.label} on this device.',
+                      _account != null
+                          ? 'Signed in to ${p.label} as $_account, on this device.'
+                          : 'Signed in to ${p.label} on this device.',
                       style: const TextStyle(
                         fontSize: 14,
                         color: CueColors.textMuted,

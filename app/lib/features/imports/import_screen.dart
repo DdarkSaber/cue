@@ -169,6 +169,17 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     });
   }
 
+  /// The importer lives in the Library tab's stack. Going straight to For you
+  /// would leave it parked there, so Library would reopen on the summary:
+  /// reset the stack to the Library list first, then switch tabs.
+  void _leaveToForYou() {
+    final router = GoRouter.of(context);
+    router.go(CueRoutes.library);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      router.go(CueRoutes.forYou);
+    });
+  }
+
   void _back() {
     if (_step == _Step.choose || _step == _Step.summary) {
       context.go(CueRoutes.library);
@@ -213,10 +224,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         onCancel: _reset,
       ),
       _Step.committing => const _Progress(label: 'Adding to your library…'),
-      _Step.summary => _Summary(
-        summary: _summary!,
-        onDone: () => context.go(CueRoutes.forYou),
-      ),
+      _Step.summary => _Summary(summary: _summary!, onDone: _leaveToForYou),
     };
     return PopScope(
       canPop: _step == _Step.choose || _step == _Step.summary,

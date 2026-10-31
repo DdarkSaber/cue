@@ -275,6 +275,12 @@ class AniListClient {
     ];
   }
 
+  /// The name of the account a sign-in token belongs to.
+  Future<String?> viewerName(String token) async {
+    final v = await _query(_viewer, const {}, token: token);
+    return (v?['Viewer'] as Map?)?['name'] as String?;
+  }
+
   /// A public list by username, or the signed-in viewer's with a token.
   Future<List<Map<String, dynamic>>> lists({
     String? name,

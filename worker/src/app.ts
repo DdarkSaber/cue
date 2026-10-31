@@ -150,6 +150,21 @@ export function createApp() {
     return c.json({ entries: await lists.malByUser(c.env, p.data.name) });
   });
 
+  // Who the token belongs to, so the app can show the account it is using.
+  app.post("/import/:provider/me", async (c) => {
+    const p = check(c, listProvider, c.req.param());
+    if (!p.ok) return p.res;
+    const token = bearer(c.req.header("Authorization"));
+    if (!token) return fail(c, 400, "invalid_request", { fields: ["authorization"] });
+    const name =
+      p.data.provider === "mal"
+        ? await lists.malMe(token)
+        : p.data.provider === "trakt"
+          ? await lists.traktMe(c.env, token)
+          : null;
+    return c.json({ name });
+  });
+
   app.post("/import/:provider/list", async (c) => {
     const p = check(c, listProvider, c.req.param());
     if (!p.ok) return p.res;

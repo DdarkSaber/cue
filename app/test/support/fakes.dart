@@ -190,6 +190,12 @@ class FakeGateway implements CatalogGateway {
   ];
 
   OAuthConfigDto config = const OAuthConfigDto();
+  final names = <String, String>{};
+
+  @override
+  Future<String?> signedInName(String provider, String token) async =>
+      names[provider];
+
   final userLists = <String, List<Map<String, dynamic>>>{};
 
   @override
