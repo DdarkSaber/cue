@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 
 import '../features/deck/deck_screen.dart';
+import '../features/imports/import_screen.dart';
 import '../features/library/library_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/shortlist/shortlist_screen.dart';
@@ -11,6 +12,7 @@ abstract final class CueRoutes {
   static const willTry = '/will-try';
   static const library = '/library';
   static const settings = '/settings';
+  static const importer = '/library/import';
 }
 
 GoRouter buildRouter({String initialLocation = CueRoutes.forYou}) => GoRouter(
@@ -40,6 +42,12 @@ GoRouter buildRouter({String initialLocation = CueRoutes.forYou}) => GoRouter(
             GoRoute(
               path: CueRoutes.library,
               builder: (_, _) => const LibraryScreen(),
+              routes: [
+                GoRoute(
+                  path: 'import',
+                  builder: (_, _) => const ImportScreen(),
+                ),
+              ],
             ),
           ],
         ),

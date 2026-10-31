@@ -4,34 +4,35 @@ import '../../app/icons.dart';
 import '../../app/layout.dart';
 import '../../app/tokens.dart';
 import '../../app/widgets.dart';
+import '../../domain/models/decision.dart';
+import 'decision_style.dart';
 
-/// The four fixed decisions, in on-screen order.
-enum DeckAction {
-  notInterested('Not interested', CueIcons.close, CueColors.notInterested),
-  notNow('Not now', CueIcons.down, CueColors.notNow),
-  watched('Watched', CueIcons.check, CueColors.watched),
-  willTry('Will try', CueIcons.arrow, CueColors.onActionPrimary);
-
-  const DeckAction(this.label, this.icon, this.color);
-  final String label;
-  final CueIcons icon;
-  final Color color;
-}
+/// On-screen order of the four decisions (fixed, whatever the swipe map).
+const actionOrder = [
+  Decision.notInterested,
+  Decision.notNow,
+  Decision.watched,
+  Decision.willTry,
+];
 
 class ActionBar extends StatelessWidget {
-  const ActionBar({super.key, required this.onAction});
+  const ActionBar({super.key, required this.onAction, this.reading = false});
 
   /// Null while there is no card to act on.
-  final ValueChanged<DeckAction>? onAction;
+  final ValueChanged<Decision>? onAction;
+
+  /// Reading titles say "Read it".
+  final bool reading;
 
   @override
   Widget build(BuildContext context) {
     final desktop = context.cueLayout == CueLayout.desktop;
     final items = [
-      for (final a in DeckAction.values)
+      for (final a in actionOrder)
         Flexible(
           child: _ActionItem(
-            action: a,
+            decision: a,
+            label: a.labelFor(reading: reading),
             desktop: desktop,
             onPressed: onAction == null ? null : () => onAction!(a),
           ),
@@ -52,18 +53,21 @@ class ActionBar extends StatelessWidget {
 
 class _ActionItem extends StatelessWidget {
   const _ActionItem({
-    required this.action,
+    required this.decision,
+    required this.label,
     required this.desktop,
     required this.onPressed,
   });
 
-  final DeckAction action;
+  final Decision decision;
+  final String label;
   final bool desktop;
   final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    final primary = action == DeckAction.willTry;
+    final primary = decision == Decision.willTry;
+    final style = DecisionStyle.of(decision);
     final enabled = onPressed != null;
     final circle = desktop && !primary ? 42.0 : 48.0;
     final icon = Container(
@@ -76,10 +80,16 @@ class _ActionItem extends StatelessWidget {
           color: primary ? CueColors.actionPrimary : const Color(0x26FFFFFF),
         ),
       ),
-      child: Center(child: CueIcon(action.icon, size: 22, color: action.color)),
+      child: Center(
+        child: CueIcon(
+          style.icon,
+          size: 22,
+          color: primary ? CueColors.onActionPrimary : style.color,
+        ),
+      ),
     );
-    final label = Text(
-      action.label,
+    final text = Text(
+      label,
       textAlign: TextAlign.center,
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
@@ -116,13 +126,13 @@ class _ActionItem extends StatelessWidget {
                   spacing: 9,
                   children: [
                     icon,
-                    Flexible(child: label),
+                    Flexible(child: text),
                   ],
                 )
               : Column(
                   mainAxisSize: MainAxisSize.min,
                   spacing: 6,
-                  children: [icon, label],
+                  children: [icon, text],
                 ),
         ),
       ),

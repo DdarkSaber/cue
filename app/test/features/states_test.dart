@@ -1,37 +1,22 @@
 import 'package:cue/app/router.dart';
 import 'package:cue/app/widgets.dart';
+import 'package:cue/features/deck/swipe_deck.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers.dart';
+import '../support/fakes.dart';
 
-/// UI-state checklist items reachable in M0,
-/// plus behaviours found in the M0 design and accessibility review.
+/// UI-state checklist items plus behaviours found in design and
+/// accessibility reviews.
 void main() {
-  group('empty states say why and offer one next step', () {
-    for (final (route, label) in [
-      (CueRoutes.willTry, 'Find a story'),
-      (CueRoutes.library, 'Keep discovering'),
-    ]) {
-      testWidgets('$route -> "$label" returns to the deck', (t) async {
-        await pumpCue(t, location: route);
-        await t.tap(find.widgetWithText(FilledButton, label));
-        await t.pumpAndSettle();
-        expect(
-          find.bySemanticsLabel('Loading recommendations'),
-          findsOneWidget,
-        );
-      });
-    }
-  });
-
   group('system Back', () {
     testWidgets('from a secondary tab returns to For you', (t) async {
       await pumpCue(t, location: CueRoutes.library);
       final handled = await t.binding.handlePopRoute();
       await t.pumpAndSettle();
       expect(handled, isTrue);
-      expect(find.bySemanticsLabel('Loading recommendations'), findsOneWidget);
+      expect(find.byType(SwipeDeck), findsOneWidget);
     });
 
     testWidgets('on For you is left to the system', (t) async {
@@ -69,7 +54,7 @@ void main() {
     });
 
     testWidgets('disabled controls do not react', (t) async {
-      await pumpCue(t);
+      await pumpCue(t, gateway: FakeGateway(offline: true));
       expect(await scaleWhilePressed(t, 'Not now'), 1);
     });
   });

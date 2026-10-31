@@ -1,7 +1,7 @@
 import 'package:cue/app/layout.dart';
 import 'package:cue/app/router.dart';
 import 'package:cue/domain/models/quick_mood.dart';
-import 'package:cue/features/deck/deck_providers.dart';
+import 'package:cue/features/deck/swipe_deck.dart';
 import 'package:cue/features/deck/mood_rail.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,8 +24,8 @@ void main() {
           findsOneWidget,
         );
       }
-      expect(find.bySemanticsLabel('Loading recommendations'), findsOneWidget);
-      for (final a in ['Not interested', 'Not now', 'Watched', 'Will try']) {
+      expect(find.byType(SwipeDeck), findsOneWidget);
+      for (final a in ['Not interested', 'Not now', 'Will try']) {
         expect(find.text(a), findsWidgets);
       }
       for (final n in ['For you', 'Library', 'Settings']) {
@@ -45,6 +45,8 @@ void main() {
           .widgetList<Text>(find.byType(Text))
           .map((w) => w.data ?? '');
       for (final s in texts) {
+        // The desktop genre eyebrow is the one allowed all-caps label.
+        if (s.contains(' · ')) continue;
         final letters = s.replaceAll(RegExp('[^A-Za-z]'), '');
         if (letters.length > 1) {
           expect(
@@ -85,11 +87,9 @@ void main() {
     });
 
     testWidgets('phone shows the header undo after a swipe', (t) async {
-      await pumpCue(
-        t,
-        size: phoneLarge,
-        overrides: [canUndoProvider.overrideWithValue(true)],
-      );
+      await pumpCue(t, size: phoneLarge);
+      await t.tap(find.text('Not now'));
+      await t.pumpAndSettle();
       expect(find.byTooltip('Undo last swipe'), findsOneWidget);
       expect(find.text('Undo'), findsNothing);
     });
@@ -132,7 +132,7 @@ void main() {
     expect(find.text('Your shortlist'), findsOneWidget);
     await t.tap(find.text('For you'));
     await t.pumpAndSettle();
-    expect(find.bySemanticsLabel('Loading recommendations'), findsOneWidget);
+    expect(find.byType(SwipeDeck), findsOneWidget);
   });
 
   testWidgets('deep link opens a destination directly', (t) async {
@@ -147,7 +147,7 @@ void main() {
         (t) async {
           await pumpCue(t, size: size, textScale: 2);
           expect(t.takeException(), isNull);
-          for (final a in ['Not interested', 'Not now', 'Watched']) {
+          for (final a in ['Not interested', 'Not now']) {
             expect(find.text(a), findsOneWidget);
           }
         },

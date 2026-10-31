@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+export 'sheets.dart';
+
 import 'icons.dart';
 import 'tokens.dart';
 

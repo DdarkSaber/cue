@@ -6,15 +6,15 @@ import '../../app/theme.dart';
 import '../../app/tokens.dart';
 import '../../app/widgets.dart';
 import '../../domain/models/quick_mood.dart';
-import 'deck_providers.dart';
+import 'deck_controller.dart';
 
-/// Horizontal chip rail. One tap selects a mood (re-dealing arrives in M3).
+/// Horizontal chip rail. One tap re-deals for that mood; no sheet.
 class MoodRail extends ConsumerWidget {
   const MoodRail({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final selected = ref.watch(selectedMoodProvider);
+    final selected = ref.watch(deckFiltersProvider.select((f) => f.mood));
     return Semantics(
       container: true,
       label: 'Quick mood',
@@ -31,7 +31,7 @@ class MoodRail extends ConsumerWidget {
                 mood: mood,
                 selected: mood == selected,
                 onTap: () =>
-                    ref.read(selectedMoodProvider.notifier).select(mood),
+                    ref.read(deckFiltersProvider.notifier).setMood(mood),
               ),
           ],
         ),

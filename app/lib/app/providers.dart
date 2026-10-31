@@ -1,0 +1,106 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../data/catalog_gateway.dart';
+import '../data/catalog_repository.dart';
+import '../data/db/database.dart';
+import '../data/library_repository.dart';
+import '../data/profile_repository.dart';
+import '../domain/decisions.dart';
+import '../domain/models/settings.dart';
+import '../domain/ranker.dart';
+import 'config.dart';
+
+/// Overridden in main() with the opened database, and in tests with an
+/// in-memory one.
+final databaseProvider = Provider<CueDatabase>(
+  (ref) => throw UnimplementedError('databaseProvider must be overridden'),
+);
+
+final catalogGatewayProvider = Provider<CatalogGateway>(
+  (ref) => HttpCatalogGateway(cueApiBase, proxyImages: kIsWeb),
+);
+
+final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
+final catalogRepositoryProvider = Provider<CatalogRepository>(
+  (ref) => CatalogRepository(
+    ref.watch(databaseProvider),
+    ref.watch(catalogGatewayProvider),
+    clock: ref.watch(clockProvider),
+  ),
+);
+
+final profileRepositoryProvider = Provider<ProfileRepository>(
+  (ref) => ProfileRepository(
+    ref.watch(databaseProvider),
+    clock: ref.watch(clockProvider),
+  ),
+);
+
+final libraryRepositoryProvider = Provider<LibraryRepository>(
+  (ref) => LibraryRepository(
+    ref.watch(databaseProvider),
+    clock: ref.watch(clockProvider),
+  ),
+);
+
+final decisionServiceProvider = Provider<DecisionService>(
+  (ref) => DecisionService(
+    ref.watch(databaseProvider),
+    clock: ref.watch(clockProvider),
+  ),
+);
+
+final rankerProvider = Provider<Ranker>(
+  (ref) => Ranker(clock: ref.watch(clockProvider)),
+);
+
+/// The active local profile id, created silently on first open.
+final profileIdProvider = FutureProvider<String>((ref) async {
+  final p = await ref.watch(profileRepositoryProvider).ensureActive();
+  return p.id;
+});
+
+class SettingsController extends AsyncNotifier<AppSettings> {
+  @override
+  Future<AppSettings> build() async {
+    final id = await ref.watch(profileIdProvider.future);
+    return ref.watch(profileRepositoryProvider).loadSettings(id);
+  }
+
+  Future<void> change(AppSettings Function(AppSettings) edit) async {
+    final current = state.value ?? await future;
+    final next = edit(current);
+    state = AsyncData(next);
+    final id = await ref.read(profileIdProvider.future);
+    await ref.read(profileRepositoryProvider).saveSettings(id, next);
+  }
+}
+
+final settingsProvider = AsyncNotifierProvider<SettingsController, AppSettings>(
+  SettingsController.new,
+);
+
+/// Settings with defaults while loading, for widgets that only read them.
+final currentSettingsProvider = Provider<AppSettings>(
+  (ref) => ref.watch(settingsProvider).value ?? const AppSettings(),
+);
+
+/// Bumped whenever library data changes outside the deck (imports, edits,
+/// restores), so screens reload.
+class LibraryVersion extends Notifier<int> {
+  @override
+  int build() => 0;
+  void bump() => state++;
+}
+
+final libraryVersionProvider = NotifierProvider<LibraryVersion, int>(
+  LibraryVersion.new,
+);
+
+/// Bumped after every deck decision or undo. Library and Will try watch it;
+/// the deck does not (it already knows).
+final decisionVersionProvider = NotifierProvider<LibraryVersion, int>(
+  LibraryVersion.new,
+);
