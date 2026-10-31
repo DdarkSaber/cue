@@ -43,12 +43,21 @@ describe("fixed endpoints only", () => {
     expect(res.status).toBe(404);
   });
 
-  it("POST /oauth/:provider/token validates then answers 501", async () => {
+  it("POST /oauth/:provider/token refuses callbacks that are not Cue's", async () => {
     const res = await postJson("/oauth/anilist/token", {
       code: "abc",
       redirectUri: "https://cue.example/oauth/anilist",
     });
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_request", fields: ["redirectUri"] });
+  });
+
+  it("POST /oauth/:provider/token answers 503 until the provider is set up", async () => {
+    const res = await postJson("/oauth/anilist/token", {
+      code: "abc",
+      redirectUri: "cue://oauth/anilist",
+    });
+    expect(res.status).toBe(503);
   });
 
   it("POST /ai/mood validates then answers 501", async () => {

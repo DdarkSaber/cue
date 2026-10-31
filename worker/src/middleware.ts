@@ -48,7 +48,7 @@ export const corsPolicy: MiddlewareHandler<AppEnv> = (c, next) =>
     origin: (origin) =>
       allowedOrigins(c.env.ALLOWED_ORIGINS).has(origin) ? origin : null,
     allowMethods: ["GET", "POST"],
-    allowHeaders: ["Content-Type"],
+    allowHeaders: ["Content-Type", "Authorization"],
     maxAge: 600,
   })(c, next);
 
