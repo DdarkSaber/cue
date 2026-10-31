@@ -106,6 +106,9 @@ class FakeGateway implements CatalogGateway {
   /// Titles the fake matcher knows, keyed by lower-cased query.
   final matchCatalog = <String, List<Map<String, dynamic>>>{};
   final malCatalog = <int, Map<String, dynamic>>{};
+
+  /// Adult-rated titles, found only by queries that ask for them.
+  final adultCatalog = <String, List<Map<String, dynamic>>>{};
   int matchCalls = 0;
 
   @override
@@ -119,7 +122,8 @@ class FakeGateway implements CatalogGateway {
     return MatchResponse(
       [
         for (final i in items)
-          (matchCatalog[i.q.toLowerCase()] ?? const [])
+          ((i.adult ? adultCatalog : matchCatalog)[i.q.toLowerCase()] ??
+                  const [])
               .map(CatalogItemDto.new)
               .toList(),
       ],
@@ -157,13 +161,22 @@ class FakeGateway implements CatalogGateway {
 
   /// Other names for comics, keyed by lower-cased query.
   final aliasCatalog = <String, List<AliasCandidateDto>>{};
+  final mangaUpdatesCatalog = <String, List<AliasCandidateDto>>{};
   final aniListById = <int, Map<String, dynamic>>{};
   int aliasCalls = 0;
 
   @override
-  Future<List<List<AliasCandidateDto>>> aliases(List<String> names) async {
+  Future<List<List<AliasCandidateDto>>> aliases(
+    List<String> names, {
+    String source = 'mangadex',
+  }) async {
     aliasCalls++;
     if (offline) throw const CatalogUnavailable('offline');
+    if (source == 'mangaupdates') {
+      return [
+        for (final n in names) mangaUpdatesCatalog[n.toLowerCase()] ?? const [],
+      ];
+    }
     return [for (final n in names) aliasCatalog[n.toLowerCase()] ?? const []];
   }
 

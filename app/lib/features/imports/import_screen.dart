@@ -713,6 +713,39 @@ class _Preview extends StatelessWidget {
             activeThumbColor: CueColors.onActionPrimary,
             activeTrackColor: CueColors.actionPrimary,
           ),
+        if (staged.unconfirmed > 0)
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: staged.matched
+                .where((m) => m.resolved && !m.record.confirmed)
+                .every((m) => m.included),
+            onChanged: (v) {
+              for (final m in staged.matched.where(
+                (m) => m.resolved && !m.record.confirmed,
+              )) {
+                m.included = v;
+              }
+              onChanged();
+            },
+            title: Text(
+              'Include ${staged.unconfirmed} unconfirmed plays',
+              style: const TextStyle(fontSize: 15),
+            ),
+            subtitle: const Text(
+              'Netflix says these were played, which can be an autoplayed preview. Off by default, so they do not hide titles you never watched.',
+              style: TextStyle(fontSize: 13, color: CueColors.textMuted),
+            ),
+            activeThumbColor: CueColors.onActionPrimary,
+            activeTrackColor: CueColors.actionPrimary,
+          ),
+        if (staged.adultHidden > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              '${staged.adultHidden} titles are rated adult and kept out of Cue (change this in Settings).',
+              style: _muted,
+            ),
+          ),
         if (staged.unchecked > 0)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -821,7 +854,11 @@ class _RecordListState extends State<_RecordList> {
                   MatchClass.similar =>
                     'similar: ${m.candidateName ?? 'a catalog title'}',
                   MatchClass.unresolved =>
-                    m.unchecked ? 'not checked' : 'needs review',
+                    m.adultHidden
+                        ? 'adult-rated, kept out'
+                        : m.unchecked
+                        ? 'not checked'
+                        : 'needs review',
                 },
                 if (m.record.plays != null) '${m.record.plays} plays',
               ].join(' · '),

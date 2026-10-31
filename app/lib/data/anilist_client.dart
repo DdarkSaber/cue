@@ -218,14 +218,19 @@ class AniListClient {
     for (var i = 0; i < items.length; i++) {
       final kind = items[i].kind;
       final k = kind != null && kinds.contains(kind) ? _kind(kind) : null;
+      final screenOnly = items[i].screenOnly;
       vars['q$i'] = items[i].q;
       decls.add('\$q$i: String');
-      final type = k == null ? '' : ', type: ${k.type}';
+      final type = screenOnly
+          ? ', type: ANIME'
+          : k == null
+          ? ''
+          : ', type: ${k.type}';
       final country = kind == MediaKind.manhwa || kind == MediaKind.manhua
           ? ', countryOfOrigin: ${k!.country}'
           : '';
       parts.add(
-        's$i: Page(page: 1, perPage: 5) { media(search: \$q$i$type$country, isAdult: false) { $_fields } }',
+        's$i: Page(page: 1, perPage: 5) { media(search: \$q$i$type$country, isAdult: ${items[i].adult}) { $_fields } }',
       );
     }
     final data = await _query(

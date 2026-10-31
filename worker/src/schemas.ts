@@ -17,7 +17,7 @@ export const mediaKind = z.enum([
 export const tmdbType = z.enum(["tv", "movie", "series"]).default("tv");
 
 export const mood = z.enum(["hype", "comfort", "gripping", "feels"]);
-export const catalogProvider = z.enum(["anilist", "tmdb", "tvmaze", "cinemeta"]);
+export const catalogProvider = z.enum(["anilist", "tmdb", "tvmaze", "cinemeta", "mangaupdates"]);
 export const oauthProvider = z.enum(["mal", "anilist", "trakt"]);
 const numericId = z.string().regex(/^\d{1,12}$/);
 
@@ -27,6 +27,7 @@ export const IMAGE_HOSTS = new Set([
   "image.tmdb.org",
   "static.tvmaze.com",
   "images.metahub.space",
+  "cdn.mangaupdates.com",
 ]);
 
 export function isAllowedImageUrl(raw: string): boolean {
@@ -109,6 +110,7 @@ export const aliasBody = z.object({
     .array(z.object({ q: z.string().trim().min(1).max(160) }))
     .min(1)
     .max(8),
+  source: z.enum(["mangadex", "mangaupdates"]).default("mangadex"),
 });
 
 /** Usernames on MAL and AniList: letters, digits, underscore, hyphen. */

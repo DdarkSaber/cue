@@ -204,7 +204,12 @@ void main() {
       expect(byTitle['Mandarin Story']!.kind, MediaKind.cdrama);
       expect(byTitle['Synthetic Tower']!.kind, MediaKind.manhwa);
       expect(byTitle['Mixed Label']!.kind, MediaKind.manga);
-      expect(byTitle['Synthetic Film']!.kind, MediaKind.movie);
+      // A Netflix "played" row is searched as a screen title of any kind,
+      // and arrives unticked and screen-only.
+      final film = byTitle['Synthetic Film']!;
+      expect(film.kind, isNull);
+      expect(film.confirmed, isFalse);
+      expect(film.screenOnly, isTrue);
     });
 
     test(

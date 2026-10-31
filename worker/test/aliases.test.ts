@@ -46,7 +46,7 @@ describe("MangaDex aliases", () => {
 
     await postJson("/catalog/aliases", body, env);
     expect(calls).toHaveLength(2); // second time came from the cache
-    expect([...kv.store.keys()].sort()).toEqual(["v1:alias:another one", "v1:alias:murim login"]);
+    expect([...kv.store.keys()].sort()).toEqual(["v1:alias:mangadex:another one", "v1:alias:mangadex:murim login"]);
   });
 
   it("one failing lookup leaves that name empty, not the batch", async () => {

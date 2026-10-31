@@ -105,7 +105,7 @@ export function createApp() {
   app.post("/catalog/aliases", async (c) => {
     const b = check(c, aliasBody, await jsonBody(c));
     if (!b.ok) return b.res;
-    const results = await catalog.aliases(c.env, b.data.items.map((i) => i.q));
+    const results = await catalog.aliases(c.env, b.data.items.map((i) => i.q), b.data.source);
     return c.json({ results });
   });
 

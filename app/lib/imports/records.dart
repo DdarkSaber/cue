@@ -43,10 +43,19 @@ class NormalizedRecord {
     this.plays,
     this.note,
     this.cueId,
+    this.confirmed = true,
+    this.screenOnly = false,
   });
 
   /// Cue's own stable title id, present in Cue backups.
   final String? cueId;
+
+  /// False for activity that is not proof of watching (a Netflix "played"
+  /// entry can be an autoplayed preview). Such rows start unticked.
+  final bool confirmed;
+
+  /// Only shows and films can match (never a comic): Netflix activity.
+  final bool screenOnly;
 
   /// Stable per source entry, so re-importing the same file is idempotent.
   final String sourceEntryKey;
@@ -98,6 +107,8 @@ class NormalizedRecord {
     plays: plays,
     note: note,
     cueId: cueId,
+    confirmed: confirmed,
+    screenOnly: screenOnly,
   );
 }
 

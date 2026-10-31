@@ -81,7 +81,9 @@ void main() {
       2,
     );
     expect(s.needsReview, 1);
-    expect(gateway.matchCalls, 1);
+    // One batch for the titles, one more to see whether the leftover is
+    // adult-rated.
+    expect(gateway.matchCalls, 2);
   });
 
   test('commit adds, then the same file again changes nothing', () async {

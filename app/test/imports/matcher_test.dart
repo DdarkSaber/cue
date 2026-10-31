@@ -53,6 +53,12 @@ void main() {
       );
     });
 
+    test('ordinal seasons and trailing punctuation are dropped', () {
+      expect(cleanQuery('Some Show 2nd Season'), 'Some Show');
+      expect(cleanQuery('Some Show Final Season'), 'Some Show');
+      expect(cleanQuery('Some Show,'), 'Some Show');
+    });
+
     test('never returns an empty query', () {
       expect(cleanQuery('(2020)'), '(2020)');
     });
@@ -188,6 +194,93 @@ void main() {
         catalog,
       ).match([rec('Overgeared (2020)', kind: MediaKind.manhwa)])).single;
       expect(m.matchClass, MatchClass.suggested);
+    });
+  });
+
+  group('harder titles', () {
+    late FakeGateway gateway;
+    late CatalogRepository catalog;
+    setUp(() {
+      final db = memoryDb();
+      addTearDown(db.close);
+      gateway = FakeGateway();
+      catalog = CatalogRepository(db, gateway);
+    });
+
+    test('spacing differences still match exactly', () async {
+      gateway.matchCatalog['konna ni kawaii'] = [
+        {...item(1), 'titleEn': 'Konnani Kawaii'},
+      ];
+      final m = (await ImportMatcher(
+        catalog,
+      ).match([rec('Konna ni Kawaii', kind: MediaKind.anime)])).single;
+      expect(m.matchClass, MatchClass.suggested);
+    });
+
+    test('a long title is found from its first words', () async {
+      gateway.matchCatalog['my gift lvl'] = [
+        {...item(2), 'titleEn': 'My Gift Lvl 9999 Unlimited Gacha'},
+      ];
+      final m = (await ImportMatcher(catalog).match([
+        rec(
+          'My Gift Lvl 9999 Unlimited Gacha Clearing Hell Dungeon',
+          kind: MediaKind.anime,
+          alts: const ['My Gift Lvl'],
+        ),
+      ])).single;
+      expect(m.resolved, isTrue);
+    });
+
+    test('adult-rated titles are reported hidden, never linked', () async {
+      gateway.adultCatalog['some adult show'] = [
+        {...item(3, adult: true), 'titleEn': 'Some Adult Show'},
+      ];
+      final m = (await ImportMatcher(
+        catalog,
+      ).match([rec('Some Adult Show', kind: MediaKind.anime)])).single;
+      expect(m.adultHidden, isTrue);
+      expect(m.resolved, isFalse);
+      expect(m.included, isFalse);
+    });
+
+    test('unconfirmed records arrive unticked', () async {
+      gateway.matchCatalog['played show'] = [
+        {...item(4), 'titleEn': 'Played Show'},
+      ];
+      final m = (await ImportMatcher(catalog).match([
+        const NormalizedRecord(
+          sourceEntryKey: 'k:Played Show',
+          title: 'Played Show',
+          state: LibraryState.partial,
+          confirmed: false,
+          screenOnly: true,
+        ),
+      ])).single;
+      expect(m.resolved, isTrue);
+      expect(m.included, isFalse);
+    });
+
+    test('MangaUpdates names resolve a comic nobody else lists', () async {
+      gateway.mangaUpdatesCatalog['wo de shi jie'] = [
+        AliasCandidateDto(
+          names: ['Wo De Shi Jie', '我的世界'],
+          lang: 'zh',
+          item: CatalogItemDto({
+            ...item(
+              55,
+              provider: 'mangaupdates',
+              kind: 'manhua',
+              country: 'CN',
+            ),
+            'titleEn': 'My World',
+          }),
+        ),
+      ];
+      final m = (await ImportMatcher(
+        catalog,
+      ).match([rec('Wo De Shi Jie', kind: MediaKind.manhua)])).single;
+      expect(m.matchClass, MatchClass.suggested);
+      expect(m.titleId, 'mangaupdates:55');
     });
   });
 
@@ -327,6 +420,8 @@ class _AliasFails extends FakeGateway {
   }
 
   @override
-  Future<List<List<AliasCandidateDto>>> aliases(List<String> names) async =>
-      throw const CatalogUnavailable('offline');
+  Future<List<List<AliasCandidateDto>>> aliases(
+    List<String> names, {
+    String source = 'mangadex',
+  }) async => throw const CatalogUnavailable('offline');
 }

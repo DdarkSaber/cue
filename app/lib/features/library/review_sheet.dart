@@ -59,6 +59,12 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
     }
   }
 
+  Future<void> _dismiss() async {
+    await ref.read(importServiceProvider).dismiss(widget.observation);
+    ref.read(libraryVersionProvider.notifier).bump();
+    if (mounted) Navigator.of(context).pop(true);
+  }
+
   Future<void> _pick(CatalogItemDto dto) async {
     final ids = await ref.read(catalogRepositoryProvider).upsert([dto]);
     final profileId = await ref.read(profileIdProvider.future);
@@ -98,6 +104,18 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
           ],
         ),
         if (_busy) const LinearProgressIndicator(color: CueColors.accent),
+        const SizedBox(height: CueSpace.sm),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            onPressed: _dismiss,
+            style: TextButton.styleFrom(
+              minimumSize: const Size(CueSize.minTarget, CueSize.minTarget),
+              foregroundColor: CueColors.textMuted,
+            ),
+            child: const Text('This is not in my history'),
+          ),
+        ),
         if (_message != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),

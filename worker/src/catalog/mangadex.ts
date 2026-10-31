@@ -1,3 +1,4 @@
+import type { CatalogItem } from "./types";
 import { fetchJson } from "./upstream";
 
 /**
@@ -17,6 +18,8 @@ export interface AliasCandidate {
   mal: number | null;
   /** Original language, e.g. "ko", "zh", "ja". */
   lang: string | null;
+  /** A ready card, when the source (MangaUpdates) can supply one. */
+  item?: CatalogItem;
 }
 
 type Row = Record<string, any>;

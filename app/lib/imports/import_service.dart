@@ -35,12 +35,19 @@ class StagedImport {
       included.where((m) => existing.contains(m.titleId)).length;
 
   /// Not matched, or offered as similar and not ticked: these wait in Library.
+  /// Adult-rated titles are kept out on purpose and are not "to review".
   int get needsReview => matched
       .where(
         (m) =>
-            !m.resolved || (m.matchClass == MatchClass.similar && !m.included),
+            (!m.resolved && !m.adultHidden) ||
+            (m.matchClass == MatchClass.similar && !m.included),
       )
       .length;
+
+  /// Netflix "played" rows: activity, not proof of watching. Unticked.
+  int get unconfirmed =>
+      matched.where((m) => m.resolved && !m.record.confirmed).length;
+  int get adultHidden => matched.where((m) => m.adultHidden).length;
   int get similar =>
       matched.where((m) => m.matchClass == MatchClass.similar).length;
 
@@ -197,7 +204,7 @@ class ImportService {
                 sourceEntryKey: r.sourceEntryKey,
                 rawTitle: r.title,
                 titleId: Value(tid),
-                matchClass: m.matchClass.name,
+                matchClass: m.adultHidden ? 'adult_hidden' : m.matchClass.name,
                 status: r.state.code,
                 ratingOriginal: Value(r.ratingOriginal),
                 ratingScale: Value(r.ratingScale),
@@ -499,10 +506,22 @@ class ImportService {
         .toList();
     if (ids.isEmpty) return const [];
     return (db.select(db.sourceObservations)
-          ..where((o) => o.batchId.isIn(ids) & o.titleId.isNull())
+          ..where(
+            (o) =>
+                o.batchId.isIn(ids) &
+                o.titleId.isNull() &
+                o.matchClass.isNotIn(const ['dismissed', 'adult_hidden']),
+          )
           ..orderBy([(o) => OrderingTerm.asc(o.rawTitle)]))
         .get();
   }
+
+  /// Takes an entry out of the review queue ("not in my history"). The
+  /// import itself and its undo are unaffected.
+  Future<void> dismiss(SourceObservation o) =>
+      (db.update(db.sourceObservations)..where((x) => x.id.equals(o.id))).write(
+        const SourceObservationsCompanion(matchClass: Value('dismissed')),
+      );
 
   /// Resolves a queued observation to a catalog title the person picked.
   Future<void> resolve(

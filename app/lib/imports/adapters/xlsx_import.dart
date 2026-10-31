@@ -45,7 +45,10 @@ class XlsxImportAdapter {
         final rating = _rating(at(cols.rating));
         final read = double.tryParse(at(cols.readTo) ?? '');
         final latest = double.tryParse(at(cols.latest) ?? '');
-        final kind = _kind(sheet.name, at(cols.kind));
+        // "Played on Netflix (unconfirmed)" is activity: it may be a preview
+        // that autoplayed, and the title could be a show, not a film.
+        final netflixPlay = (status ?? '').toLowerCase().contains('played on');
+        final kind = netflixPlay ? null : _kind(sheet.name, at(cols.kind));
         records.add(
           NormalizedRecord(
             sourceEntryKey:
@@ -66,6 +69,8 @@ class XlsxImportAdapter {
             activityDate: _month(at(cols.last)),
             plays: int.tryParse(at(cols.plays) ?? ''),
             note: at(cols.notes),
+            confirmed: !netflixPlay,
+            screenOnly: netflixPlay,
           ),
         );
       }

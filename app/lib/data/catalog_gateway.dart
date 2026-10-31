@@ -38,7 +38,13 @@ class CatalogItemDto {
 /// Another database's view of a comic: all its names and its links to
 /// AniList and MyAnimeList. Used only to turn a typed name into an id.
 class AliasCandidateDto {
-  const AliasCandidateDto({required this.names, this.al, this.mal, this.lang});
+  const AliasCandidateDto({
+    required this.names,
+    this.al,
+    this.mal,
+    this.lang,
+    this.item,
+  });
 
   final List<String> names;
   final int? al;
@@ -47,12 +53,18 @@ class AliasCandidateDto {
   /// Original language: ko, zh or ja.
   final String? lang;
 
+  /// A ready card, when the source (MangaUpdates) can supply one.
+  final CatalogItemDto? item;
+
   factory AliasCandidateDto.fromJson(Map<String, dynamic> j) =>
       AliasCandidateDto(
         names: [for (final n in (j['names'] as List?) ?? const []) '$n'],
         al: (j['al'] as num?)?.toInt(),
         mal: (j['mal'] as num?)?.toInt(),
         lang: j['lang'] as String?,
+        item: j['item'] is Map
+            ? CatalogItemDto(Map<String, dynamic>.from(j['item'] as Map))
+            : null,
       );
 }
 
@@ -113,9 +125,20 @@ class CatalogUnavailable implements Exception {
 
 /// One title to match, as sent to the Worker.
 class MatchQuery {
-  const MatchQuery(this.q, [this.kind]);
+  const MatchQuery(
+    this.q, [
+    this.kind,
+    this.screenOnly = false,
+    this.adult = false,
+  ]);
   final String q;
   final MediaKind? kind;
+
+  /// Shows and films only: never match a comic.
+  final bool screenOnly;
+
+  /// Look among adult-rated entries only (AniList), to explain a miss.
+  final bool adult;
 }
 
 class MatchResponse {
@@ -141,7 +164,11 @@ class OAuthConfigDto {
 
 abstract class CatalogGateway {
   /// Other names (and AniList and MAL ids) for comics, up to 8 per call.
-  Future<List<List<AliasCandidateDto>>> aliases(List<String> names);
+  /// [source] is `mangadex` or `mangaupdates` (better for Chinese names).
+  Future<List<List<AliasCandidateDto>>> aliases(
+    List<String> names, {
+    String source = 'mangadex',
+  });
 
   /// Titles by AniList id, 50 per call.
   Future<List<CatalogItemDto>> byAniListIds(
@@ -249,7 +276,10 @@ class HttpCatalogGateway implements CatalogGateway {
   }
 
   @override
-  Future<List<List<AliasCandidateDto>>> aliases(List<String> names) async {
+  Future<List<List<AliasCandidateDto>>> aliases(
+    List<String> names, {
+    String source = 'mangadex',
+  }) async {
     final req = http.Request('POST', Uri.parse('$base/catalog/aliases'))
       ..headers['Content-Type'] = 'application/json'
       ..body = jsonEncode({
@@ -257,6 +287,7 @@ class HttpCatalogGateway implements CatalogGateway {
           for (final n in names.take(8))
             {'q': n.length > 160 ? n.substring(0, 160) : n},
         ],
+        'source': source,
       });
     final b = await _send(req) as Map;
     return [
@@ -484,11 +515,11 @@ class HybridCatalogGateway implements CatalogGateway {
     final out = [for (final _ in items) <CatalogItemDto>[]];
     final aniIdx = [
       for (var i = 0; i < items.length; i++)
-        if (_ani(items[i].kind) || items[i].kind == null) i,
+        if (_ani(items[i].kind) || items[i].kind == null || items[i].adult) i,
     ];
     final screenIdx = [
       for (var i = 0; i < items.length; i++)
-        if (!_ani(items[i].kind)) i,
+        if (!_ani(items[i].kind) && !items[i].adult) i,
     ];
     if (aniIdx.isNotEmpty) {
       final r = await anilist.searchMany([for (final i in aniIdx) items[i]]);
@@ -539,8 +570,10 @@ class HybridCatalogGateway implements CatalogGateway {
   }
 
   @override
-  Future<List<List<AliasCandidateDto>>> aliases(List<String> names) =>
-      worker.aliases(names);
+  Future<List<List<AliasCandidateDto>>> aliases(
+    List<String> names, {
+    String source = 'mangadex',
+  }) => worker.aliases(names, source: source);
 
   @override
   Future<List<CatalogItemDto>> byAniListIds(

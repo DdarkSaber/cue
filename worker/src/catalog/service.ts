@@ -16,6 +16,7 @@ import {
   titleTmdb,
 } from "./tmdb";
 import { aliasesFor, type AliasCandidate } from "./mangadex";
+import { aliasesFromMangaUpdates, titleMangaUpdates } from "./mangaupdates";
 import { CINEMETA_KINDS, cinemetaType, discoverCinemeta, searchCinemeta, titleCinemeta } from "./cinemeta";
 import { discoverTvmaze, searchTvmaze, titleTvmaze, tvmazeLastPage } from "./tvmaze";
 import type { CatalogItem, CatalogPage, CatalogProvider, MediaKind } from "./types";
@@ -62,6 +63,8 @@ export function title(env: Env, provider: CatalogProvider, id: string, type: Tit
           return titleTmdb(env.TMDB_API_KEY, id, type === "series" ? "tv" : type);
         case "cinemeta":
           return titleCinemeta(id, type === "movie" ? "movie" : "series");
+        case "mangaupdates":
+          return titleMangaUpdates(id);
         case "tvmaze":
           return titleTvmaze(id);
       }
@@ -128,15 +131,19 @@ export async function searchScreen(
  * Other names for comics, from MangaDex, cached a week per name. A failed
  * lookup is an empty list for that name, so one bad title never sinks a batch.
  */
-export async function aliases(env: Env, queries: string[]): Promise<AliasCandidate[][]> {
+export async function aliases(
+  env: Env,
+  queries: string[],
+  source: "mangadex" | "mangaupdates" = "mangadex",
+): Promise<AliasCandidate[][]> {
   const out: AliasCandidate[][] = queries.map(() => []);
   for (let s = 0; s < queries.length; s += 4) {
     await Promise.all(
       queries.slice(s, s + 4).map(async (q, j) => {
-        const key = `alias:${q.toLowerCase().replace(/\s+/g, " ")}`;
+        const key = `alias:${source}:${q.toLowerCase().replace(/\s+/g, " ")}`;
         try {
           const { value } = await cached<AliasCandidate[]>(env.CATALOG_CACHE, key, 7 * 24 * 60 * 60, () =>
-            aliasesFor(q),
+            source === "mangaupdates" ? aliasesFromMangaUpdates(q) : aliasesFor(q),
           );
           out[s + j] = value;
         } catch {
@@ -170,7 +177,9 @@ export async function match(
   malManga: number[],
 ) {
   const isScreen = (k?: MediaKind) => !!k && !ANILIST_KINDS.has(k);
-  const aniIdx = items.map((it, i) => (isScreen(it.kind) ? -1 : i)).filter((i) => i >= 0);
+  // A title with no kind is searched as a screen title only: the app asks
+  // AniList itself, and AniList refuses requests from Cloudflare.
+  const aniIdx = items.map((it, i) => (it.kind && !isScreen(it.kind) ? i : -1)).filter((i) => i >= 0);
   const screenIdx = items.map((it, i) => (isScreen(it.kind) || !it.kind ? i : -1)).filter((i) => i >= 0);
   const results: CatalogItem[][] = items.map(() => []);
 
