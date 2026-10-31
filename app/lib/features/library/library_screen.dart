@@ -275,6 +275,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   Widget _entryRow(BuildContext context, (LibraryEntry, Title) e) {
     final (entry, title) = e;
+    final fresh = newChapters(entry, title);
     return CueListRow(
       title: title.displayTitle,
       subtitle: [
@@ -285,6 +286,19 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           '${entry.progressUnit ?? 'progress'} ${entry.progressValue!.round()}'
               '${entry.latestKnown != null ? ' of ${entry.latestKnown!.round()}' : ''}',
       ].join(' · '),
+      trailing: fresh == null
+          ? null
+          : Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: CueColors.accent.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(CueRadius.pill),
+              ),
+              child: Text(
+                fresh == 1 ? '1 new chapter' : '$fresh new chapters',
+                style: const TextStyle(fontSize: 12, color: CueColors.accent),
+              ),
+            ),
       onTap: () => showEntrySheet(context, title),
     );
   }
@@ -400,4 +414,16 @@ class _SectionState extends State<_Section> {
       ],
     );
   }
+}
+
+/// Chapters past where the person stopped, only when both numbers are
+/// known. An unknown total is never treated as "nothing new".
+int? newChapters(LibraryEntry e, Title t) {
+  if (!t.kind.isReading || e.progressValue == null) return null;
+  final latest = [t.chapters?.toDouble(), e.latestKnown]
+      .whereType<double>()
+      .fold<double?>(null, (a, b) => a == null || b > a ? b : a);
+  if (latest == null) return null;
+  final n = (latest - e.progressValue!).floor();
+  return n > 0 ? n : null;
 }

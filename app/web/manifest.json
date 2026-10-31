@@ -5,8 +5,8 @@
     "display": "standalone",
     "background_color": "#080A0D",
     "theme_color": "#080A0D",
-    "description": "Cue: your next story",
-    "orientation": "portrait-primary",
+    "description": "Cue: your next story. One card, one decision: what to watch or read next.",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {
