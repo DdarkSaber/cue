@@ -1,0 +1,31 @@
+name: cue
+description: "Cue: your next story"
+publish_to: 'none'
+version: 0.0.1+1
+
+environment:
+  sdk: ^3.13.7
+
+# Only packages approved in docs/CUE-HANDOFF.md section 6.2 (plus approved companions).
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^3.4.3
+  go_router: ^18.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  # DM Sans is bundled (SIL OFL, see assets/fonts/OFL.txt). No remote fonts.
+  fonts:
+    - family: DM Sans
+      fonts:
+        - asset: assets/fonts/DMSans-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/DMSans-Bold.ttf
+          weight: 700

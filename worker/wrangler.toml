@@ -1,0 +1,23 @@
+name = "cue-worker"
+main = "src/index.ts"
+compatibility_date = "2026-08-15"
+
+# Comma-separated app origins allowed by CORS. Native apps send no Origin.
+# Production origins are added at deploy time.
+[vars]
+ALLOWED_ORIGINS = "http://localhost:7357,http://127.0.0.1:7357"
+
+# Public catalog cache only (CUE-HANDOFF 7.4). Never personal data.
+# Replace the id with the real namespace before the first deploy (M1).
+[[kv_namespaces]]
+binding = "CATALOG_CACHE"
+id = "00000000000000000000000000000000"
+
+# Per-IP limit via Cloudflare's rate-limiting binding (not KV).
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 60, period = 60 }
+
+# Secrets (set with `wrangler secret put`, never committed):
+#   TMDB_API_KEY (M1), MAL/ANILIST/TRAKT client secrets (M6), GEMINI/GROQ keys (M7)

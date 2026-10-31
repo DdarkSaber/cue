@@ -1,0 +1,45 @@
+# --- Personal data: never commit (CUE-HANDOFF hard rule) ---
+*.backup.json
+*cue-backup*.json
+*.tachibk
+NetflixViewingHistory*.csv
+animelist_*.xml*
+cue-private/
+personal/
+
+# Official posters stay on disk for the local prototype only.
+docs/design/assets/*.jpg
+docs/design/assets/*.png
+# The prototype catalog carries a personal viewing layer; keep it local.
+docs/design/catalog.js
+
+# --- Secrets ---
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+*.keystore
+*.jks
+key.properties
+
+# --- Worker ---
+worker/node_modules/
+worker/.wrangler/
+worker/dist/
+.wrangler-dry/
+
+# --- Flutter / Dart ---
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/build/
+app/coverage/
+app/test/**/failures/
+**/*.iml
+.idea/
+
+# --- OS / editors ---
+.DS_Store
+Thumbs.db
+.vscode/
+.playwright-mcp/
