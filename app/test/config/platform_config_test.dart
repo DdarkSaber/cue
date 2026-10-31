@@ -45,6 +45,9 @@ void main() {
   test('web: language, CSP and no remote hosts in the shell', () {
     expect(index, contains('<html lang="en">'));
     expect(index, contains('Content-Security-Policy'));
+    // The Worker origin is filled in at build time, never hard-coded.
+    expect(index, contains("connect-src 'self' CUE_API_ORIGIN"));
+    expect(headers, contains("connect-src 'self' CUE_API_ORIGIN"));
     expect(index, isNot(contains('http://')));
     expect(index, isNot(contains('https://')));
     for (final h in [

@@ -9,10 +9,12 @@ describe("deployed shape", () => {
   });
 
   it("serves the fixed routes through the real entry point", async () => {
-    const ok = await exports.default.fetch(
-      "https://api.test/catalog/discover?kind=anime",
-    );
-    expect(ok.status).toBe(501);
+    const routed = await exports.default.fetch("https://api.test/ai/mood", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    expect(routed.status).toBe(400);
     const missing = await exports.default.fetch("https://api.test/anything");
     expect(missing.status).toBe(404);
   });

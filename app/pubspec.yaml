@@ -8,15 +8,32 @@ environment:
 
 # Keep dependencies minimal; add a package only with a clear need.
 dependencies:
+  archive: ^4.5.2
+  cached_network_image: ^4.0.6
+  crypto: ^3.0.8
+  cryptography: ^2.9.0
+  csv: ^8.0.0
+  drift: ^2.35.3
+  drift_flutter: ^0.3.1
+  file_picker: ^13.3.0
   flutter:
     sdk: flutter
   flutter_riverpod: ^3.4.3
+  flutter_secure_storage: ^11.2.0
+  flutter_web_auth_2: ^5.1.0
   go_router: ^18.1.2
+  http: ^1.6.0
+  intl: ^0.20.3
+  protobuf: ^6.1.0
+  xml: ^7.1.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  build_runner: ^2.17.1
+  drift_dev: ^2.35.2
+  mocktail: ^1.0.5
 
 flutter:
   uses-material-design: true

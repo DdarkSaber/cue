@@ -6,6 +6,8 @@ export type ErrorCode =
   | "invalid_request"
   | "not_found"
   | "not_implemented"
+  | "not_configured"
+  | "upstream_error"
   | "origin_not_allowed"
   | "payload_too_large"
   | "rate_limited"

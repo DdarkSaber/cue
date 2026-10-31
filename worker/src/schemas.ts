@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-/** Media kinds the catalog can discover (minus movie/unknown). */
+/** Media kinds the catalog can discover (everything but unknown). */
 export const mediaKind = z.enum([
   "anime",
   "manga",
@@ -10,7 +10,11 @@ export const mediaKind = z.enum([
   "cdrama",
   "jdrama",
   "series",
+  "movie",
 ]);
+
+/** TMDB splits ids by type; other providers ignore it. */
+export const tmdbType = z.enum(["tv", "movie"]).default("tv");
 
 export const mood = z.enum(["hype", "comfort", "gripping", "feels"]);
 export const catalogProvider = z.enum(["anilist", "tmdb", "tvmaze"]);
@@ -50,6 +54,7 @@ export const titleParams = z.object({
   provider: catalogProvider,
   id: numericId,
 });
+export const titleQuery = z.object({ type: tmdbType });
 
 export const searchQuery = z.object({
   q: z.string().trim().min(1).max(200),
@@ -62,6 +67,7 @@ export const providersQuery = z.object({
     .string()
     .regex(/^[A-Z]{2}$/)
     .default("IN"),
+  type: tmdbType,
 });
 
 export const imageQuery = z.object({

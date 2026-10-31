@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MAX_BODY_BYTES } from "../src/middleware";
 import { isAllowedImageUrl } from "../src/schemas";
@@ -7,25 +7,40 @@ import {
   call,
   fakeEnv,
   fakeLimiter,
+  mockUpstream,
   postJson,
 } from "./helpers";
 
+beforeEach(() => {
+  mockUpstream(vi);
+});
 afterEach(() => vi.restoreAllMocks());
 
 describe("fixed endpoints only", () => {
   it.each([
     "/catalog/discover?kind=anime",
     "/catalog/discover?kind=manhwa&mood=hype&page=2",
-    "/catalog/title/anilist/154587",
-    "/catalog/title/tmdb/1399",
     "/catalog/search?q=frieren",
+    "/catalog/image?u=https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/x.jpg",
+  ])("GET %s is served", async (path) => {
+    const res = await call(path);
+    expect(res.status).toBe(200);
+  });
+
+  it.each([
+    "/catalog/discover?kind=kdrama",
+    "/catalog/title/tmdb/1399",
     "/catalog/providers/1399?region=IN",
     "/catalog/providers/1399",
-    "/catalog/image?u=https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/x.jpg",
-  ])("GET %s validates then answers 501 until implemented", async (path) => {
+  ])("GET %s answers 503 not_configured without a TMDB key", async (path) => {
     const res = await call(path);
-    expect(res.status).toBe(501);
-    expect(await res.json()).toEqual({ error: "not_implemented" });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "not_configured" });
+  });
+
+  it("a title the provider does not have is 404", async () => {
+    const res = await call("/catalog/title/anilist/154587");
+    expect(res.status).toBe(404);
   });
 
   it("POST /oauth/:provider/token validates then answers 501", async () => {
@@ -148,7 +163,7 @@ describe("CORS and origins", () => {
     const res = await call("/catalog/search?q=x", {
       headers: { Origin: APP_ORIGIN },
     });
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(200);
     expect(res.headers.get("Access-Control-Allow-Origin")).toBe(APP_ORIGIN);
   });
 
@@ -173,7 +188,7 @@ describe("CORS and origins", () => {
   });
 
   it("lets native clients without an Origin through", async () => {
-    expect((await call("/catalog/search?q=x")).status).toBe(501);
+    expect((await call("/catalog/search?q=x")).status).toBe(200);
   });
 });
 
@@ -193,10 +208,10 @@ describe("rate limiting", () => {
     const env = fakeEnv({ RATE_LIMITER: fakeLimiter(2) });
     const headers = { "CF-Connecting-IP": "203.0.113.7" };
     expect((await call("/catalog/search?q=x", { headers }, env)).status).toBe(
-      501,
+      200,
     );
     expect((await call("/catalog/search?q=x", { headers }, env)).status).toBe(
-      501,
+      200,
     );
     const third = await call("/catalog/search?q=x", { headers }, env);
     expect(third.status).toBe(429);
@@ -206,7 +221,7 @@ describe("rate limiting", () => {
       { headers: { "CF-Connecting-IP": "203.0.113.8" } },
       env,
     );
-    expect(other.status).toBe(501);
+    expect(other.status).toBe(200);
   });
 
   it("fails closed when the limiter binding is missing", async () => {
@@ -236,7 +251,7 @@ describe("logging", () => {
     expect(JSON.parse(lines[0]!)).toMatchObject({
       m: "GET",
       r: "/catalog/search",
-      s: 501,
+      s: 200,
     });
   });
 });
@@ -244,7 +259,7 @@ describe("logging", () => {
 describe("hardening added after the security review", () => {
   it("sends security headers on every response", async () => {
     for (const res of [
-      await call("/catalog/search?q=x"),
+      await call("/catalog/discover?kind=anime&page=0"),
       await call("/nope"),
       await postJson("/ai/mood", { text: "" }),
     ]) {
