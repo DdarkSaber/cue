@@ -25,13 +25,20 @@ String redirectUriFor(String provider) =>
 
 /// Opens the provider's own sign-in page in the system browser (never a
 /// password field in Cue) and returns the authorization code.
-Future<String?> authorize(Uri url, String provider) async {
+///
+/// MAL and Trakt echo the `state` Cue sent; a missing or different one means
+/// the redirect did not come from this sign-in, so the code is refused.
+/// AniList does not echo it.
+Future<String?> authorize(Uri url, String provider, {String? state}) async {
   final result = await FlutterWebAuth2.authenticate(
     url: url.toString(),
     callbackUrlScheme: kIsWeb ? 'https' : 'cue',
   );
   final back = Uri.parse(result);
   if (back.queryParameters['error'] != null) return null;
+  if (state != null && provider != 'anilist') {
+    if (back.queryParameters['state'] != state) return null;
+  }
   return back.queryParameters['code'];
 }
 

@@ -100,15 +100,16 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
     if (clientId == null) return;
     final verifier = pkceVerifier();
     final redirect = redirectUriFor(widget.provider.id);
+    final state = randomId(8);
     final url = authorizeUrl(
       widget.provider.id,
       clientId: clientId,
       redirectUri: redirect,
       verifier: verifier,
-      state: randomId(8),
+      state: state,
     );
     await _run(() async {
-      final code = await authorize(url, widget.provider.id);
+      final code = await authorize(url, widget.provider.id, state: state);
       if (code == null) throw const CatalogUnavailable('cancelled');
       final gateway = ref.read(catalogGatewayProvider);
       final token = await gateway.exchangeCode(
