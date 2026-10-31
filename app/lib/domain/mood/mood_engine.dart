@@ -97,6 +97,18 @@ class MoodEngine {
 
   void correct(String modeId) => _tracker?.force(modeId);
 
+  /// A name the person chose; never replaced by automatic labels.
+  Future<void> rename(String modeId, String label) async {
+    for (final m in model.modes) {
+      if (m.id == modeId) {
+        m
+          ..label = label
+          ..userLabel = true;
+      }
+    }
+    await store.save(profileId, model.modes, words);
+  }
+
   MoodTarget get target {
     final t = _tracker;
     final textVec = words.vectorFor(_tokens);

@@ -480,6 +480,13 @@ class PrivacyPage extends ConsumerStatefulWidget {
 class _PrivacyPageState extends ConsumerState<PrivacyPage> {
   String? _message;
 
+  Future<void> _clearMood() async {
+    final id = await ref.read(profileIdProvider.future);
+    await ref.read(moodRepositoryProvider).clear(id);
+    ref.invalidate(moodEngineProvider);
+    if (mounted) setState(() => _message = 'Mood learning cleared.');
+  }
+
   Future<void> _export() async {
     final id = await ref.read(profileIdProvider.future);
     final json = await ref.read(backupServiceProvider).export(id);
@@ -540,6 +547,19 @@ class _PrivacyPageState extends ConsumerState<PrivacyPage> {
         const Text(
           'Imports read files on this device. Matching sends title names. Sign-in imports open the service\'s own page, keep a read-only sign-in on this device (Sign out removes it). If you turn on sync, only an encrypted blob leaves the device.',
           style: _body,
+        ),
+        const SizedBox(height: CueSpace.sm),
+        const Text(
+          'Mood learning (what your words and swipes mean to you) stays on this device. The optional smarter mood text, when turned on, sends only the sentence you type.',
+          style: _body,
+        ),
+        const SizedBox(height: CueSpace.sm),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: CueSecondaryButton(
+            label: 'Clear mood learning',
+            onPressed: _clearMood,
+          ),
         ),
         const CueSectionLabel('Local is not the same as encrypted'),
         const Text(

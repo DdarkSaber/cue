@@ -17,6 +17,7 @@ import 'action_bar.dart';
 import 'deck_controller.dart';
 import 'loading_card.dart';
 import 'mood_rail.dart';
+import 'mood_read_chip.dart';
 import 'poster.dart';
 import 'swipe_deck.dart';
 import 'toast.dart';
@@ -192,6 +193,7 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
               ),
               SizedBox(height: desktop ? 4 : 2),
               const MoodRail(),
+              const MoodReadChip(),
               if (deck.notice != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 6, left: 4),

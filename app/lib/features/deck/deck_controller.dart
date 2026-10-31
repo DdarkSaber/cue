@@ -115,6 +115,9 @@ class DeckController extends Notifier<DeckState> {
 
   Future<String> get _profile => ref.read(profileIdProvider.future);
 
+  /// The person corrected or renamed the mood: re-rank, keeping the top card.
+  void moodChanged() => unawaited(_deal(keepTop: true));
+
   Set<MediaKind> get _enabledKinds {
     final s = ref.read(currentSettingsProvider);
     return s.defaultKinds.isEmpty
