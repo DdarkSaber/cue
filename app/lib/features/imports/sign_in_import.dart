@@ -45,6 +45,15 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
   String? _message;
   final _name = TextEditingController();
   OAuthConfigDto? _config;
+  String? _token;
+
+  @override
+  void initState() {
+    super.initState();
+    ref.read(tokenStoreProvider).read(widget.provider.id).then((t) {
+      if (mounted && t != null) setState(() => _token = t);
+    });
+  }
 
   @override
   void dispose() {
@@ -110,9 +119,33 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
             ? null
             : verifier,
       );
-      // Used once for this read, then dropped with this closure.
+      await ref.read(tokenStoreProvider).write(widget.provider.id, token);
+      if (mounted) setState(() => _token = token);
       return gateway.listSignedIn(widget.provider.id, token);
     });
+  }
+
+  /// Reads the list again with the token kept on this device. A token the
+  /// provider no longer accepts is dropped so the person can sign in again.
+  Future<void> _importAgain() async {
+    final token = _token;
+    if (token == null) return;
+    await _run(() async {
+      try {
+        return await ref
+            .read(catalogGatewayProvider)
+            .listSignedIn(widget.provider.id, token);
+      } on CatalogUnavailable catch (e) {
+        if (e.code == 'offline') rethrow;
+        await _signOut();
+        throw const CatalogUnavailable('expired');
+      }
+    });
+  }
+
+  Future<void> _signOut() async {
+    await ref.read(tokenStoreProvider).delete(widget.provider.id);
+    if (mounted) setState(() => _token = null);
   }
 
   Future<void> _run(Future<List<Map<String, dynamic>>> Function() load) async {
@@ -138,6 +171,8 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
           'not_configured' =>
             '${widget.provider.label} is not set up on this Cue yet.',
           'offline' => 'Offline. Try again when connected.',
+          'expired' =>
+            'Your ${widget.provider.label} sign-in expired. Sign in again.',
           _ => '${widget.provider.label} did not answer. Try again later.',
         },
       );
@@ -214,7 +249,7 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Signs in on ${p.label}\'s own page, reads your list once, read only, and keeps no login.',
+                    'Signs in on ${p.label}\'s own page, is read only. Cue keeps the sign-in on this device, so you can import again without signing in. Sign out removes it.',
                     style: const TextStyle(
                       fontSize: 14,
                       height: 1.5,
@@ -230,7 +265,29 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
                         color: CueColors.notNow,
                       ),
                     ),
-                  if (configured)
+                  if (_token != null) ...[
+                    Text(
+                      'Signed in to ${p.label} on this device.',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: CueColors.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: CueSpace.sm),
+                    Row(
+                      spacing: CueSpace.sm,
+                      children: [
+                        CueSecondaryButton(
+                          label: 'Import again',
+                          onPressed: _busy ? null : _importAgain,
+                        ),
+                        TextButton(
+                          onPressed: _busy ? null : _signOut,
+                          child: const Text('Sign out'),
+                        ),
+                      ],
+                    ),
+                  ] else if (configured)
                     CueSecondaryButton(
                       label: 'Sign in with ${p.label}',
                       onPressed: _busy ? null : _signIn,

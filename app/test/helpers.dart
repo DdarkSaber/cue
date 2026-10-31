@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:cue/app/providers.dart';
+import 'package:cue/imports/token_store.dart';
 import 'package:cue/app/router.dart';
 import 'package:cue/data/db/database.dart';
 import 'package:cue/domain/models/title.dart';
@@ -61,6 +62,7 @@ Future<void> pumpCue(
         catalogGatewayProvider.overrideWithValue(gateway ?? sampleGateway()),
         // No platform keystore in tests; sync stays local.
         codeStoreProvider.overrideWithValue(MemoryCodeStore()),
+        tokenStoreProvider.overrideWithValue(MemoryTokenStore()),
         // Seeded so decks (and goldens) are the same every run.
         rankerProvider.overrideWithValue(Ranker(random: Random(7))),
         ...overrides,

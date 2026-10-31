@@ -538,7 +538,7 @@ class _PrivacyPageState extends ConsumerState<PrivacyPage> {
         ),
         const SizedBox(height: CueSpace.sm),
         const Text(
-          'Imports read files on this device. Matching sends title names. Sign-in imports open the service\'s own page, read your list once and keep no login. If you turn on sync, only an encrypted blob leaves the device.',
+          'Imports read files on this device. Matching sends title names. Sign-in imports open the service\'s own page, keep a read-only sign-in on this device (Sign out removes it). If you turn on sync, only an encrypted blob leaves the device.',
           style: _body,
         ),
         const CueSectionLabel('Local is not the same as encrypted'),

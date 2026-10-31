@@ -12,6 +12,7 @@ import '../domain/decisions.dart';
 import '../domain/models/settings.dart';
 import '../domain/ranker.dart';
 import '../imports/import_service.dart';
+import '../imports/token_store.dart';
 import '../sync/sync_service.dart';
 import 'config.dart';
 
@@ -129,6 +130,11 @@ final backupServiceProvider = Provider<BackupService>(
 );
 
 final codeStoreProvider = Provider<CodeStore>((ref) => const SecureCodeStore());
+
+/// Read-only sign-in tokens for MAL, AniList and Trakt, on this device only.
+final tokenStoreProvider = Provider<TokenStore>(
+  (ref) => const SecureTokenStore(),
+);
 
 final syncRemoteProvider = Provider<SyncRemote>(
   (ref) => HttpSyncRemote(cueApiBase),

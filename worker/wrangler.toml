@@ -6,6 +6,8 @@ compatibility_date = "2026-08-15"
 # Production origins are added at deploy time.
 [vars]
 ALLOWED_ORIGINS = "https://cue-next.cue-worker.workers.dev,http://localhost:7357,http://127.0.0.1:7357"
+# Public OAuth client id (it is visible in the sign-in URL). The secret is a wrangler secret.
+MAL_CLIENT_ID = "5910123f3d7045299259209ddff88344"
 
 # Public catalog cache only. Never personal data.
 [[kv_namespaces]]
