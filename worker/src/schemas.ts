@@ -84,7 +84,11 @@ export const oauthBody = z.object({
   redirectUri: z.string().url().max(512),
 });
 
-export const moodBody = z.object({ text: z.string().trim().min(1).max(200) });
+export const moodBody = z.object({
+  text: z.string().trim().min(1).max(200),
+  /** The app's own feature names; the answer may only use these. */
+  allowed: z.array(z.string().trim().min(1).max(40)).max(200).default([]),
+});
 
 /**
  * Batch matching for imports: at most 15 titles (AniList caps query

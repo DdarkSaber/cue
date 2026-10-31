@@ -61,9 +61,9 @@ describe("fixed endpoints only", () => {
     expect(res.status).toBe(503);
   });
 
-  it("POST /ai/mood validates then answers 501", async () => {
+  it("POST /ai/mood answers 503 until an AI key is set", async () => {
     const res = await postJson("/ai/mood", { text: "short, funny, new anime" });
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(503);
   });
 
   it.each([
@@ -135,7 +135,7 @@ describe("input validation", () => {
       400,
     );
     expect((await postJson("/ai/mood", { text: "x".repeat(200) })).status).toBe(
-      501,
+      503,
     );
   });
 });
@@ -297,7 +297,8 @@ describe("hardening added after the security review", () => {
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify({ text: "hello" }),
     });
-    expect(res.status).toBe(501);
+    // Parsed and validated: no AI key in tests, so 503 rather than 400.
+    expect(res.status).toBe(503);
   });
 
   it("caps streamed bodies that send no Content-Length", async () => {

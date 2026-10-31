@@ -6,6 +6,7 @@ import { NotConfiguredError, UpstreamError } from "./catalog/types";
 import type { AppEnv } from "./env";
 import * as lists from "./imports/lists";
 import { SyncStore } from "./sync/store";
+import { moodHints } from "./ai/mood";
 import { fail } from "./errors";
 import {
   allowedOrigins,
@@ -54,9 +55,6 @@ export function createApp() {
     bodyCap,
     rateLimit,
   );
-
-  const notYet = (c: Parameters<typeof fail>[0]) =>
-    fail(c, 501, "not_implemented");
 
   // Public catalog data: shared caches may keep it briefly.
   const publicJson = (c: Parameters<typeof fail>[0], body: unknown) => {
@@ -203,7 +201,8 @@ export function createApp() {
 
   app.post("/ai/mood", async (c) => {
     const b = check(c, moodBody, await jsonBody(c));
-    return b.ok ? notYet(c) : b.res;
+    if (!b.ok) return b.res;
+    return c.json(await moodHints(c.env, b.data.text, b.data.allowed));
   });
 
   app.notFound((c) => fail(c, 404, "not_found"));

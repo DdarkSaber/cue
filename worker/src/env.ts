@@ -14,6 +14,10 @@ declare global {
       /** Secrets for sign-in imports. Absent ones keep that source off. */
       MAL_CLIENT_ID?: string;
       MAL_CLIENT_SECRET?: string;
+      GROQ_API_KEY?: string;
+      GEMINI_API_KEY?: string;
+      GROQ_MODEL?: string;
+      GEMINI_MODEL?: string;
     }
     interface GlobalProps {
       mainModule: typeof import("./index");
