@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/icons.dart';
 import '../../app/theme.dart';
 import '../../app/tokens.dart';
+import '../../app/widgets.dart';
 import '../../domain/models/quick_mood.dart';
 import 'deck_providers.dart';
 
@@ -64,44 +65,47 @@ class MoodPill extends StatelessWidget {
       fg = revisit ? CueColors.accent : const Color(0xFFC5CFDB);
       border = revisit ? const Color(0x38A9D7FF) : const Color(0x22FFFFFF);
     }
-    return MergeSemantics(
-      child: Semantics(
-        selected: selected,
-        child: Center(
-          child: OutlinedButton(
-            onPressed: onTap,
-            style: ButtonStyle(
-              minimumSize: const WidgetStatePropertyAll(Size(0, 40)),
-              padding: const WidgetStatePropertyAll(
-                EdgeInsets.symmetric(horizontal: 15),
-              ),
-              tapTargetSize: MaterialTapTargetSize.padded,
-              shape: const WidgetStatePropertyAll(StadiumBorder()),
-              backgroundColor: WidgetStatePropertyAll(bg),
-              foregroundColor: WidgetStatePropertyAll(fg),
-              overlayColor: const WidgetStatePropertyAll(Color(0x0FFFFFFF)),
-              side: WidgetStateProperty.resolveWith(
-                (s) => s.contains(WidgetState.focused)
-                    ? const BorderSide(color: CueColors.accent, width: 2)
-                    : BorderSide(color: border),
-              ),
-              textStyle: const WidgetStatePropertyAll(
-                TextStyle(
-                  fontFamily: cueFontFamily,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w400,
+    return PressScale(
+      enabled: true,
+      child: MergeSemantics(
+        child: Semantics(
+          selected: selected,
+          child: Center(
+            child: OutlinedButton(
+              onPressed: onTap,
+              style: ButtonStyle(
+                minimumSize: const WidgetStatePropertyAll(Size(0, 40)),
+                padding: const WidgetStatePropertyAll(
+                  EdgeInsets.symmetric(horizontal: 15),
+                ),
+                tapTargetSize: MaterialTapTargetSize.padded,
+                shape: const WidgetStatePropertyAll(StadiumBorder()),
+                backgroundColor: WidgetStatePropertyAll(bg),
+                foregroundColor: WidgetStatePropertyAll(fg),
+                overlayColor: const WidgetStatePropertyAll(Color(0x0FFFFFFF)),
+                side: WidgetStateProperty.resolveWith(
+                  (s) => s.contains(WidgetState.focused)
+                      ? const BorderSide(color: CueColors.accent, width: 2)
+                      : BorderSide(color: border),
+                ),
+                textStyle: const WidgetStatePropertyAll(
+                  TextStyle(
+                    fontFamily: cueFontFamily,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                  ),
                 ),
               ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (revisit) ...[
-                  CueIcon(CueIcons.repeat, size: 16, color: fg),
-                  const SizedBox(width: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (revisit) ...[
+                    CueIcon(CueIcons.repeat, size: 16, color: fg),
+                    const SizedBox(width: 6),
+                  ],
+                  Text(mood.label),
                 ],
-                Text(mood.label),
-              ],
+              ),
             ),
           ),
         ),

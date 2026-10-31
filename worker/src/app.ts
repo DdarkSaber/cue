@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "./env";
 import { fail } from "./errors";
 import {
+  apiHeaders,
   bodyCap,
   corsPolicy,
   originGuard,
@@ -30,7 +31,15 @@ import { check, jsonBody } from "./validate";
 export function createApp() {
   const app = new Hono<AppEnv>();
 
-  app.use("*", requestLog, originGuard, corsPolicy, bodyCap, rateLimit);
+  app.use(
+    "*",
+    requestLog,
+    apiHeaders,
+    originGuard,
+    corsPolicy,
+    bodyCap,
+    rateLimit,
+  );
 
   const notYet = (c: Parameters<typeof fail>[0]) =>
     fail(c, 501, "not_implemented");

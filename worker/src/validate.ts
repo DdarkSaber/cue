@@ -17,7 +17,10 @@ export function check<S extends z.ZodType>(
   return { ok: false, res: fail(c, 400, "invalid_request", { fields }) };
 }
 
+/** Reads a JSON body. Anything not sent as application/json is treated as missing. */
 export async function jsonBody(c: Context): Promise<unknown> {
+  const type = c.req.header("Content-Type") ?? "";
+  if (!/^application\/json(\s*;|$)/i.test(type)) return undefined;
   try {
     return await c.req.json();
   } catch {

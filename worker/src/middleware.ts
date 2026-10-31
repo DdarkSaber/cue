@@ -1,6 +1,7 @@
 import type { MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
+import { secureHeaders } from "hono/secure-headers";
 
 import type { AppEnv } from "./env";
 import { fail } from "./errors";
@@ -67,4 +68,14 @@ export const rateLimit: MiddlewareHandler<AppEnv> = async (c, next) => {
     return fail(c, 429, "rate_limited");
   }
   await next();
+};
+
+/** JSON API responses: no sniffing, no framing, no referrer, never cached by shared caches. */
+export const apiHeaders: MiddlewareHandler<AppEnv> = async (c, next) => {
+  await secureHeaders({
+    contentSecurityPolicy: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] },
+    crossOriginResourcePolicy: "cross-origin",
+    referrerPolicy: "no-referrer",
+  })(c, next);
+  if (!c.res.headers.has("Cache-Control")) c.header("Cache-Control", "no-store");
 };

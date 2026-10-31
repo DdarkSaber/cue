@@ -10,5 +10,6 @@ class LibraryScreen extends StatelessWidget {
     kicker: 'Your corner of Cue',
     title: 'Library',
     body: 'Your history belongs here. Bring a list, or keep discovering.',
+    actionLabel: 'Keep discovering',
   );
 }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'icons.dart';
 import 'tokens.dart';
+import 'widgets.dart';
 
 class NavDestination {
   const NavDestination(this.label, this.icon);
@@ -36,7 +37,8 @@ class NavDock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(horizontal ? 30 : 24);
+    // Outer radius = item radius + padding (22 + 5 desktop, 17 + 7 phone).
+    final radius = BorderRadius.circular(horizontal ? 27 : 24);
     return Semantics(
       container: true,
       label: 'Main navigation',
@@ -125,42 +127,45 @@ class _NavItem extends StatelessWidget {
       overflow: TextOverflow.ellipsis,
       style: TextStyle(fontSize: 12, color: color, height: 1.2),
     );
-    return MergeSemantics(
-      child: Semantics(
-        selected: active,
-        child: TextButton(
-          onPressed: onTap,
-          style: ButtonStyle(
-            minimumSize: WidgetStatePropertyAll(
-              Size(horizontal ? 84 : CueSize.minTarget, CueSize.minTarget),
-            ),
-            padding: const WidgetStatePropertyAll(
-              EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-            ),
-            backgroundColor: WidgetStatePropertyAll(
-              active ? const Color(0x12FFFFFF) : Colors.transparent,
-            ),
-            overlayColor: const WidgetStatePropertyAll(Color(0x0AFFFFFF)),
-            shape: WidgetStateProperty.resolveWith(
-              (s) => RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(horizontal ? 22 : 17),
-                side: s.contains(WidgetState.focused)
-                    ? const BorderSide(color: CueColors.accent, width: 2)
-                    : BorderSide.none,
+    return PressScale(
+      enabled: true,
+      child: MergeSemantics(
+        child: Semantics(
+          selected: active,
+          child: TextButton(
+            onPressed: onTap,
+            style: ButtonStyle(
+              minimumSize: WidgetStatePropertyAll(
+                Size(horizontal ? 84 : CueSize.minTarget, CueSize.minTarget),
+              ),
+              padding: const WidgetStatePropertyAll(
+                EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              ),
+              backgroundColor: WidgetStatePropertyAll(
+                active ? const Color(0x12FFFFFF) : Colors.transparent,
+              ),
+              overlayColor: const WidgetStatePropertyAll(Color(0x0AFFFFFF)),
+              shape: WidgetStateProperty.resolveWith(
+                (s) => RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(horizontal ? 22 : 17),
+                  side: s.contains(WidgetState.focused)
+                      ? const BorderSide(color: CueColors.accent, width: 2)
+                      : BorderSide.none,
+                ),
               ),
             ),
+            child: horizontal
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    spacing: 8,
+                    children: [icon, label],
+                  )
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    spacing: 5,
+                    children: [icon, label],
+                  ),
           ),
-          child: horizontal
-              ? Row(
-                  mainAxisSize: MainAxisSize.min,
-                  spacing: 8,
-                  children: [icon, label],
-                )
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  spacing: 5,
-                  children: [icon, label],
-                ),
         ),
       ),
     );

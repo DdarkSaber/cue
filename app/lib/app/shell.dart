@@ -61,8 +61,16 @@ class AppShell extends StatelessWidget {
       );
     }
 
-    return Scaffold(
-      body: SafeArea(child: Center(child: body)),
+    // System Back on a secondary destination returns to For you instead of
+    // closing the app; Back on For you behaves normally.
+    return PopScope(
+      canPop: navigationShell.currentIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _select(0);
+      },
+      child: Scaffold(
+        body: SafeArea(child: Center(child: body)),
+      ),
     );
   }
 }

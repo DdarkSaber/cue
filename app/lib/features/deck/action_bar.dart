@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app/icons.dart';
 import '../../app/layout.dart';
 import '../../app/tokens.dart';
+import '../../app/widgets.dart';
 
 /// The four fixed decisions, in on-screen order (section 1 and 7.1).
 enum DeckAction {
@@ -88,39 +89,42 @@ class _ActionItem extends StatelessWidget {
         height: 1.2,
       ),
     );
-    return Opacity(
-      opacity: enabled ? 1 : 0.5,
-      child: TextButton(
-        onPressed: onPressed,
-        style: ButtonStyle(
-          minimumSize: const WidgetStatePropertyAll(
-            Size(CueSize.minTarget, CueSize.minTarget),
-          ),
-          padding: const WidgetStatePropertyAll(EdgeInsets.all(4)),
-          overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-          shape: WidgetStateProperty.resolveWith(
-            (s) => RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(CueRadius.chip),
-              side: s.contains(WidgetState.focused)
-                  ? const BorderSide(color: CueColors.accent, width: 2)
-                  : BorderSide.none,
+    return PressScale(
+      enabled: enabled,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.5,
+        child: TextButton(
+          onPressed: onPressed,
+          style: ButtonStyle(
+            minimumSize: const WidgetStatePropertyAll(
+              Size(CueSize.minTarget, CueSize.minTarget),
+            ),
+            padding: const WidgetStatePropertyAll(EdgeInsets.all(4)),
+            overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+            shape: WidgetStateProperty.resolveWith(
+              (s) => RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(CueRadius.chip),
+                side: s.contains(WidgetState.focused)
+                    ? const BorderSide(color: CueColors.accent, width: 2)
+                    : BorderSide.none,
+              ),
             ),
           ),
+          child: desktop
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  spacing: 9,
+                  children: [
+                    icon,
+                    Flexible(child: label),
+                  ],
+                )
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  spacing: 6,
+                  children: [icon, label],
+                ),
         ),
-        child: desktop
-            ? Row(
-                mainAxisSize: MainAxisSize.min,
-                spacing: 9,
-                children: [
-                  icon,
-                  Flexible(child: label),
-                ],
-              )
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                spacing: 6,
-                children: [icon, label],
-              ),
       ),
     );
   }

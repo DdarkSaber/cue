@@ -9,6 +9,7 @@ class ShortlistScreen extends StatelessWidget {
   Widget build(BuildContext context) => const RoutePage(
     kicker: 'Your shortlist',
     title: 'Will try',
-    body: 'Swipe right on a story and it waits here.',
+    body: 'Nothing here yet. Swipe right on a story, or tap Will try, and it waits here.',
+    actionLabel: 'Find a story',
   );
 }

@@ -24,8 +24,9 @@ class CardStack extends StatelessWidget {
               scale: CueMotion.nextCardScale,
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: const Color(0x8034404C),
+                  color: const Color(0xFF1A2027),
                   borderRadius: BorderRadius.circular(radius),
+                  border: Border.all(color: const Color(0x14FFFFFF)),
                 ),
               ),
             ),
@@ -48,16 +49,18 @@ class _LoadingCard extends StatelessWidget {
     return Semantics(
       label: 'Loading recommendations',
       container: true,
+      liveRegion: true,
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: const Color(0xFF0D1117),
           borderRadius: BorderRadius.circular(radius),
           border: Border.all(color: const Color(0x1AFFFFFF)),
           boxShadow: const [
+            // Softer than the prototype so the next card's edge stays visible.
             BoxShadow(
-              color: Color(0x77000000),
-              blurRadius: 70,
-              offset: Offset(0, 26),
+              color: Color(0x66000000),
+              blurRadius: 48,
+              offset: Offset(0, 18),
             ),
           ],
         ),

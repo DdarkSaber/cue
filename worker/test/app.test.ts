@@ -240,3 +240,71 @@ describe("logging", () => {
     });
   });
 });
+
+describe("hardening added after the security review", () => {
+  it("sends security headers on every response", async () => {
+    for (const res of [
+      await call("/catalog/search?q=x"),
+      await call("/nope"),
+      await postJson("/ai/mood", { text: "" }),
+    ]) {
+      expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+      expect(res.headers.get("Referrer-Policy")).toBe("no-referrer");
+      expect(res.headers.get("Cache-Control")).toBe("no-store");
+      expect(res.headers.get("Content-Security-Policy")).toContain(
+        "default-src 'none'",
+      );
+    }
+  });
+
+  it("ignores POST bodies that are not application/json", async () => {
+    const res = await call("/ai/mood", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ text: "hello" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts application/json with a charset", async () => {
+    const res = await call("/ai/mood", {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ text: "hello" }),
+    });
+    expect(res.status).toBe(501);
+  });
+
+  it("caps streamed bodies that send no Content-Length", async () => {
+    const chunk = new TextEncoder().encode("x".repeat(1024));
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(ctrl) {
+        if (sent++ < 12) ctrl.enqueue(chunk);
+        else ctrl.close();
+      },
+    });
+    const res = await call("/ai/mood", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      // @ts-expect-error Node/undici needs this for streamed request bodies.
+      duplex: "half",
+    });
+    expect(res.status).toBe(413);
+  });
+
+  it.each([
+    "https://s4.anilist.co@evil.example/a.jpg",
+    "https://evil.example\@s4.anilist.co/a.jpg",
+    "https://S4.ANILIST.CO.evil.example/a.jpg",
+    "https://s4.anilist.co%2F@evil.example/a.jpg",
+  ])("image allowlist rejects disguised host %s", (u) =>
+    expect(isAllowedImageUrl(u)).toBe(false),
+  );
+
+  it("treats the literal 'null' origin as a foreign origin", async () => {
+    const res = await call("/catalog/search?q=x", { headers: { Origin: "null" } });
+    expect(res.status).toBe(403);
+  });
+});

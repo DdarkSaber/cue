@@ -11,6 +11,45 @@ WidgetStateProperty<BorderSide?> _side(BorderSide rest) =>
       (s) => s.contains(WidgetState.focused) ? _focusSide : rest,
     );
 
+/// Press feedback: a small local scale to 0.96 (spec 01 section 6, "button
+/// press"). Off when the control is disabled or the system asks for less
+/// motion; the colour/overlay change still shows the press.
+class PressScale extends StatefulWidget {
+  const PressScale({super.key, required this.enabled, required this.child});
+
+  final bool enabled;
+  final Widget child;
+
+  static const pressedScale = 0.96;
+
+  @override
+  State<PressScale> createState() => _PressScaleState();
+}
+
+class _PressScaleState extends State<PressScale> {
+  bool _down = false;
+
+  void _set(bool down) {
+    if (_down != down) setState(() => _down = down);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final active = widget.enabled && !MediaQuery.disableAnimationsOf(context);
+    return Listener(
+      onPointerDown: active ? (_) => _set(true) : null,
+      onPointerUp: (_) => _set(false),
+      onPointerCancel: (_) => _set(false),
+      child: AnimatedScale(
+        scale: active && _down ? PressScale.pressedScale : 1,
+        duration: const Duration(milliseconds: 100),
+        curve: Curves.easeOut,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
 /// Round, quiet icon button (header filter, undo, card info).
 /// Visual size can be smaller than 48, but the hit target never is.
 class CueRoundButton extends StatelessWidget {
@@ -34,57 +73,62 @@ class CueRoundButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onPressed != null;
-    return Tooltip(
-      message: tooltip,
-      child: Semantics(
-        button: true,
-        enabled: enabled,
-        label: tooltip,
-        excludeSemantics: true,
-        child: SizedBox.square(
-          dimension: CueSize.minTarget,
-          child: Center(
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                OutlinedButton(
-                  onPressed: onPressed,
-                  style: ButtonStyle(
-                    fixedSize: WidgetStatePropertyAll(Size.square(visualSize)),
-                    minimumSize: WidgetStatePropertyAll(
-                      Size.square(visualSize),
-                    ),
-                    padding: const WidgetStatePropertyAll(EdgeInsets.zero),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: const WidgetStatePropertyAll(CircleBorder()),
-                    backgroundColor: const WidgetStatePropertyAll(
-                      Color(0x09FFFFFF),
-                    ),
-                    side: _side(const BorderSide(color: Color(0x20FFFFFF))),
-                    foregroundColor: WidgetStatePropertyAll(
-                      enabled ? CueColors.text : CueColors.textMuted,
-                    ),
-                    overlayColor: const WidgetStatePropertyAll(
-                      Color(0x0FFFFFFF),
-                    ),
-                  ),
-                  child: CueIcon(icon, size: iconSize),
-                ),
-                if (badge)
-                  Positioned(
-                    top: 6,
-                    right: 6,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: CueColors.accent,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: CueColors.bg, width: 3),
+    return PressScale(
+      enabled: enabled,
+      child: Tooltip(
+        message: tooltip,
+        child: Semantics(
+          button: true,
+          enabled: enabled,
+          label: tooltip,
+          excludeSemantics: true,
+          child: SizedBox.square(
+            dimension: CueSize.minTarget,
+            child: Center(
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  OutlinedButton(
+                    onPressed: onPressed,
+                    style: ButtonStyle(
+                      fixedSize: WidgetStatePropertyAll(
+                        Size.square(visualSize),
+                      ),
+                      minimumSize: WidgetStatePropertyAll(
+                        Size.square(visualSize),
+                      ),
+                      padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      shape: const WidgetStatePropertyAll(CircleBorder()),
+                      backgroundColor: const WidgetStatePropertyAll(
+                        Color(0x09FFFFFF),
+                      ),
+                      side: _side(const BorderSide(color: Color(0x20FFFFFF))),
+                      foregroundColor: WidgetStatePropertyAll(
+                        enabled ? CueColors.text : CueColors.textMuted,
+                      ),
+                      overlayColor: const WidgetStatePropertyAll(
+                        Color(0x0FFFFFFF),
                       ),
                     ),
+                    child: CueIcon(icon, size: iconSize),
                   ),
-              ],
+                  if (badge)
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: CueColors.accent,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: CueColors.bg, width: 3),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
