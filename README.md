@@ -1,67 +1,78 @@
 # Cue
 
-A swipe-card recommender for anime, K/C/J-dramas, series, manhwa, manhua and manga. Open it, see one poster, decide with a swipe. Personal history stays on the device.
+A swipe-card recommender for anime, K/C/J-dramas, series, movies, manhwa, manhua and manga. Open it, see one poster, decide with a swipe. Personal history stays on the device.
 
-> Status: **M0 (scaffold) done.** The app shell, theme, navigation and Worker skeleton exist. There are no real cards yet: the catalog arrives in M1 and the swipe deck in M2. See [Milestones](#milestones).
+Free and non-commercial. No accounts, ads, analytics or trackers.
+
+- Web app: https://cue-next.cue-worker.workers.dev
+- Android: `app/build/app/outputs/flutter-apk/app-release.apk` after `flutter build apk --release`
 
 ## How it works
 
 ```
-Flutter app (Android, web; iOS later)          Cloudflare Worker (TypeScript)
-  deck, gestures, ranker, imports      HTTPS     fixed endpoints only
-  local database (Drift / SQLite)   ---------->  /catalog/*  AniList, TMDB, TVmaze
-  secure storage for OAuth tokens                /oauth/*    token exchange
-                                                 /ai/mood    optional LLM
-                                                 KV cache of public catalog data
+Flutter app (Android, web; iOS later)                Cloudflare Worker (TypeScript)
+  deck, gestures, ranker, imports, sync    HTTPS       fixed endpoints only
+  local database (Drift / SQLite)       ----------->   /catalog/*  TMDB, TVmaze (+ KV cache)
+  AniList queries (fixed, public)                      /oauth/*    token exchange
+       |                                               /import/*   MAL, Trakt list reads
+       v HTTPS                                         /sync/*     encrypted blobs (D1)
+  graphql.anilist.co
 ```
 
-- **Swipes.** Right = Will try (shortlist). Down = Not now (hidden 14 days). Up = Watched / Read it (seen, not "completed"). Left = Not interested (until restored). Buttons, arrow keys and screen-reader actions do the same thing, and Undo always works.
-- **Recommendations are rules, not a model.** The ranker runs on the device: hard filters (exclusions, deferrals, seen titles, the filter sheet), then a score built from tag overlap with the titles you rated, the mood you picked, catalog quality, freshness and a little exploration. Each card gets one templated reason line that is true ("Hype like X, which you rewatched"), never a fake match percentage.
-- **Moods are tag sets, not sentiment analysis.** Hype, Comfort, Gripping and Feels each map to a list of catalog tags. The "Tell me what you feel like" box is parsed on the device with keyword rules first. Only if those find nothing, and only if the person turns AI on in Settings, the sentence alone (max 200 characters, no history) goes to `/ai/mood`, which asks Gemini (then Groq) to turn it into filters. Without a key, everything still works on rules.
-- **Imports are local.** Files (MAL XML, Netflix CSV, Mihon backup, CSV, Cue backup) are parsed on the device, previewed, then committed in one batch that can be undone. Sign-in sources (MAL, AniList, Trakt) use the provider's own page with PKCE and are read-only.
-- **Posters** come only from AniList, TMDB or TVmaze, proxied through an allowlist.
+- **Swipes.** Default: right = Will try, down = Not now (hidden 14 days), up = Watched / Read it (seen, not "completed"), left = Not interested (until restored). Settings > Swipe actions lets you remap any direction. Buttons, arrow keys and screen-reader actions do the same thing, and Undo always works, even after a restart.
+- **Recommendations are rules, not a model.** The ranker runs on the device: hard filters (hidden, deferred, saved, seen titles and the filter sheet), then a score from tags you rated well, the mood you picked, catalog quality, freshness and a little exploration. A small in-session lean follows what you keep or skip right now (never stored). Each card gets one true reason line, never a fake match percentage.
+- **Moods are tag sets.** Hype, Comfort, Gripping and Feels map to catalog tags. "Tell me what you feel like" is read on the device with keyword rules. AI parsing is not used.
+- **AniList is called from the device.** AniList refuses requests from Cloudflare Workers, allows browser origins and needs no key, so anime and reading lookups go straight from the app with fixed queries. Everything else goes through the Worker.
+- **Imports are local.** Files (MAL XML, Netflix CSV, Mihon backup, CSV, Cue backup) are detected by their bytes, parsed on the device, matched (catalog id first, then exact title, else a review queue), previewed, and committed in one batch you can undo. Sign-in sources use the provider's own page with PKCE, read once, keep no login. AniList lists also work by public username.
+- **Sync is optional and end-to-end encrypted.** A 32-character code encrypts the library on the device (AES-256-GCM, keys from HKDF). The Worker stores only ciphertext and a hash of the write token.
+- **Posters** come only from AniList, TMDB or TVmaze.
 
-## Where the API keys go
+## Keys (all optional, all free)
 
-**Never in the app.** The app binary and web bundle contain no keys. All keys live in the Worker as Cloudflare secrets.
+Never in the app. Set them on the Worker from `worker/` with `npx wrangler secret put NAME`.
 
-| Secret | Needed for | Milestone | Free? |
-|---|---|---|---|
-| none | AniList catalog (anime, manga, manhwa, manhua) | M1 | public API, no key |
-| none | TVmaze fallback (series) | M1 | public API, no key |
-| `TMDB_API_KEY` | Dramas and series from TMDB, where-to-watch | M1 | free key, attribution required |
-| `MAL_CLIENT_ID` | MyAnimeList sign-in import | M6 | free app registration |
-| `ANILIST_CLIENT_ID`, `ANILIST_CLIENT_SECRET` | AniList sign-in import | M6 | free app registration |
-| `TRAKT_CLIENT_ID`, `TRAKT_CLIENT_SECRET` | Trakt sign-in import | M6 | free app registration |
-| `GEMINI_API_KEY`, `GROQ_API_KEY` | Optional "Tell me" AI parsing | M7 | free tiers |
+| Secret | Turns on | Register at |
+|---|---|---|
+| `TMDB_API_KEY` | Movies, series, K/C/J-dramas, where to watch | themoviedb.org > Settings > API (non-commercial) |
+| `MAL_CLIENT_ID` (+ `MAL_CLIENT_SECRET` for "web" apps) | MyAnimeList sign-in and username import | myanimelist.net/apiconfig |
+| `ANILIST_CLIENT_ID`, `ANILIST_CLIENT_SECRET` | AniList sign-in (username import needs nothing) | anilist.co/settings/developer |
+| `TRAKT_CLIENT_ID`, `TRAKT_CLIENT_SECRET` | Trakt sign-in | trakt.tv/oauth/applications |
 
-Local development: copy `worker/.dev.vars.example` to `worker/.dev.vars` (gitignored) and fill in what you have. Deployed: `npx wrangler secret put TMDB_API_KEY` (and so on) from `worker/`. Until a key exists, the matching endpoint returns `501` and the app uses mocks behind the same interface.
+Redirect URIs to register: `cue://oauth/<provider>` (Android) and `https://cue-next.cue-worker.workers.dev/auth.html` (web). Without a key, that source shows as "not set up" and the rest keeps working.
 
 ## Run it
 
-Requirements: Flutter (stable), Android SDK with an emulator, Chrome, Node 22+.
+Requirements: Flutter (stable), Android SDK with an emulator, Node 22+.
 
 ```sh
-# App
-cd app
-flutter pub get
-flutter run -d chrome --web-port 7357     # web
-flutter run -d <emulator-id>              # Android
-flutter analyze && flutter test
-
 # Worker
 cd worker
 npm ci
 npm test && npm run typecheck
 npx wrangler dev                          # local Worker on :8787
+
+# App
+cd app
+flutter pub get
+flutter analyze && flutter test
+flutter run -d <emulator-id>              # debug build talks to 10.0.2.2:8787
+tool/build_web.sh http://127.0.0.1:8787   # web build for the local Worker
 ```
+
+## Deploy (Cloudflare free plan)
+
+```sh
+cd worker && npx wrangler d1 migrations apply cue-sync --remote && npx wrangler deploy
+cd app && tool/build_web.sh https://cue-worker.cue-worker.workers.dev && npx --prefix ../worker wrangler deploy
+```
+
+Release Android builds sign with the key named in `app/android/key.properties` (gitignored; the keystore lives outside the repo). Without it they fall back to the debug key.
 
 ## Repository layout
 
 ```
-app/        Flutter app (lib/app, lib/features, lib/domain, lib/data, lib/imports)
-worker/     Cloudflare Worker (Hono, zod, Vitest)
-fixtures/   Synthetic sample files only
+app/        Flutter app (lib/app, lib/features, lib/domain, lib/data, lib/imports, lib/sync)
+worker/     Cloudflare Worker (Hono, zod, Vitest, D1 migrations)
 ```
 
 ## Privacy and security rules
@@ -69,7 +80,7 @@ fixtures/   Synthetic sample files only
 - No analytics, ads, trackers or remote fonts. DM Sans is bundled.
 - Personal data is never committed or bundled. `.gitignore` blocks common export filenames.
 - No password field for any third-party service; sign-ins use the provider's page.
-- The Worker exposes fixed endpoints only: no URL pass-through, image host allowlist, per-IP rate limit, 8 KB request cap, logs without bodies or query strings.
+- The Worker exposes fixed endpoints only: no URL pass-through, image host allowlist, per-IP rate limits, 8 KB request cap (2 MB for encrypted sync), logs without bodies, query strings or tokens.
 - Android backups are disabled so the local library never leaves the device that way.
 
 ## Milestones
@@ -77,10 +88,12 @@ fixtures/   Synthetic sample files only
 | | Milestone | State |
 |---|---|---|
 | M0 | Scaffold: app shell, theme, Worker skeleton, CI | done |
-| M1 | Catalog: `/catalog/discover` and `/catalog/title`, KV cache, local catalog tables, image cache; real posters, offline after first run | next |
-| M2 | Deck: card, gesture engine, four actions, keys, toast, undo, decisions persisted | |
-| M3 | Ranker, mood rail, filter sheet, reasons, details sheet, desktop split card | |
-| M4 | Imports: Upload any file, preview, commit, undo import | |
-| M5 | Library, Will try, Settings (export, delete, motion, privacy) | |
-| M6 | Sign-in imports (MAL, AniList, Trakt), Mihon adapter | |
-| M7 | Optional AI mood parsing, reading badges, polish, Play Store internal release | |
+| M1 | Catalog: discover, title, search, KV cache, local catalog, posters, offline | done |
+| M2 | Deck: card, gesture engine, four actions, keys, toast, undo, decisions persisted | done |
+| M3 | Ranker, mood rail, filter sheet, reasons, details sheet, desktop split card | done |
+| M4 | Imports: upload any file, preview, commit, undo import | done |
+| M5 | Library, Will try, Settings (swipe remap, export, delete, motion, privacy) | done |
+| M6 | Sign-in imports (MAL, AniList, Trakt), Mihon adapter | done (keys needed for sign-in) |
+| M7 | Icon, release signing, reading badges, polish | done (AI mood parsing left off on purpose) |
+| M8 | End-to-end encrypted sync between devices | done |
+| Later | Live mood analyser, iOS, MyDramaList, Prime Video, removals that sync | |
