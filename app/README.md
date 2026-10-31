@@ -1,17 +1,13 @@
-# cue
+# Cue app (Flutter)
 
-Cue: your next story
+Android and web client for Cue. See the root `README.md` for what Cue does, where keys live and how to run everything.
 
-## Getting Started
+```sh
+flutter pub get
+flutter run -d chrome --web-port 7357
+flutter analyze && flutter test
+flutter test --tags golden --update-goldens   # after an intended visual change
+flutter build web --release --no-web-resources-cdn
+```
 
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+No API keys belong in this app. It only talks to the Cue Worker.

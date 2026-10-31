@@ -1,0 +1,17 @@
+# Copy to worker/.dev.vars for `wrangler dev` and fill in what you have.
+# .dev.vars is gitignored. In production use `npx wrangler secret put <NAME>`.
+# Leave a value empty and its endpoint keeps answering 501.
+
+# M1: dramas and series from TMDB (free key; AniList and TVmaze need none)
+TMDB_API_KEY=
+
+# M6: read-only sign-in imports
+MAL_CLIENT_ID=
+ANILIST_CLIENT_ID=
+ANILIST_CLIENT_SECRET=
+TRAKT_CLIENT_ID=
+TRAKT_CLIENT_SECRET=
+
+# M7: optional "Tell me" mood parsing (free tiers)
+GEMINI_API_KEY=
+GROQ_API_KEY=
