@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 /// Deployed Worker. Overridden with --dart-define=CUE_API=... when needed.
-const _releaseApi = 'https://cue-worker.cue-app.workers.dev';
+const _releaseApi = 'https://cue-worker.cue-worker.workers.dev';
 
 /// Base URL of the Cue Worker. Debug builds talk to `wrangler dev`.
 String get cueApiBase {

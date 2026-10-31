@@ -1,5 +1,5 @@
 import { UpstreamError } from "./types";
-import { UPSTREAM_TIMEOUT_MS } from "./upstream";
+import { UPSTREAM_TIMEOUT_MS, USER_AGENT } from "./upstream";
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const IMAGE_TYPES = /^image\/(jpeg|png|webp|gif|avif)$/;
@@ -13,6 +13,7 @@ export async function proxyImage(url: string): Promise<Response> {
   let res: Response;
   try {
     res = await fetch(url, {
+      headers: { "User-Agent": USER_AGENT },
       redirect: "manual",
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       cf: { cacheTtl: 7 * 24 * 60 * 60, cacheEverything: true },

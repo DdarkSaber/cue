@@ -202,7 +202,11 @@ export function createApp() {
 
   app.onError((err, c) => {
     if (err instanceof NotConfiguredError) return fail(c, 503, "not_configured");
-    if (err instanceof UpstreamError) return fail(c, 502, "upstream_error");
+    if (err instanceof UpstreamError) {
+      // The message is a fixed reason or an HTTP status, never request data.
+      console.error(JSON.stringify({ e: "upstream", m: err.message, r: c.req.routePath }));
+      return fail(c, 502, "upstream_error");
+    }
     // Error class only; messages can carry request data.
     console.error(JSON.stringify({ e: err.name, r: c.req.routePath }));
     return fail(c, 500, "internal");

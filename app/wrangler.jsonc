@@ -1,0 +1,12 @@
+{
+  // Static hosting for the Flutter web build (Workers static assets, free).
+  // Build first with tool/build_web.sh, then: npx wrangler deploy
+  "$schema": "../worker/node_modules/wrangler/config-schema.json",
+  "name": "cue-next",
+  "compatibility_date": "2026-08-15",
+  "observability": { "enabled": false },
+  "assets": {
+    "directory": "build/web",
+    "not_found_handling": "single-page-application"
+  }
+}

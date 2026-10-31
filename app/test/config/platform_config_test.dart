@@ -49,7 +49,12 @@ void main() {
     expect(index, contains("connect-src 'self' CUE_API_ORIGIN"));
     expect(headers, contains("connect-src 'self' CUE_API_ORIGIN"));
     expect(index, isNot(contains('http://')));
-    expect(index, isNot(contains('https://')));
+    // Only AniList, which serves the device directly, is named in the CSP.
+    final hosts = RegExp(r'https://[^\s;"]+')
+        .allMatches(index)
+        .map((m) => m[0])
+        .toSet();
+    expect(hosts, {'https://s4.anilist.co', 'https://graphql.anilist.co'});
     for (final h in [
       "frame-ancestors 'none'",
       'X-Content-Type-Options: nosniff',

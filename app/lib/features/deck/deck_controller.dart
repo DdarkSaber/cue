@@ -217,8 +217,9 @@ class DeckController extends Notifier<DeckState> {
                 .message
           : null,
       clearEmpty: next.isNotEmpty,
-      notice: notice,
-      clearNotice: notice == null,
+      // "Showing saved stories" only when there are saved stories to show.
+      notice: pool.isEmpty ? null : notice,
+      clearNotice: notice == null || pool.isEmpty,
       canUndo: await ref.read(decisionServiceProvider).canUndo(profileId),
     );
   }

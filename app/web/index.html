@@ -7,7 +7,7 @@
   <!-- frame-ancestors only works as a header: see web/_headers.
        CUE_API_ORIGIN is replaced with the Worker origin by
        tool/build_web.sh (dev: wrangler dev; release: workers.dev). -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob: CUE_API_ORIGIN; connect-src 'self' CUE_API_ORIGIN; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob: CUE_API_ORIGIN https://s4.anilist.co; connect-src 'self' CUE_API_ORIGIN https://graphql.anilist.co https://s4.anilist.co; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'">
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#080A0D">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">

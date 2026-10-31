@@ -4,13 +4,13 @@ import 'dart:typed_data';
 import 'package:cue/data/backup_service.dart';
 import 'package:cue/data/catalog_gateway.dart';
 import 'package:cue/data/catalog_repository.dart';
-import 'package:cue/data/db/database.dart';
 import 'package:cue/data/library_repository.dart';
 import 'package:cue/data/profile_repository.dart';
 import 'package:cue/domain/decisions.dart';
 import 'package:cue/domain/models/decision.dart';
 import 'package:cue/domain/models/library.dart';
 import 'package:cue/domain/models/settings.dart';
+import 'package:cue/domain/models/title.dart';
 import 'package:cue/imports/detect.dart';
 import 'package:cue/imports/import_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,8 +34,7 @@ void main() {
         for (var i = 1; i <= 5; i++)
           CatalogItemDto({...item(i), 'idMal': 100 + i}),
       ]);
-      Future<dynamic> t(int i) async =>
-          (await catalog.titleById('anilist:$i'))!;
+      Future<Title> t(int i) async => (await catalog.titleById('anilist:$i'))!;
       await library.saveEntry(
         id,
         'anilist:1',

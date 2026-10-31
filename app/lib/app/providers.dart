@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/anilist_client.dart';
 import '../data/backup_service.dart';
 import '../data/catalog_gateway.dart';
 import '../data/catalog_repository.dart';
@@ -21,7 +22,11 @@ final databaseProvider = Provider<CueDatabase>(
 );
 
 final catalogGatewayProvider = Provider<CatalogGateway>(
-  (ref) => HttpCatalogGateway(cueApiBase, proxyImages: kIsWeb),
+  (ref) => HybridCatalogGateway(
+    HttpCatalogGateway(cueApiBase, proxyImages: kIsWeb),
+    AniListClient(),
+    web: kIsWeb,
+  ),
 );
 
 final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);

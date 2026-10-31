@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../domain/models/title.dart';
+import 'anilist_client.dart';
 
 /// A catalog title as the Worker sends it.
 class CatalogItemDto {
@@ -364,4 +365,128 @@ class HttpCatalogGateway implements CatalogGateway {
             .replace(queryParameters: {'u': posterUrl})
             .toString()
       : posterUrl;
+}
+
+/// Routes anime and reading kinds to AniList on the device (AniList blocks
+/// Cloudflare Workers) and everything else to the Cue Worker.
+class HybridCatalogGateway implements CatalogGateway {
+  HybridCatalogGateway(this.worker, this.anilist, {this.web = false});
+
+  final HttpCatalogGateway worker;
+  final AniListClient anilist;
+
+  /// Web builds load non-AniList posters through the Worker for CORS.
+  final bool web;
+
+  bool _ani(MediaKind? k) => k != null && AniListClient.kinds.contains(k);
+
+  @override
+  Future<CatalogPageDto> discover(
+    MediaKind kind, {
+    String? mood,
+    int page = 1,
+  }) => _ani(kind)
+      ? anilist.discover(kind, mood: mood, page: page)
+      : worker.discover(kind, mood: mood, page: page);
+
+  @override
+  Future<CatalogItemDto?> title(String provider, String id, {String? type}) =>
+      provider == 'anilist'
+      ? anilist.title(id)
+      : worker.title(provider, id, type: type);
+
+  @override
+  Future<List<CatalogItemDto>> search(String query, {MediaKind? kind}) async {
+    if (_ani(kind)) return anilist.search(query, kind: kind);
+    if (kind != null) return worker.search(query, kind: kind);
+    final results = await Future.wait([
+      anilist.search(query).catchError((Object _) => <CatalogItemDto>[]),
+      worker.search(query).catchError((Object _) => <CatalogItemDto>[]),
+    ]);
+    return [...results[0].take(6), ...results[1].take(6)];
+  }
+
+  @override
+  Future<MatchResponse> match(
+    List<MatchQuery> items, {
+    List<int> malAnime = const [],
+    List<int> malManga = const [],
+  }) async {
+    final out = [for (final _ in items) <CatalogItemDto>[]];
+    final aniIdx = [
+      for (var i = 0; i < items.length; i++)
+        if (_ani(items[i].kind) || items[i].kind == null) i,
+    ];
+    final screenIdx = [
+      for (var i = 0; i < items.length; i++)
+        if (!_ani(items[i].kind)) i,
+    ];
+    if (aniIdx.isNotEmpty) {
+      final r = await anilist.searchMany([for (final i in aniIdx) items[i]]);
+      for (var j = 0; j < aniIdx.length; j++) {
+        out[aniIdx[j]].addAll(r[j]);
+      }
+    }
+    if (screenIdx.isNotEmpty) {
+      try {
+        final r = await worker.match([for (final i in screenIdx) items[i]]);
+        for (var j = 0; j < screenIdx.length && j < r.results.length; j++) {
+          out[screenIdx[j]].addAll(r.results[j]);
+        }
+      } on CatalogUnavailable {
+        // Screen titles stay unresolved; anime and reading still match.
+      }
+    }
+    final mal = [
+      ...await anilist.byMalIds(malAnime, 'ANIME'),
+      ...await anilist.byMalIds(malManga, 'MANGA'),
+    ];
+    return MatchResponse(out, mal);
+  }
+
+  @override
+  Future<WatchProvidersDto> providers(
+    String tmdbId,
+    String type,
+    String region,
+  ) => worker.providers(tmdbId, type, region);
+
+  @override
+  String imageUrl(String posterUrl) {
+    if (!web) return posterUrl;
+    // AniList's image CDN allows Cue's origin; others go through the Worker.
+    return Uri.tryParse(posterUrl)?.host == 's4.anilist.co'
+        ? posterUrl
+        : worker.imageUrl(posterUrl);
+  }
+
+  @override
+  Future<OAuthConfigDto> oauthConfig() => worker.oauthConfig();
+
+  @override
+  Future<String> exchangeCode(
+    String provider, {
+    required String code,
+    required String redirectUri,
+    String? codeVerifier,
+  }) => worker.exchangeCode(
+    provider,
+    code: code,
+    redirectUri: redirectUri,
+    codeVerifier: codeVerifier,
+  );
+
+  @override
+  Future<List<Map<String, dynamic>>> listByUser(String provider, String name) =>
+      provider == 'anilist'
+      ? anilist.lists(name: name)
+      : worker.listByUser(provider, name);
+
+  @override
+  Future<List<Map<String, dynamic>>> listSignedIn(
+    String provider,
+    String token,
+  ) => provider == 'anilist'
+      ? anilist.lists(token: token)
+      : worker.listSignedIn(provider, token);
 }

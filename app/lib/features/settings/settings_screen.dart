@@ -533,7 +533,7 @@ class _PrivacyPageState extends ConsumerState<PrivacyPage> {
         ),
         const CueSectionLabel('What leaves the device'),
         const Text(
-          'Catalog lookups go to the Cue Worker, which asks AniList, TMDB or TVmaze. They include title names or catalog ids, never your history. Those services can see the Worker\'s address, not yours; posters on the web load through the Worker too. On phones, posters load from the catalog image hosts directly, which can see your IP address.',
+          'Anime, manga, manhwa and manhua lookups go straight from this device to AniList (it does not accept requests through Cloudflare). Dramas, series and movies go through the Cue Worker to TMDB or TVmaze. Lookups include title names or catalog ids, never your history. AniList and the poster hosts can see your IP address, like any website you visit.',
           style: _body,
         ),
         const SizedBox(height: CueSpace.sm),
