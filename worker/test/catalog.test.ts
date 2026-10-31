@@ -4,7 +4,7 @@ import { normalizeAniList } from "../src/catalog/anilist";
 import { normalizeTmdb } from "../src/catalog/tmdb";
 import { normalizeTvmaze } from "../src/catalog/tvmaze";
 import { plainText } from "../src/catalog/types";
-import { call, emptyUpstream, fakeEnv, fakeKv, mockUpstream } from "./helpers";
+import { call, emptyUpstream, fakeEnv, fakeKv, mockUpstream, postJson } from "./helpers";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -248,5 +248,46 @@ describe("image proxy", () => {
     await call(img("https://s4.anilist.co/file/a.png"), {}, env);
     expect((env.IMAGE_LIMITER as unknown as { keys: string[] }).keys).toHaveLength(1);
     expect((env.RATE_LIMITER as unknown as { keys: string[] }).keys).toHaveLength(0);
+  });
+});
+
+describe("batch match for imports", () => {
+  it("sends titles as variables in one aliased AniList query", async () => {
+    const calls = mockUpstream(vi);
+    const res = await postJson("/catalog/match", {
+      items: [
+        { q: "Synthetic One", kind: "anime" },
+        { q: 'Two") { evil }', kind: "manhwa" },
+      ],
+    });
+    expect(res.status).toBe(200);
+    const sent = JSON.parse(String(calls[0]!.init!.body));
+    expect(sent.variables).toEqual({ q0: "Synthetic One", q1: 'Two") { evil }' });
+    expect(sent.query).not.toContain("evil");
+    expect(sent.query).toContain("s1: Page(page: 1, perPage: 3)");
+    expect(sent.query).toContain("countryOfOrigin: KR");
+  });
+
+  it("looks MAL ids up in one call per type", async () => {
+    const calls = mockUpstream(vi);
+    await postJson("/catalog/match", { malAnime: [1, 2], malManga: [3] });
+    const bodies = calls.map((c) => JSON.parse(String(c.init!.body)));
+    expect(bodies.filter((b) => b.variables?.ids)).toHaveLength(2);
+  });
+
+  it("caps a batch at 15 titles", async () => {
+    mockUpstream(vi);
+    const items = Array.from({ length: 16 }, (_, i) => ({ q: `t${i}` }));
+    expect((await postJson("/catalog/match", { items })).status).toBe(400);
+  });
+
+  it("screen titles go to TVmaze without a TMDB key; movies are skipped", async () => {
+    const calls = mockUpstream(vi);
+    const res = await postJson("/catalog/match", {
+      items: [{ q: "Synthetic Drama", kind: "kdrama" }, { q: "Film", kind: "movie" }],
+    });
+    const body = (await res.json()) as { results: unknown[][] };
+    expect(body.results).toHaveLength(2);
+    expect(calls.filter((c) => c.url.hostname === "api.tvmaze.com")).toHaveLength(1);
   });
 });

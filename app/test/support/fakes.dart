@@ -103,6 +103,33 @@ class FakeGateway implements CatalogGateway {
     return null;
   }
 
+  /// Titles the fake matcher knows, keyed by lower-cased query.
+  final matchCatalog = <String, List<Map<String, dynamic>>>{};
+  final malCatalog = <int, Map<String, dynamic>>{};
+  int matchCalls = 0;
+
+  @override
+  Future<MatchResponse> match(
+    List<MatchQuery> items, {
+    List<int> malAnime = const [],
+    List<int> malManga = const [],
+  }) async {
+    matchCalls++;
+    if (offline) throw const CatalogUnavailable('offline');
+    return MatchResponse(
+      [
+        for (final i in items)
+          (matchCatalog[i.q.toLowerCase()] ?? const [])
+              .map(CatalogItemDto.new)
+              .toList(),
+      ],
+      [
+        for (final id in [...malAnime, ...malManga])
+          if (malCatalog[id] != null) CatalogItemDto(malCatalog[id]!),
+      ],
+    );
+  }
+
   @override
   Future<List<CatalogItemDto>> search(String query, {MediaKind? kind}) async {
     calls.add('search:$query');
@@ -127,4 +154,33 @@ class FakeGateway implements CatalogGateway {
 
   @override
   String imageUrl(String posterUrl) => posterUrl;
+
+  OAuthConfigDto config = const OAuthConfigDto();
+  final userLists = <String, List<Map<String, dynamic>>>{};
+
+  @override
+  Future<OAuthConfigDto> oauthConfig() async => config;
+
+  @override
+  Future<String> exchangeCode(
+    String provider, {
+    required String code,
+    required String redirectUri,
+    String? codeVerifier,
+  }) async => 'token';
+
+  @override
+  Future<List<Map<String, dynamic>>> listByUser(
+    String provider,
+    String name,
+  ) async {
+    if (offline) throw const CatalogUnavailable('offline');
+    return userLists['$provider:$name'] ?? const [];
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> listSignedIn(
+    String provider,
+    String token,
+  ) async => const [];
 }

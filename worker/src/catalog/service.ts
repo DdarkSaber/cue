@@ -1,8 +1,10 @@
 import type { Env } from "../env";
 import {
   ANILIST_KINDS,
+  byMalIds,
   discoverAniList,
   searchAniList,
+  searchManyAniList,
   titleAniList,
 } from "./anilist";
 import { TTL, cached } from "./cache";
@@ -82,4 +84,42 @@ export function providers(env: Env, id: string, type: TmdbType, region: string) 
     TTL.providers,
     () => providersTmdb(env.TMDB_API_KEY, id, type, region),
   );
+}
+
+/**
+ * Batch match for imports. Reading and anime titles go to AniList in one
+ * aliased query; screen titles go to TMDB (if keyed) or TVmaze one by one,
+ * staying well under the per-request subrequest limit.
+ */
+export async function match(
+  env: Env,
+  items: { q: string; kind?: MediaKind }[],
+  malAnime: number[],
+  malManga: number[],
+) {
+  const isScreen = (k?: MediaKind) => !!k && !ANILIST_KINDS.has(k);
+  const aniIdx = items.map((it, i) => (isScreen(it.kind) ? -1 : i)).filter((i) => i >= 0);
+  const screenIdx = items.map((it, i) => (isScreen(it.kind) || !it.kind ? i : -1)).filter((i) => i >= 0);
+  const results: CatalogItem[][] = items.map(() => []);
+
+  const [ani, malA, malM] = await Promise.all([
+    searchManyAniList(aniIdx.map((i) => items[i]!)),
+    byMalIds(malAnime, "ANIME"),
+    byMalIds(malManga, "MANGA"),
+  ]);
+  aniIdx.forEach((i, j) => results[i]!.push(...(ani[j] ?? [])));
+
+  for (const i of screenIdx) {
+    const it = items[i]!;
+    if (it.kind === "movie" && !env.TMDB_API_KEY) continue;
+    try {
+      const found = env.TMDB_API_KEY
+        ? await searchTmdb(env.TMDB_API_KEY, it.q, it.kind)
+        : await searchTvmaze(it.q);
+      results[i]!.push(...found.slice(0, 4));
+    } catch {
+      // One failed lookup leaves that title unresolved, not the batch.
+    }
+  }
+  return { results, mal: [...malA, ...malM] };
 }

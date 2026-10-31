@@ -82,3 +82,33 @@ export const oauthBody = z.object({
 });
 
 export const moodBody = z.object({ text: z.string().trim().min(1).max(200) });
+
+/**
+ * Batch matching for imports: at most 15 titles (AniList caps query
+ * complexity at 500; 15 aliases x 3 results stays under it), plus MAL ids.
+ */
+export const matchBody = z.object({
+  items: z
+    .array(
+      z.object({
+        q: z.string().trim().min(1).max(160),
+        kind: mediaKind.optional(),
+      }),
+    )
+    .max(15)
+    .default([]),
+  malAnime: z.array(z.number().int().positive().max(1e9)).max(50).default([]),
+  malManga: z.array(z.number().int().positive().max(1e9)).max(50).default([]),
+});
+
+/** Usernames on MAL and AniList: letters, digits, underscore, hyphen. */
+export const userParams = z.object({
+  name: z.string().regex(/^[A-Za-z0-9_-]{2,32}$/),
+});
+export const listProvider = z.object({ provider: oauthProvider });
+
+/** Bearer tokens are opaque; bounded and printable only. */
+export function bearer(header: string | undefined): string | null {
+  const m = /^Bearer ([!-~]{10,4096})$/.exec(header ?? "");
+  return m ? m[1]! : null;
+}

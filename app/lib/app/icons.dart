@@ -12,6 +12,7 @@ enum CueIcons {
   undo('M4 10h10a6 6 0 1 1-4 11M4 10l5-5m-5 5 5 5'),
   info('M12 3a9 9 0 1 0 0.001 0zM12 11v6m0-10v1'),
   arrow('M5 12h14m-5-5 5 5-5 5'),
+  back('M19 12H5m5-5-5 5 5 5'),
   down('M12 5v14m-5-5 5 5 5-5'),
   up('M12 19V5m-5 5 5-5 5 5'),
   library('M4 4h4v16H4zm7 0h4v16h-4zm7 1 4 14'),

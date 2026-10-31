@@ -188,3 +188,49 @@ export async function searchAniList(
   const p = data?.Page as Media | undefined;
   return ((p?.media as Media[]) ?? []).map(normalizeAniList);
 }
+
+const BY_MAL = `query ($ids: [Int], $type: MediaType) {
+  Page(page: 1, perPage: 50) {
+    media(idMal_in: $ids, type: $type) { ${FIELDS} }
+  }
+}`;
+
+/** Titles by MAL id, 50 per call. Unknown ids are simply absent. */
+export async function byMalIds(
+  ids: number[],
+  type: "ANIME" | "MANGA",
+): Promise<CatalogItem[]> {
+  if (ids.length === 0) return [];
+  const data = await query(BY_MAL, { ids: ids.slice(0, 50), type });
+  const p = data?.Page as Media | undefined;
+  return ((p?.media as Media[]) ?? []).map(normalizeAniList);
+}
+
+/**
+ * Several title searches in one request. The query text is built only from
+ * fixed fragments and numbered aliases; titles travel as variables.
+ */
+export async function searchManyAniList(
+  items: { q: string; kind?: MediaKind }[],
+): Promise<CatalogItem[][]> {
+  if (items.length === 0) return [];
+  const vars: Record<string, unknown> = {};
+  const decls: string[] = [];
+  const parts: string[] = [];
+  items.forEach((it, i) => {
+    const k = it.kind && ANILIST_KINDS.has(it.kind) ? kindQuery(it.kind) : undefined;
+    vars[`q${i}`] = it.q;
+    decls.push(`$q${i}: String`);
+    const typeArg = k ? `, type: ${k.type}` : "";
+    const countryArg = k?.country && it.kind !== "anime" ? `, countryOfOrigin: ${k.country}` : "";
+    parts.push(
+      `s${i}: Page(page: 1, perPage: 3) { media(search: $q${i}${typeArg}${countryArg}, isAdult: false) { ${FIELDS} } }`,
+    );
+  });
+  const q = `query (${decls.join(", ")}) { ${parts.join(" ")} }`;
+  const data = await query(q, vars);
+  return items.map((_, i) => {
+    const page = data?.[`s${i}`] as Media | undefined;
+    return ((page?.media as Media[]) ?? []).map(normalizeAniList);
+  });
+}

@@ -80,7 +80,58 @@ class CatalogUnavailable implements Exception {
   String toString() => 'CatalogUnavailable($code)';
 }
 
+/// One title to match, as sent to the Worker.
+class MatchQuery {
+  const MatchQuery(this.q, [this.kind]);
+  final String q;
+  final MediaKind? kind;
+}
+
+class MatchResponse {
+  const MatchResponse(this.results, this.mal);
+
+  /// Candidates per query, in order.
+  final List<List<CatalogItemDto>> results;
+
+  /// Titles found by MAL id.
+  final List<CatalogItemDto> mal;
+}
+
+/// Which sign-in sources the Worker has client ids for.
+class OAuthConfigDto {
+  const OAuthConfigDto({this.mal, this.anilist, this.trakt});
+  final String? mal;
+  final String? anilist;
+  final String? trakt;
+}
+
 abstract class CatalogGateway {
+  Future<OAuthConfigDto> oauthConfig();
+
+  /// Exchanges an authorization code; returns the access token.
+  Future<String> exchangeCode(
+    String provider, {
+    required String code,
+    required String redirectUri,
+    String? codeVerifier,
+  });
+
+  /// A public list by username (AniList: no key; MAL: client id).
+  Future<List<Map<String, dynamic>>> listByUser(String provider, String name);
+
+  /// The signed-in person's list. The token is sent once, then dropped.
+  Future<List<Map<String, dynamic>>> listSignedIn(
+    String provider,
+    String token,
+  );
+
+  /// Batch match for imports: up to 15 titles and 50 MAL ids per type.
+  Future<MatchResponse> match(
+    List<MatchQuery> items, {
+    List<int> malAnime = const [],
+    List<int> malManga = const [],
+  });
+
   Future<CatalogPageDto> discover(MediaKind kind, {String? mood, int page = 1});
   Future<CatalogItemDto?> title(String provider, String id, {String? type});
   Future<List<CatalogItemDto>> search(String query, {MediaKind? kind});
@@ -128,6 +179,126 @@ class HttpCatalogGateway implements CatalogGateway {
       throw CatalogUnavailable(code ?? 'http_${res.statusCode}');
     }
     return body;
+  }
+
+  Future<Object?> _send(http.Request req) async {
+    final http.Response res;
+    try {
+      res = await http.Response.fromStream(
+        await _client.send(req).timeout(const Duration(seconds: 30)),
+      );
+    } on TimeoutException {
+      throw const CatalogUnavailable('offline');
+    } on Exception {
+      throw const CatalogUnavailable('offline');
+    }
+    Object? body;
+    try {
+      body = jsonDecode(utf8.decode(res.bodyBytes));
+    } on FormatException {
+      throw const CatalogUnavailable('bad_response');
+    }
+    if (res.statusCode != 200) {
+      final code = body is Map ? body['error'] as String? : null;
+      throw CatalogUnavailable(code ?? 'http_${res.statusCode}');
+    }
+    return body;
+  }
+
+  @override
+  Future<OAuthConfigDto> oauthConfig() async {
+    final b = (await _get('/oauth/config', const {})) as Map? ?? const {};
+    return OAuthConfigDto(
+      mal: b['mal'] as String?,
+      anilist: b['anilist'] as String?,
+      trakt: b['trakt'] as String?,
+    );
+  }
+
+  @override
+  Future<String> exchangeCode(
+    String provider, {
+    required String code,
+    required String redirectUri,
+    String? codeVerifier,
+  }) async {
+    final req = http.Request('POST', Uri.parse('$base/oauth/$provider/token'))
+      ..headers['Content-Type'] = 'application/json'
+      ..body = jsonEncode({
+        'code': code,
+        'redirectUri': redirectUri,
+        'codeVerifier': ?codeVerifier,
+      });
+    final b = await _send(req) as Map;
+    return b['accessToken'] as String;
+  }
+
+  List<Map<String, dynamic>> _entries(Object? body) => [
+    for (final e in ((body as Map?)?['entries'] as List?) ?? const [])
+      Map<String, dynamic>.from(e as Map),
+  ];
+
+  @override
+  Future<List<Map<String, dynamic>>> listByUser(
+    String provider,
+    String name,
+  ) async => _entries(
+    await _get('/import/$provider/user/${Uri.encodeComponent(name)}', const {}),
+  );
+
+  @override
+  Future<List<Map<String, dynamic>>> listSignedIn(
+    String provider,
+    String token,
+  ) async {
+    final req = http.Request('POST', Uri.parse('$base/import/$provider/list'))
+      ..headers['Authorization'] = 'Bearer $token';
+    return _entries(await _send(req));
+  }
+
+  @override
+  Future<MatchResponse> match(
+    List<MatchQuery> items, {
+    List<int> malAnime = const [],
+    List<int> malManga = const [],
+  }) async {
+    final uri = Uri.parse('$base/catalog/match');
+    final http.Response res;
+    try {
+      res = await _client
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'items': [
+                for (final i in items)
+                  {
+                    'q': i.q.length > 160 ? i.q.substring(0, 160) : i.q,
+                    if (i.kind != null && i.kind != MediaKind.unknown)
+                      'kind': i.kind!.name,
+                  },
+              ],
+              'malAnime': malAnime,
+              'malManga': malManga,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      throw const CatalogUnavailable('offline');
+    } on Exception {
+      throw const CatalogUnavailable('offline');
+    }
+    if (res.statusCode != 200) {
+      throw CatalogUnavailable('http_${res.statusCode}');
+    }
+    final body = jsonDecode(utf8.decode(res.bodyBytes)) as Map;
+    List<CatalogItemDto> list(Object? l) => [
+      for (final i in (l as List?) ?? const [])
+        CatalogItemDto(Map<String, dynamic>.from(i as Map)),
+    ];
+    return MatchResponse([
+      for (final r in (body['results'] as List?) ?? const []) list(r),
+    ], list(body['mal']));
   }
 
   List<CatalogItemDto> _items(Object? body) => [

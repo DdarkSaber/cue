@@ -155,6 +155,64 @@ class CatalogRepository {
         mode: InsertMode.insertOrIgnore,
       );
 
+  /// Inserts catalog rows from a Cue backup when they are not cached yet.
+  /// Ids are Cue's own stable ids, so they are used as given.
+  Future<void> restoreSnapshot(List<Map<String, dynamic>> rows) async {
+    final now = _now();
+    await db.transaction(() async {
+      for (final j in rows) {
+        final id = j['id'] as String;
+        if (await titleById(id) != null) continue;
+        final kind = MediaKind.parse(j['kind'] as String?);
+        await db
+            .into(db.catalogTitles)
+            .insert(
+              CatalogTitlesCompanion.insert(
+                id: id,
+                mediaKind: kind.name,
+                titleEn: Value(j['titleEn'] as String?),
+                titleRomaji: Value(j['titleRomaji'] as String?),
+                titleNative: Value(j['titleNative'] as String?),
+                year: Value((j['year'] as num?)?.toInt()),
+                country: Value(j['country'] as String?),
+                format: Value(j['format'] as String?),
+                status: Value((j['status'] as String?) ?? 'unknown'),
+                episodes: Value((j['episodes'] as num?)?.toInt()),
+                chapters: Value((j['chapters'] as num?)?.toInt()),
+                genresJson: Value(jsonEncode(j['genres'] ?? const [])),
+                tagsJson: Value(jsonEncode(j['tags'] ?? const [])),
+                score: Value((j['score'] as num?)?.toInt()),
+                posterUrl: Value(_allowedPoster(j['posterUrl'] as String?)),
+                franchiseId: Value(j['franchiseKey'] as String?),
+                adult: Value(j['adult'] == true),
+                updatedAt: now,
+              ),
+              mode: InsertMode.insertOrIgnore,
+            );
+        final ids = j['identities'];
+        if (ids is Map) {
+          for (final e in ids.entries) {
+            final provider = '${e.key}';
+            await _identity(id, provider, '${e.value}', switch (provider) {
+              'mal' => kind.isReading ? 'manga' : 'anime',
+              'tmdb' => id.split(':')[1],
+              _ => '',
+            });
+          }
+        }
+      }
+    });
+  }
+
+  /// Posters only from the official catalog hosts.
+  static String? _allowedPoster(String? url) {
+    final u = url == null ? null : Uri.tryParse(url);
+    const hosts = {'s4.anilist.co', 'image.tmdb.org', 'static.tvmaze.com'};
+    return u != null && u.scheme == 'https' && hosts.contains(u.host)
+        ? url
+        : null;
+  }
+
   Future<String?> findByIdentity(
     String provider,
     String providerId, [
