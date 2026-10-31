@@ -1,14 +1,33 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../sync/sync_controller.dart';
 
 import 'layout.dart';
 import 'nav_dock.dart';
 
 /// Frame around every destination: content width, safe areas and the nav.
-class AppShell extends StatelessWidget {
+class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
+
+  @override
+  ConsumerState<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends ConsumerState<AppShell> {
+  StatefulNavigationShell get navigationShell => widget.navigationShell;
+
+  @override
+  void initState() {
+    super.initState();
+    // A quiet sync when the app opens, if sync is on.
+    Future.microtask(
+      () => ref.read(syncControllerProvider.notifier).onAppStart(),
+    );
+  }
 
   void _select(int index) => navigationShell.goBranch(
     index,

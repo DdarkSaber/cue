@@ -7,6 +7,8 @@ export type ErrorCode =
   | "not_found"
   | "not_implemented"
   | "not_configured"
+  | "conflict"
+  | "forbidden"
   | "upstream_error"
   | "origin_not_allowed"
   | "payload_too_large"

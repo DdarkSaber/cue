@@ -13,6 +13,13 @@ ALLOWED_ORIGINS = "http://localhost:7357,http://127.0.0.1:7357"
 binding = "CATALOG_CACHE"
 id = "00000000000000000000000000000000"
 
+# Encrypted sync blobs (M8). Schema in migrations/.
+[[d1_databases]]
+binding = "SYNC_DB"
+database_name = "cue-sync"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
 # Per-IP limit via Cloudflare's rate-limiting binding (not KV).
 [[ratelimits]]
 name = "RATE_LIMITER"

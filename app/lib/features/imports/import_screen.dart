@@ -876,7 +876,10 @@ class _PastImportsState extends ConsumerState<_PastImports> {
     return FutureBuilder(
       future: _batches,
       builder: (context, snap) {
-        final list = snap.data ?? const <ImportBatch>[];
+        // Sync merges are bookkeeping, not imports the person made.
+        final list = (snap.data ?? const <ImportBatch>[])
+            .where((b) => b.sourceType != 'sync')
+            .toList();
         if (list.isEmpty && _message == null) return const SizedBox.shrink();
         final fmt = DateFormat.yMMMd().add_jm();
         return Column(
@@ -931,5 +934,6 @@ String importSourceName(String type) => switch (type) {
   'mal_api' => 'MyAnimeList sign-in',
   'anilist_api' => 'AniList sign-in',
   'trakt_api' => 'Trakt sign-in',
+  'sync' => 'sync',
   _ => 'Import',
 };

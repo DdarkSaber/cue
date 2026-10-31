@@ -5,6 +5,7 @@ import * as catalog from "./catalog/service";
 import { NotConfiguredError, UpstreamError } from "./catalog/types";
 import type { AppEnv } from "./env";
 import * as lists from "./imports/lists";
+import { SyncStore } from "./sync/store";
 import { fail } from "./errors";
 import {
   allowedOrigins,
@@ -27,6 +28,8 @@ import {
   providersParams,
   providersQuery,
   searchQuery,
+  syncBody,
+  syncParams,
   titleParams,
   titleQuery,
   userParams,
@@ -150,6 +153,44 @@ export function createApp() {
           ? await lists.malViewer(token)
           : await lists.traktViewer(c.env, token);
     return c.json({ entries });
+  });
+
+  // End-to-end encrypted sync. The token proves knowledge of the sync code.
+  const syncAuth = (c: Parameters<typeof fail>[0]) => {
+    const p = check(c, syncParams, c.req.param());
+    if (!p.ok) return { res: p.res };
+    const token = bearer(c.req.header("Authorization"));
+    if (!token) return { res: fail(c, 400, "invalid_request", { fields: ["authorization"] }) };
+    if (!c.env.SYNC_DB) return { res: fail(c, 503, "not_configured") };
+    return { id: p.data.id, token, store: new SyncStore(c.env.SYNC_DB) };
+  };
+
+  app.get("/sync/:id", async (c) => {
+    const a = syncAuth(c);
+    if ("res" in a) return a.res;
+    const blob = await a.store.get(a.id, a.token);
+    if (blob === null) return fail(c, 404, "not_found");
+    if (blob === "forbidden") return fail(c, 403, "forbidden");
+    return c.json(blob);
+  });
+
+  app.put("/sync/:id", async (c) => {
+    const a = syncAuth(c);
+    if ("res" in a) return a.res;
+    const b = check(c, syncBody, await jsonBody(c));
+    if (!b.ok) return b.res;
+    const r = await a.store.put(a.id, a.token, b.data.version, b.data.data, Date.now());
+    if (r.ok) return c.json({ version: r.version });
+    if (r.reason === "conflict") return fail(c, 409, "conflict", { version: r.version });
+    return fail(c, r.reason === "forbidden" ? 403 : 404, r.reason);
+  });
+
+  app.delete("/sync/:id", async (c) => {
+    const a = syncAuth(c);
+    if ("res" in a) return a.res;
+    const r = await a.store.delete(a.id, a.token);
+    if (r === "deleted") return c.json({ deleted: true });
+    return fail(c, r === "forbidden" ? 403 : 404, r);
   });
 
   app.post("/ai/mood", async (c) => {

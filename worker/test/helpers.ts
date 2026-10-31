@@ -23,6 +23,7 @@ export function fakeEnv(overrides: Partial<Env> = {}): Env {
     CATALOG_CACHE: {} as KVNamespace,
     RATE_LIMITER: fakeLimiter(),
     IMAGE_LIMITER: fakeLimiter(),
+    SYNC_DB: undefined as unknown as D1Database,
     ALLOWED_ORIGINS: `${APP_ORIGIN},http://127.0.0.1:7357`,
     ...overrides,
   };

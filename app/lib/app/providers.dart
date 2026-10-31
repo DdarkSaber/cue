@@ -11,6 +11,7 @@ import '../domain/decisions.dart';
 import '../domain/models/settings.dart';
 import '../domain/ranker.dart';
 import '../imports/import_service.dart';
+import '../sync/sync_service.dart';
 import 'config.dart';
 
 /// Overridden in main() with the opened database, and in tests with an
@@ -119,5 +120,22 @@ final backupServiceProvider = Provider<BackupService>(
   (ref) => BackupService(
     ref.watch(databaseProvider),
     clock: ref.watch(clockProvider),
+  ),
+);
+
+final codeStoreProvider = Provider<CodeStore>((ref) => const SecureCodeStore());
+
+final syncRemoteProvider = Provider<SyncRemote>(
+  (ref) => HttpSyncRemote(cueApiBase),
+);
+
+final syncServiceProvider = Provider<SyncService>(
+  (ref) => SyncService(
+    remote: ref.watch(syncRemoteProvider),
+    codes: ref.watch(codeStoreProvider),
+    backup: ref.watch(backupServiceProvider),
+    imports: ref.watch(importServiceProvider),
+    profiles: ref.watch(profileRepositoryProvider),
+    library: ref.watch(libraryRepositoryProvider),
   ),
 );

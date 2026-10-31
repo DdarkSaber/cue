@@ -5,6 +5,7 @@ import { secureHeaders } from "hono/secure-headers";
 
 import type { AppEnv } from "./env";
 import { fail } from "./errors";
+import { MAX_SYNC_BYTES } from "./sync/store";
 
 export const MAX_BODY_BYTES = 8 * 1024;
 
@@ -47,15 +48,23 @@ export const corsPolicy: MiddlewareHandler<AppEnv> = (c, next) =>
   cors({
     origin: (origin) =>
       allowedOrigins(c.env.ALLOWED_ORIGINS).has(origin) ? origin : null,
-    allowMethods: ["GET", "POST"],
+    allowMethods: ["GET", "POST", "PUT", "DELETE"],
     allowHeaders: ["Content-Type", "Authorization"],
     maxAge: 600,
   })(c, next);
 
-export const bodyCap: MiddlewareHandler<AppEnv> = bodyLimit({
+const smallBody = bodyLimit({
   maxSize: MAX_BODY_BYTES,
   onError: (c) => fail(c, 413, "payload_too_large"),
 });
+const syncBodyLimit = bodyLimit({
+  maxSize: MAX_SYNC_BYTES,
+  onError: (c) => fail(c, 413, "payload_too_large"),
+});
+
+/** 8 KB everywhere, except encrypted sync uploads (2 MB). */
+export const bodyCap: MiddlewareHandler<AppEnv> = (c, next) =>
+  c.req.path.startsWith("/sync/") ? syncBodyLimit(c, next) : smallBody(c, next);
 
 /** Per-IP limit through the Workers rate-limiting binding. Fails closed. */
 export const rateLimit: MiddlewareHandler<AppEnv> = async (c, next) => {

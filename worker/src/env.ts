@@ -3,6 +3,8 @@ declare global {
     // Bindings from wrangler.toml; merged into the runtime's `env` type.
     interface Env {
       CATALOG_CACHE: KVNamespace;
+      /** Encrypted sync blobs only. */
+      SYNC_DB: D1Database;
       RATE_LIMITER: RateLimit;
       /** Looser per-IP limit for poster loads on the web app. */
       IMAGE_LIMITER: RateLimit;
