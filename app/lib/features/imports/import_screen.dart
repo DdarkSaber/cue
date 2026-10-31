@@ -258,12 +258,22 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
             ],
           ),
           const SizedBox(height: CueSpace.lg),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 640),
-            child: body,
+          // A ListView gives its children the full width, so the cap needs an
+          // Align to take effect on wide screens.
+          Align(
+            alignment: Alignment.topLeft,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 640),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  body,
+                  const SizedBox(height: CueSpace.xl),
+                  if (_step == _Step.choose) const _PastImports(),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(height: CueSpace.xl),
-          if (_step == _Step.choose) const _PastImports(),
         ],
       ),
     );
@@ -343,8 +353,8 @@ class _ChooseSource extends StatelessWidget {
           SignInSourceRow(provider: p, onRecords: onRecords),
         const SourceRow(
           name: 'MyDramaList',
-          status: 'Planned',
-          detail: 'MyDramaList has no official API or sign-in. Cue will never ask for your password; a public-list reader is planned after a terms check.',
+          status: 'Use a file',
+          detail: 'MyDramaList has no official API or sign-in, and Cue will never ask for your password. If you can export or copy your list into a CSV or spreadsheet with a Title column, upload it above.',
         ),
         SourceRow(
           name: 'Netflix',

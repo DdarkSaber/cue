@@ -52,6 +52,7 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
   void initState() {
     super.initState();
     _loadSignIn();
+    _loadConfig();
   }
 
   Future<void> _loadSignIn() async {
@@ -91,18 +92,22 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
     SignInProvider.trakt => _config?.trakt,
   };
 
-  Future<void> _toggle() async {
-    setState(() => _open = !_open);
-    if (_open && _config == null) {
-      try {
-        final c = await ref.read(catalogGatewayProvider).oauthConfig();
-        if (mounted) setState(() => _config = c);
-      } on CatalogUnavailable {
-        if (mounted) {
-          setState(() => _message = 'Offline. Sign-in needs a connection.');
-        }
+  /// Loaded up front so a row can say "Not set up" before it is opened.
+  Future<void> _loadConfig() async {
+    if (_config != null) return;
+    try {
+      final c = await ref.read(catalogGatewayProvider).oauthConfig();
+      if (mounted) setState(() => _config = c);
+    } on CatalogUnavailable {
+      if (mounted && _open) {
+        setState(() => _message = 'Offline. Sign-in needs a connection.');
       }
     }
+  }
+
+  Future<void> _toggle() async {
+    setState(() => _open = !_open);
+    if (_open) await _loadConfig();
   }
 
   Future<void> _byUsername() async {
@@ -223,7 +228,10 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
   @override
   Widget build(BuildContext context) {
     final p = widget.provider;
-    final configured = _clientId != null;
+    // AniList refuses the Worker and its implicit grant is not available to
+    // Cue, so AniList is public-username only.
+    final signInAvailable = p != SignInProvider.anilist;
+    final configured = signInAvailable && _clientId != null;
     final usernameWorks =
         p == SignInProvider.anilist || (p == SignInProvider.mal && configured);
     return Container(
@@ -267,8 +275,12 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
                             ? (_account != null
                                   ? 'Signed in as $_account'
                                   : 'Signed in')
+                            : _config != null && !configured
+                            ? (usernameWorks ? 'Username' : 'Not set up yet')
                             : p.byUsername
-                            ? 'Sign in or username'
+                            ? (signInAvailable
+                                  ? 'Sign in or username'
+                                  : 'Username')
                             : 'Sign in',
                         style: const TextStyle(
                           fontSize: 13,
@@ -288,7 +300,9 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Signs in on ${p.label}\'s own page, is read only. Cue keeps the sign-in on this device, so you can import again without signing in. Sign out removes it.',
+                    signInAvailable
+                        ? 'Signs in on ${p.label}\'s own page and is read only. Cue keeps the sign-in on this device, so you can import again without signing in. Sign out removes it.'
+                        : 'Reads your public ${p.label} list by username. No login. A private list needs to be made public first.',
                     style: const TextStyle(
                       fontSize: 14,
                       height: 1.5,
@@ -296,7 +310,7 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
                     ),
                   ),
                   const SizedBox(height: CueSpace.md),
-                  if (_config != null && !configured)
+                  if (_config != null && !configured && signInAvailable)
                     Text(
                       'Sign-in for ${p.label} is not set up on this Cue yet.',
                       style: const TextStyle(

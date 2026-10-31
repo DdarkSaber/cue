@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -10,6 +11,8 @@ import 'app/tokens.dart';
 import 'data/db/database.dart';
 
 void main() {
+  // Real paths (/settings) instead of /#/settings, so links and refreshes work.
+  usePathUrlStrategy();
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   final db = CueDatabase.open();
