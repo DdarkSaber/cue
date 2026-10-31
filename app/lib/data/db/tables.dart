@@ -37,6 +37,7 @@ class CatalogTitles extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+@DataClassName('CatalogIdentity')
 class CatalogIdentities extends Table {
   TextColumn get titleId => text().references(CatalogTitles, #id)();
   TextColumn get provider => text()();
@@ -177,6 +178,7 @@ class TagWeights extends Table {
 // Imports
 // ---------------------------------------------------------------------------
 
+@DataClassName('ImportBatch')
 class ImportBatches extends Table {
   TextColumn get id => text()();
   TextColumn get profileId => text().references(Profiles, #id)();
@@ -191,6 +193,7 @@ class ImportBatches extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+@DataClassName('SourceObservation')
 class SourceObservations extends Table {
   TextColumn get id => text()();
   TextColumn get batchId => text().references(ImportBatches, #id)();
@@ -209,6 +212,7 @@ class SourceObservations extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+@DataClassName('ImportChange')
 class ImportChanges extends Table {
   IntColumn get seq => integer().autoIncrement()();
   TextColumn get batchId => text().references(ImportBatches, #id)();

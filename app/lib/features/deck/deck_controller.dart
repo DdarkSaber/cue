@@ -230,8 +230,13 @@ class DeckController extends Notifier<DeckState> {
   ) async {
     final catalog = ref.read(catalogRepositoryProvider);
     if (filters.isRevisit) {
+      final cutoff = DateTime.now().subtract(const Duration(days: 3 * 365));
       final ids = signals.library.values
-          .where((e) => e.rating?.isRewatch ?? false)
+          .where(
+            (e) =>
+                (e.rating?.isRewatch ?? false) ||
+                (e.actualWatchedAt?.isBefore(cutoff) ?? false),
+          )
           .map((e) => e.titleId);
       return catalog.titlesByIds(ids);
     }

@@ -5407,7 +5407,7 @@ class TagWeightsCompanion extends UpdateCompanion<TagWeight> {
 }
 
 class $ImportBatchesTable extends ImportBatches
-    with TableInfo<$ImportBatchesTable, ImportBatche> {
+    with TableInfo<$ImportBatchesTable, ImportBatch> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
@@ -5518,7 +5518,7 @@ class $ImportBatchesTable extends ImportBatches
   static const String $name = 'import_batches';
   @override
   VerificationContext validateIntegrity(
-    Insertable<ImportBatche> instance, {
+    Insertable<ImportBatch> instance, {
     bool isInserting = false,
   }) {
     final context = VerificationContext();
@@ -5592,9 +5592,9 @@ class $ImportBatchesTable extends ImportBatches
   @override
   Set<GeneratedColumn> get $primaryKey => {id};
   @override
-  ImportBatche map(Map<String, dynamic> data, {String? tablePrefix}) {
+  ImportBatch map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return ImportBatche(
+    return ImportBatch(
       id: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}id'],
@@ -5636,7 +5636,7 @@ class $ImportBatchesTable extends ImportBatches
   }
 }
 
-class ImportBatche extends DataClass implements Insertable<ImportBatche> {
+class ImportBatch extends DataClass implements Insertable<ImportBatch> {
   final String id;
   final String profileId;
   final String sourceType;
@@ -5645,7 +5645,7 @@ class ImportBatche extends DataClass implements Insertable<ImportBatche> {
   final String state;
   final String countsJson;
   final DateTime createdAt;
-  const ImportBatche({
+  const ImportBatch({
     required this.id,
     required this.profileId,
     required this.sourceType,
@@ -5686,12 +5686,12 @@ class ImportBatche extends DataClass implements Insertable<ImportBatche> {
     );
   }
 
-  factory ImportBatche.fromJson(
+  factory ImportBatch.fromJson(
     Map<String, dynamic> json, {
     ValueSerializer? serializer,
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return ImportBatche(
+    return ImportBatch(
       id: serializer.fromJson<String>(json['id']),
       profileId: serializer.fromJson<String>(json['profileId']),
       sourceType: serializer.fromJson<String>(json['sourceType']),
@@ -5717,7 +5717,7 @@ class ImportBatche extends DataClass implements Insertable<ImportBatche> {
     };
   }
 
-  ImportBatche copyWith({
+  ImportBatch copyWith({
     String? id,
     String? profileId,
     String? sourceType,
@@ -5726,7 +5726,7 @@ class ImportBatche extends DataClass implements Insertable<ImportBatche> {
     String? state,
     String? countsJson,
     DateTime? createdAt,
-  }) => ImportBatche(
+  }) => ImportBatch(
     id: id ?? this.id,
     profileId: profileId ?? this.profileId,
     sourceType: sourceType ?? this.sourceType,
@@ -5738,8 +5738,8 @@ class ImportBatche extends DataClass implements Insertable<ImportBatche> {
     countsJson: countsJson ?? this.countsJson,
     createdAt: createdAt ?? this.createdAt,
   );
-  ImportBatche copyWithCompanion(ImportBatchesCompanion data) {
-    return ImportBatche(
+  ImportBatch copyWithCompanion(ImportBatchesCompanion data) {
+    return ImportBatch(
       id: data.id.present ? data.id.value : this.id,
       profileId: data.profileId.present ? data.profileId.value : this.profileId,
       sourceType: data.sourceType.present
@@ -5761,7 +5761,7 @@ class ImportBatche extends DataClass implements Insertable<ImportBatche> {
 
   @override
   String toString() {
-    return (StringBuffer('ImportBatche(')
+    return (StringBuffer('ImportBatch(')
           ..write('id: $id, ')
           ..write('profileId: $profileId, ')
           ..write('sourceType: $sourceType, ')
@@ -5788,7 +5788,7 @@ class ImportBatche extends DataClass implements Insertable<ImportBatche> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is ImportBatche &&
+      (other is ImportBatch &&
           other.id == this.id &&
           other.profileId == this.profileId &&
           other.sourceType == this.sourceType &&
@@ -5799,7 +5799,7 @@ class ImportBatche extends DataClass implements Insertable<ImportBatche> {
           other.createdAt == this.createdAt);
 }
 
-class ImportBatchesCompanion extends UpdateCompanion<ImportBatche> {
+class ImportBatchesCompanion extends UpdateCompanion<ImportBatch> {
   final Value<String> id;
   final Value<String> profileId;
   final Value<String> sourceType;
@@ -5836,7 +5836,7 @@ class ImportBatchesCompanion extends UpdateCompanion<ImportBatche> {
        adapterVersion = Value(adapterVersion),
        state = Value(state),
        createdAt = Value(createdAt);
-  static Insertable<ImportBatche> custom({
+  static Insertable<ImportBatch> custom({
     Expression<String>? id,
     Expression<String>? profileId,
     Expression<String>? sourceType,
@@ -8844,7 +8844,7 @@ final class $$ProfilesTableReferences
     );
   }
 
-  static MultiTypedResultKey<$ImportBatchesTable, List<ImportBatche>>
+  static MultiTypedResultKey<$ImportBatchesTable, List<ImportBatch>>
   _importBatchesRefsTable(_$CueDatabase db) => MultiTypedResultKey.fromTable(
     db.importBatches,
     aliasName: 'profiles__id__import_batches__profile_id',
@@ -9605,7 +9605,7 @@ class $$ProfilesTableTableManager
                         await $_getPrefetchedDataByColumns<
                           Profile,
                           $ProfilesTable,
-                          ImportBatche,
+                          ImportBatch,
                           $ImportBatchesTable
                         >(
                           currentTable: table,
@@ -11980,7 +11980,7 @@ typedef $$ImportBatchesTableUpdateCompanionBuilder =
     });
 
 final class $$ImportBatchesTableReferences
-    extends BaseReferences<_$CueDatabase, $ImportBatchesTable, ImportBatche> {
+    extends BaseReferences<_$CueDatabase, $ImportBatchesTable, ImportBatch> {
   $$ImportBatchesTableReferences(
     super.$_db,
     super.$_table,
@@ -12348,14 +12348,14 @@ class $$ImportBatchesTableTableManager
         RootTableManager<
           _$CueDatabase,
           $ImportBatchesTable,
-          ImportBatche,
+          ImportBatch,
           $$ImportBatchesTableFilterComposer,
           $$ImportBatchesTableOrderingComposer,
           $$ImportBatchesTableAnnotationComposer,
           $$ImportBatchesTableCreateCompanionBuilder,
           $$ImportBatchesTableUpdateCompanionBuilder,
-          (ImportBatche, $$ImportBatchesTableReferences),
-          ImportBatche,
+          (ImportBatch, $$ImportBatchesTableReferences),
+          ImportBatch,
           PrefetchHooks Function({
             bool profileId,
             bool sourceObservationsRefs,
@@ -12420,7 +12420,7 @@ class $$ImportBatchesTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable<$ImportBatchesTable, ImportBatche>(table),
+                  e.readTable<$ImportBatchesTable, ImportBatch>(table),
                   $$ImportBatchesTableReferences(db, table, e),
                 ),
               )
@@ -12471,7 +12471,7 @@ class $$ImportBatchesTableTableManager
                     return [
                       if (sourceObservationsRefs)
                         await $_getPrefetchedDataByColumns<
-                          ImportBatche,
+                          ImportBatch,
                           $ImportBatchesTable,
                           SourceObservation,
                           $SourceObservationsTable
@@ -12491,7 +12491,7 @@ class $$ImportBatchesTableTableManager
                         ),
                       if (importChangesRefs)
                         await $_getPrefetchedDataByColumns<
-                          ImportBatche,
+                          ImportBatch,
                           $ImportBatchesTable,
                           ImportChange,
                           $ImportChangesTable
@@ -12521,14 +12521,14 @@ typedef $$ImportBatchesTableProcessedTableManager =
     ProcessedTableManager<
       _$CueDatabase,
       $ImportBatchesTable,
-      ImportBatche,
+      ImportBatch,
       $$ImportBatchesTableFilterComposer,
       $$ImportBatchesTableOrderingComposer,
       $$ImportBatchesTableAnnotationComposer,
       $$ImportBatchesTableCreateCompanionBuilder,
       $$ImportBatchesTableUpdateCompanionBuilder,
-      (ImportBatche, $$ImportBatchesTableReferences),
-      ImportBatche,
+      (ImportBatch, $$ImportBatchesTableReferences),
+      ImportBatch,
       PrefetchHooks Function({
         bool profileId,
         bool sourceObservationsRefs,

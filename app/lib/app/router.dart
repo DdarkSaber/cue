@@ -5,6 +5,7 @@ import '../features/imports/import_screen.dart';
 import '../features/library/library_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/shortlist/shortlist_screen.dart';
+import '../features/sync/sync_page.dart';
 import 'shell.dart';
 
 abstract final class CueRoutes {
@@ -56,6 +57,30 @@ GoRouter buildRouter({String initialLocation = CueRoutes.forYou}) => GoRouter(
             GoRoute(
               path: CueRoutes.settings,
               builder: (_, _) => const SettingsScreen(),
+              routes: [
+                GoRoute(
+                  path: 'library',
+                  builder: (_, _) => const LibrarySettingsPage(),
+                ),
+                GoRoute(
+                  path: 'preferences',
+                  builder: (_, _) => const PreferencesPage(),
+                ),
+                GoRoute(
+                  path: 'swipes',
+                  builder: (_, _) => const SwipeSettingsPage(),
+                ),
+                GoRoute(
+                  path: 'appearance',
+                  builder: (_, _) => const AppearancePage(),
+                ),
+                GoRoute(path: 'sync', builder: (_, _) => const SyncPage()),
+                GoRoute(
+                  path: 'privacy',
+                  builder: (_, _) => const PrivacyPage(),
+                ),
+                GoRoute(path: 'about', builder: (_, _) => const AboutPage()),
+              ],
             ),
           ],
         ),

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/backup_service.dart';
 import '../data/catalog_gateway.dart';
 import '../data/catalog_repository.dart';
 import '../data/db/database.dart';
@@ -9,6 +10,7 @@ import '../data/profile_repository.dart';
 import '../domain/decisions.dart';
 import '../domain/models/settings.dart';
 import '../domain/ranker.dart';
+import '../imports/import_service.dart';
 import 'config.dart';
 
 /// Overridden in main() with the opened database, and in tests with an
@@ -103,4 +105,19 @@ final libraryVersionProvider = NotifierProvider<LibraryVersion, int>(
 /// the deck does not (it already knows).
 final decisionVersionProvider = NotifierProvider<LibraryVersion, int>(
   LibraryVersion.new,
+);
+
+final importServiceProvider = Provider<ImportService>(
+  (ref) => ImportService(
+    ref.watch(databaseProvider),
+    ref.watch(catalogRepositoryProvider),
+    clock: ref.watch(clockProvider),
+  ),
+);
+
+final backupServiceProvider = Provider<BackupService>(
+  (ref) => BackupService(
+    ref.watch(databaseProvider),
+    clock: ref.watch(clockProvider),
+  ),
 );

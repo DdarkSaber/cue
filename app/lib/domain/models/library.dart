@@ -69,8 +69,12 @@ enum RewatchMood {
   final String code;
   final String label;
 
+  /// Accepts "hype", "Hype" or a compound like "Hype / nostalgia" (first wins).
   static RewatchMood? parse(String? code) {
-    final c = code?.toLowerCase();
+    final c = code
+        ?.toLowerCase()
+        .split(RegExp('[^a-z]+'))
+        .firstWhere((w) => w.isNotEmpty, orElse: () => '');
     for (final m in values) {
       if (m.code == c) return m;
     }

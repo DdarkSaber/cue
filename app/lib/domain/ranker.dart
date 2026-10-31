@@ -104,7 +104,12 @@ class Ranker {
     if (s.shortlisted.contains(t.id)) return false;
 
     final entry = s.library[t.id];
-    final rewatchable = entry?.rating?.isRewatch ?? false;
+    // Rediscover: finished 3+ years ago, only when the real date is known.
+    final watched = entry?.actualWatchedAt;
+    final longAgo =
+        watched != null &&
+        watched.isBefore(_now().subtract(const Duration(days: 3 * 365)));
+    final rewatchable = (entry?.rating?.isRewatch ?? false) || longAgo;
     if (f.isRevisit) {
       if (!rewatchable) return false;
     } else if (entry != null && entry.state.isSeen) {
