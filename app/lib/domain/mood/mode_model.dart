@@ -176,7 +176,7 @@ class ModeModel {
     final model = ModeModel(null, newId);
     final when = at ?? DateTime(2026, 1, 1, 20);
     for (final f in likedFeatures) {
-      model.absorb({for (final x in f) x: 1.0}, when, positives: minPositives);
+      model.absorb(featureVec(f), when, positives: minPositives);
     }
     return model;
   }

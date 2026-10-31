@@ -142,7 +142,10 @@ List<RankedCard> diversify(List<RankedCard> cards, Mode? second) {
       var best = 0;
       var bestSim = -2.0;
       for (var i = 0; i < rest.length; i++) {
-        final s = cosineSet(moodFeatures(rest[i].title), second.centroid);
+        final s = cosine(
+          featureVec(moodFeatures(rest[i].title)),
+          second.centroid,
+        );
         if (s > bestSim) {
           bestSim = s;
           best = i;

@@ -1,4 +1,5 @@
 import '../models/decision.dart';
+import 'mood_features.dart';
 import 'vec.dart';
 
 /// How much a decision says about what the person wanted.
@@ -44,7 +45,7 @@ class MoodSession {
       if (s <= 0) continue;
       final f = features(id);
       if (f == null) continue;
-      v = addScaled(v, {for (final x in f) x: 1.0}, s);
+      v = addScaled(v, featureVec(f), s);
     }
     return normalize(v);
   }

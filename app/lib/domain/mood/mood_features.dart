@@ -1,4 +1,5 @@
 import '../models/title.dart';
+import 'vec.dart';
 
 /// short | mid | long, or null when the length is unknown.
 String? lenBucket(Title t) {
@@ -33,3 +34,11 @@ Set<String> moodFeatures(Title t) {
 
 /// Derived features are useful for matching but not for labels.
 bool isDerivedFeature(String f) => f.contains(':');
+
+/// Derived facts (kind, length, ...) are shared by very different titles,
+/// so they count half as much as genres and tags.
+const derivedWeight = 0.5;
+
+Vec featureVec(Set<String> features) => {
+  for (final f in features) f: isDerivedFeature(f) ? derivedWeight : 1.0,
+};

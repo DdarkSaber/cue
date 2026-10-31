@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'mode_model.dart';
+import 'mood_features.dart';
 import 'sessions.dart';
 import 'vec.dart';
 
@@ -32,7 +33,7 @@ class ModeTracker {
       for (final m in modes)
         m.id:
             p[m.id]! *
-            math.exp(beta * signal * cosineSet(features, m.centroid)),
+            math.exp(beta * signal * cosine(featureVec(features), m.centroid)),
     };
     p = _floored(_normalized(raw));
   }
