@@ -54,7 +54,7 @@ class AniListClient {
 
   static const _fields = '''
   id idMal type format status episodes chapters countryOfOrigin isAdult
-  averageScore genres startDate { year }
+  averageScore genres synonyms startDate { year }
   title { romaji english native }
   coverImage { extraLarge large }
   bannerImage
@@ -90,6 +90,13 @@ class AniListClient {
       '''query (\$ids: [Int], \$type: MediaType) {
   Page(page: 1, perPage: 50) {
     media(idMal_in: \$ids, type: \$type) { $_fields }
+  }
+}''';
+
+  static const _byIds =
+      '''query (\$ids: [Int], \$type: MediaType) {
+  Page(page: 1, perPage: 50) {
+    media(id_in: \$ids, type: \$type) { $_fields }
   }
 }''';
 
@@ -235,6 +242,22 @@ class AniListClient {
     ];
   }
 
+  /// Titles by AniList id, 50 per call. Unknown ids are simply absent.
+  Future<List<CatalogItemDto>> byIds(
+    List<int> ids, {
+    required bool anime,
+  }) async {
+    if (ids.isEmpty) return const [];
+    final data = await _query(_byIds, {
+      'ids': ids.take(50).toList(),
+      'type': anime ? 'ANIME' : 'MANGA',
+    });
+    final p = data?['Page'] as Map?;
+    return [
+      for (final m in (p?['media'] as List?) ?? const []) normalize(m as Map),
+    ];
+  }
+
   Future<List<CatalogItemDto>> byMalIds(List<int> ids, String type) async {
     if (ids.isEmpty) return const [];
     final data = await _query(_byMal, {
@@ -370,6 +393,11 @@ class AniListClient {
       'chapters': _pos(m['chapters']),
       'seasons': const <Object>[],
       'genres': ((m['genres'] as List?) ?? const []).take(8).toList(),
+      // Alternate names, for matching only; not stored in the catalog.
+      'synonyms': [
+        for (final s in (m['synonyms'] as List?) ?? const [])
+          if (s is String && s.trim().isNotEmpty) s,
+      ].take(25).toList(),
       'tags': [
         for (final t in tags)
           if (t['isMediaSpoiler'] != true && ((t['rank'] as num?) ?? 0) >= 60)

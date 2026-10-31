@@ -155,6 +155,27 @@ class FakeGateway implements CatalogGateway {
   @override
   String imageUrl(String posterUrl) => posterUrl;
 
+  /// Other names for comics, keyed by lower-cased query.
+  final aliasCatalog = <String, List<AliasCandidateDto>>{};
+  final aniListById = <int, Map<String, dynamic>>{};
+  int aliasCalls = 0;
+
+  @override
+  Future<List<List<AliasCandidateDto>>> aliases(List<String> names) async {
+    aliasCalls++;
+    if (offline) throw const CatalogUnavailable('offline');
+    return [for (final n in names) aliasCatalog[n.toLowerCase()] ?? const []];
+  }
+
+  @override
+  Future<List<CatalogItemDto>> byAniListIds(
+    List<int> ids, {
+    required bool anime,
+  }) async => [
+    for (final id in ids)
+      if (aniListById[id] != null) CatalogItemDto(aniListById[id]!),
+  ];
+
   OAuthConfigDto config = const OAuthConfigDto();
   final userLists = <String, List<Map<String, dynamic>>>{};
 

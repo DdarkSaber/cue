@@ -195,10 +195,13 @@ describe("catalog routes", () => {
     expect(calls[0]!.url.searchParams.has("api_key")).toBe(false);
   });
 
-  it("search falls back to TVmaze for shows without a TMDB key", async () => {
+  it("search asks TVmaze and Cinemeta for shows without a TMDB key", async () => {
     const calls = mockUpstream(vi);
     await call("/catalog/search?q=sample&kind=series");
-    expect(calls.map((c) => c.url.hostname)).toEqual(["api.tvmaze.com"]);
+    expect(calls.map((c) => c.url.hostname).sort()).toEqual([
+      "api.tvmaze.com",
+      "v3-cinemeta.strem.io",
+    ]);
   });
 
   it("maps provider failures to 502 without details", async () => {

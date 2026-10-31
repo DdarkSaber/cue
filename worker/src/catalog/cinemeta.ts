@@ -74,7 +74,17 @@ export function normalizeCinemeta(r: Row, type: CinemetaType): CatalogItem {
     providerId: String(r.imdb_id ?? r.id),
     providerKind: type,
     idMal: null,
-    kind: type === "movie" ? "movie" : "series",
+    // Series are told apart by country, like TVmaze shows.
+    kind:
+      type === "movie"
+        ? "movie"
+        : code === "KR"
+          ? "kdrama"
+          : code === "CN" || code === "TW" || code === "HK"
+            ? "cdrama"
+            : code === "JP"
+              ? "jdrama"
+              : "series",
     titleEn: r.name ?? null,
     titleRomaji: null,
     titleNative: null,

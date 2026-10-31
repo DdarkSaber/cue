@@ -15,6 +15,7 @@ import {
   searchTmdb,
   titleTmdb,
 } from "./tmdb";
+import { aliasesFor, type AliasCandidate } from "./mangadex";
 import { CINEMETA_KINDS, cinemetaType, discoverCinemeta, searchCinemeta, titleCinemeta } from "./cinemeta";
 import { discoverTvmaze, searchTvmaze, titleTvmaze, tvmazeLastPage } from "./tvmaze";
 import type { CatalogItem, CatalogPage, CatalogProvider, MediaKind } from "./types";
@@ -103,12 +104,48 @@ export async function searchScreen(
 ): Promise<CatalogItem[]> {
   if (env.TMDB_API_KEY) return searchTmdb(env.TMDB_API_KEY, q, kind);
   if (kind === "movie") return searchCinemeta(q, "movie");
-  if (kind) return searchTvmaze(q);
+  if (kind) {
+    // TVmaze first; Cinemeta's IMDb-style titles catch the English names
+    // TVmaze lacks (a K-drama's licensed title versus its fan title).
+    const [tv, imdb] = await Promise.allSettled([searchTvmaze(q), searchCinemeta(q, "series")]);
+    const seen = new Set<string>();
+    return [
+      ...(tv.status === "fulfilled" ? tv.value : []),
+      ...(imdb.status === "fulfilled" ? imdb.value : []),
+    ].filter((i) => {
+      const k = `${(i.titleEn ?? "").toLowerCase()}|${i.year ?? ""}`;
+      return seen.has(k) ? false : (seen.add(k), true);
+    });
+  }
   const [tv, film] = await Promise.allSettled([searchTvmaze(q), searchCinemeta(q, "movie")]);
   return [
     ...(tv.status === "fulfilled" ? tv.value.slice(0, 4) : []),
     ...(film.status === "fulfilled" ? film.value.slice(0, 3) : []),
   ];
+}
+
+/**
+ * Other names for comics, from MangaDex, cached a week per name. A failed
+ * lookup is an empty list for that name, so one bad title never sinks a batch.
+ */
+export async function aliases(env: Env, queries: string[]): Promise<AliasCandidate[][]> {
+  const out: AliasCandidate[][] = queries.map(() => []);
+  for (let s = 0; s < queries.length; s += 4) {
+    await Promise.all(
+      queries.slice(s, s + 4).map(async (q, j) => {
+        const key = `alias:${q.toLowerCase().replace(/\s+/g, " ")}`;
+        try {
+          const { value } = await cached<AliasCandidate[]>(env.CATALOG_CACHE, key, 7 * 24 * 60 * 60, () =>
+            aliasesFor(q),
+          );
+          out[s + j] = value;
+        } catch {
+          // Left empty.
+        }
+      }),
+    );
+  }
+  return out;
 }
 
 export function providers(env: Env, id: string, type: TitleType, region: string) {

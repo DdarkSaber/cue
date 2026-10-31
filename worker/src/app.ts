@@ -19,6 +19,7 @@ import {
 import {
   discoverQuery,
   bearer,
+  aliasBody,
   imageQuery,
   listProvider,
   matchBody,
@@ -98,6 +99,14 @@ export function createApp() {
   app.get("/catalog/image", async (c) => {
     const q = check(c, imageQuery, c.req.query());
     return q.ok ? proxyImage(q.data.u) : q.res;
+  });
+
+  // Other names for comics (MangaDex), for imports. Names only; never logged.
+  app.post("/catalog/aliases", async (c) => {
+    const b = check(c, aliasBody, await jsonBody(c));
+    if (!b.ok) return b.res;
+    const results = await catalog.aliases(c.env, b.data.items.map((i) => i.q));
+    return c.json({ results });
   });
 
   // Batch matching for imports. Titles only; never stored or logged.

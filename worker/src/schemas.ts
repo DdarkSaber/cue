@@ -103,6 +103,14 @@ export const matchBody = z.object({
   malManga: z.array(z.number().int().positive().max(1e9)).max(50).default([]),
 });
 
+/** Alias lookups for imports: at most 8 names per request. */
+export const aliasBody = z.object({
+  items: z
+    .array(z.object({ q: z.string().trim().min(1).max(160) }))
+    .min(1)
+    .max(8),
+});
+
 /** Usernames on MAL and AniList: letters, digits, underscore, hyphen. */
 export const userParams = z.object({
   name: z.string().regex(/^[A-Za-z0-9_-]{2,32}$/),

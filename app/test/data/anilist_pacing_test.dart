@@ -151,4 +151,37 @@ void main() {
       expect(r.results, hasLength(3));
     },
   );
+
+  test('keeps AniList synonyms so alternate names can match', () {
+    final dto = AniListClient.normalize({
+      'id': 120385,
+      'type': 'MANGA',
+      'countryOfOrigin': 'KR',
+      'title': {'english': 'Log-in Murim'},
+      'synonyms': ['Murim Login', '  ', 42, 'Logando no Murim'],
+    });
+    expect(dto.names, ['Log-in Murim', 'Murim Login', 'Logando no Murim']);
+    expect(dto.kind, MediaKind.manhwa);
+  });
+
+  test(
+    'looks titles up by AniList id, 50 per call, for comics or anime',
+    () async {
+      final sent = <Map<String, dynamic>>[];
+      final client = AniListClient(
+        client: MockClient((req) async {
+          sent.add(jsonDecode(req.body) as Map<String, dynamic>);
+          return ok({});
+        }),
+      );
+      await client.byIds(List.generate(60, (i) => i + 1), anime: false);
+      await client.byIds([1], anime: true);
+      expect(await client.byIds(const [], anime: false), isEmpty);
+      expect(sent, hasLength(2)); // an empty list makes no request
+      expect((sent[0]['variables'] as Map)['ids'], hasLength(50));
+      expect((sent[0]['variables'] as Map)['type'], 'MANGA');
+      expect((sent[1]['variables'] as Map)['type'], 'ANIME');
+      expect(sent[0]['query'], contains('id_in'));
+    },
+  );
 }

@@ -82,7 +82,9 @@ describe("Cinemeta normalisation", () => {
       },
       "series",
     );
-    expect(item.kind).toBe("series");
+    // The sample is Korean, so it is a K-drama.
+    expect(item.kind).toBe("kdrama");
+    expect(normalizeCinemeta({ ...movie, country: "United States" }, "series").kind).toBe("series");
     expect(item.year).toBe(2019);
     expect(item.status).toBe("airing");
     expect(item.seasons).toEqual([
@@ -173,6 +175,29 @@ describe("key-free routes", () => {
     const hosts = calls.map((c) => c.url.hostname);
     expect(hosts).toContain("v3-cinemeta.strem.io");
     expect(hosts).toContain("api.tvmaze.com");
+  });
+
+  it("a drama missing from TVmaze is found by its IMDb-style title and deduplicated", async () => {
+    mockUpstream(vi, (url) => {
+      if (url.hostname === "api.tvmaze.com") {
+        return Response.json([
+          { show: { id: 1, name: "Strong Girl Bong-soon", premiered: "2017-02-24", language: "Korean", genres: [] } },
+        ]);
+      }
+      if (url.hostname === "v3-cinemeta.strem.io") {
+        return Response.json({
+          metas: [
+            { id: "tt1", imdb_id: "tt1", name: "Strong Woman Do Bong-soon", year: "2017", country: "South Korea", poster: "https://images.metahub.space/poster/small/tt1/img" },
+            { id: "tt2", imdb_id: "tt2", name: "Strong Girl Bong-soon", year: "2017" },
+          ],
+        });
+      }
+      return emptyUpstream(url);
+    });
+    const res = await call("/catalog/search?q=Strong%20Woman%20Do%20Bong-soon&kind=kdrama");
+    const { items } = (await res.json()) as { items: { titleEn: string; provider: string; kind: string }[] };
+    expect(items.map((i) => i.titleEn)).toEqual(["Strong Girl Bong-soon", "Strong Woman Do Bong-soon"]);
+    expect(items[1]).toMatchObject({ provider: "cinemeta", kind: "kdrama" });
   });
 
   it("posters from the Cinemeta image host pass the proxy allowlist", () => {

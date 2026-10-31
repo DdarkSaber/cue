@@ -24,6 +24,36 @@ class CatalogItemDto {
   ].join(':');
 
   MediaKind get kind => MediaKind.parse(json['kind'] as String?);
+
+  /// Every name the provider gives: titles plus alternate names.
+  List<String> get names => [
+    for (final k in ['titleEn', 'titleRomaji', 'titleNative'])
+      if (json[k] is String && (json[k] as String).trim().isNotEmpty)
+        json[k] as String,
+    for (final s in (json['synonyms'] as List?) ?? const [])
+      if (s is String) s,
+  ];
+}
+
+/// Another database's view of a comic: all its names and its links to
+/// AniList and MyAnimeList. Used only to turn a typed name into an id.
+class AliasCandidateDto {
+  const AliasCandidateDto({required this.names, this.al, this.mal, this.lang});
+
+  final List<String> names;
+  final int? al;
+  final int? mal;
+
+  /// Original language: ko, zh or ja.
+  final String? lang;
+
+  factory AliasCandidateDto.fromJson(Map<String, dynamic> j) =>
+      AliasCandidateDto(
+        names: [for (final n in (j['names'] as List?) ?? const []) '$n'],
+        al: (j['al'] as num?)?.toInt(),
+        mal: (j['mal'] as num?)?.toInt(),
+        lang: j['lang'] as String?,
+      );
 }
 
 class CatalogPageDto {
@@ -110,6 +140,15 @@ class OAuthConfigDto {
 }
 
 abstract class CatalogGateway {
+  /// Other names (and AniList and MAL ids) for comics, up to 8 per call.
+  Future<List<List<AliasCandidateDto>>> aliases(List<String> names);
+
+  /// Titles by AniList id, 50 per call.
+  Future<List<CatalogItemDto>> byAniListIds(
+    List<int> ids, {
+    required bool anime,
+  });
+
   Future<OAuthConfigDto> oauthConfig();
 
   /// Exchanges an authorization code; returns the access token.
@@ -208,6 +247,33 @@ class HttpCatalogGateway implements CatalogGateway {
     }
     return body;
   }
+
+  @override
+  Future<List<List<AliasCandidateDto>>> aliases(List<String> names) async {
+    final req = http.Request('POST', Uri.parse('$base/catalog/aliases'))
+      ..headers['Content-Type'] = 'application/json'
+      ..body = jsonEncode({
+        'items': [
+          for (final n in names.take(8))
+            {'q': n.length > 160 ? n.substring(0, 160) : n},
+        ],
+      });
+    final b = await _send(req) as Map;
+    return [
+      for (final r in (b['results'] as List?) ?? const [])
+        [
+          for (final c in (r as List))
+            AliasCandidateDto.fromJson(Map<String, dynamic>.from(c as Map)),
+        ],
+    ];
+  }
+
+  /// AniList is reached by the hybrid gateway, never through the Worker.
+  @override
+  Future<List<CatalogItemDto>> byAniListIds(
+    List<int> ids, {
+    required bool anime,
+  }) async => const [];
 
   @override
   Future<OAuthConfigDto> oauthConfig() async {
@@ -471,6 +537,16 @@ class HybridCatalogGateway implements CatalogGateway {
         ? posterUrl
         : worker.imageUrl(posterUrl);
   }
+
+  @override
+  Future<List<List<AliasCandidateDto>>> aliases(List<String> names) =>
+      worker.aliases(names);
+
+  @override
+  Future<List<CatalogItemDto>> byAniListIds(
+    List<int> ids, {
+    required bool anime,
+  }) => anilist.byIds(ids, anime: anime);
 
   @override
   Future<OAuthConfigDto> oauthConfig() => worker.oauthConfig();

@@ -1,4 +1,5 @@
 import 'package:cue/data/catalog_repository.dart';
+import 'package:cue/data/catalog_gateway.dart';
 import 'package:cue/domain/models/library.dart';
 import 'package:cue/domain/models/title.dart';
 import 'package:cue/imports/matcher.dart';
@@ -189,4 +190,143 @@ void main() {
       expect(m.matchClass, MatchClass.suggested);
     });
   });
+
+  group('many names for one comic', () {
+    late FakeGateway gateway;
+    late CatalogRepository catalog;
+    setUp(() {
+      final db = memoryDb();
+      addTearDown(db.close);
+      gateway = FakeGateway();
+      catalog = CatalogRepository(db, gateway);
+    });
+
+    Map<String, dynamic> comic(
+      int id,
+      String name, {
+      String kind = 'manhwa',
+      List<String> synonyms = const [],
+    }) => {
+      ...item(id, kind: kind, country: kind == 'manhua' ? 'CN' : 'KR'),
+      'titleEn': name,
+      'synonyms': synonyms,
+    };
+
+    test(
+      'an alternate name AniList lists as a synonym is an exact match',
+      () async {
+        gateway.matchCatalog['murim login'] = [
+          comic(5, 'Log-in Murim', synonyms: ['Murim Login']),
+        ];
+        final m = (await ImportMatcher(
+          catalog,
+        ).match([rec('Murim Login', kind: MediaKind.manhwa)])).single;
+        expect(m.matchClass, MatchClass.suggested);
+        expect(m.titleId, 'anilist:5');
+      },
+    );
+
+    test(
+      'a name only another database knows is resolved through its AniList link',
+      () async {
+        gateway.aliasCatalog["trash of the count's family"] = [
+          const AliasCandidateDto(
+            names: [
+              'Baekjakga ui Mangnani ga Doeeotda',
+              'Trash of the Count’s Family',
+            ],
+            al: 9,
+            lang: 'ko',
+          ),
+        ];
+        gateway.aniListById[9] = comic(9, 'Lout of Count’s Family');
+        final m = (await ImportMatcher(catalog).match([
+          rec('Trash of the Count’s Family', kind: MediaKind.manhwa),
+        ])).single;
+        expect(m.matchClass, MatchClass.suggested);
+        expect(m.titleId, 'anilist:9');
+        expect(await catalog.titleById('anilist:9'), isNotNull);
+      },
+    );
+
+    test('with no AniList link it falls back to the MyAnimeList id', () async {
+      gateway.aliasCatalog['some fan name'] = [
+        const AliasCandidateDto(names: ['Some Fan Name'], mal: 77, lang: 'ko'),
+      ];
+      gateway.malCatalog[77] = {...comic(12, 'Official Name'), 'idMal': 77};
+      final m = (await ImportMatcher(
+        catalog,
+      ).match([rec('Some Fan Name', kind: MediaKind.manhwa)])).single;
+      expect(m.titleId, 'anilist:12');
+    });
+
+    test(
+      'a Chinese work is never offered for a manhwa, and the reverse',
+      () async {
+        gateway.aliasCatalog['cultivation thing'] = [
+          const AliasCandidateDto(
+            names: ['Cultivation Thing'],
+            al: 3,
+            lang: 'zh',
+          ),
+        ];
+        gateway.aniListById[3] = comic(
+          3,
+          'Official Cultivation',
+          kind: 'manhua',
+        );
+        final wrong = (await ImportMatcher(
+          catalog,
+        ).match([rec('Cultivation Thing', kind: MediaKind.manhwa)])).single;
+        expect(wrong.matchClass, MatchClass.unresolved);
+        final right = (await ImportMatcher(
+          catalog,
+        ).match([rec('Cultivation Thing', kind: MediaKind.manhua)])).single;
+        expect(right.titleId, 'anilist:3');
+      },
+    );
+
+    test('a different work with a similar name is not taken: the typed name must be one of its names', () async {
+      gateway.aliasCatalog['demonic evolution'] = [
+        const AliasCandidateDto(names: ['Wo, Jinhua, Emo'], al: 4, lang: 'zh'),
+      ];
+      gateway.aniListById[4] = comic(4, 'Me, Evolution, Emo', kind: 'manhua');
+      final m = (await ImportMatcher(
+        catalog,
+      ).match([rec('Demonic Evolution', kind: MediaKind.manhua)])).single;
+      expect(m.matchClass, MatchClass.unresolved);
+    });
+
+    test('alias lookups are only made for comics', () async {
+      await ImportMatcher(catalog).match([
+        rec('Nothing Here', kind: MediaKind.anime),
+        rec('Nor Here', kind: MediaKind.kdrama),
+      ]);
+      expect(gateway.aliasCalls, 0);
+    });
+
+    test(
+      'a failing alias lookup leaves the title in review, not an error',
+      () async {
+        gateway.matchCatalog['x'] = const [];
+        final failing = _AliasFails(gateway);
+        final c = CatalogRepository(catalog.db, failing);
+        final m = (await ImportMatcher(
+          c,
+        ).match([rec('X', kind: MediaKind.manhwa)])).single;
+        expect(m.matchClass, MatchClass.unresolved);
+      },
+    );
+  });
+}
+
+/// A gateway whose alias service is down but whose catalog still answers.
+class _AliasFails extends FakeGateway {
+  _AliasFails(FakeGateway inner) {
+    matchCatalog.addAll(inner.matchCatalog);
+  }
+
+  @override
+  Future<List<List<AliasCandidateDto>>> aliases(List<String> names) async =>
+      throw const CatalogUnavailable('offline');
 }
