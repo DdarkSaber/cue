@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../data/catalog_gateway.dart';
+import '../../data/catalog_repository.dart' show CatalogPageState;
 import '../../domain/decisions.dart';
 import '../../domain/models/deck_filters.dart';
 import '../../domain/models/decision.dart';
@@ -28,6 +29,8 @@ class DeckState {
     this.sessionDecisions = 0,
     this.error,
     this.directionSuggestion = false,
+    this.catalogPending = false,
+    this.lengthFallback = false,
   });
 
   final List<RankedCard> cards;
@@ -45,6 +48,8 @@ class DeckState {
   /// A decision that could not be stored; the card stays.
   final String? error;
   final bool directionSuggestion;
+  final bool catalogPending;
+  final bool lengthFallback;
 
   RankedCard? get top => cards.isEmpty ? null : cards.first;
 
@@ -61,6 +66,8 @@ class DeckState {
     String? error,
     bool clearError = false,
     bool? directionSuggestion,
+    bool? catalogPending,
+    bool? lengthFallback,
   }) => DeckState(
     cards: cards ?? this.cards,
     loading: loading ?? this.loading,
@@ -71,6 +78,8 @@ class DeckState {
     sessionDecisions: sessionDecisions ?? this.sessionDecisions,
     error: clearError ? null : (error ?? this.error),
     directionSuggestion: directionSuggestion ?? this.directionSuggestion,
+    catalogPending: catalogPending ?? this.catalogPending,
+    lengthFallback: lengthFallback ?? this.lengthFallback,
   );
 }
 
@@ -122,10 +131,14 @@ class DeckController extends Notifier<DeckState> {
   final Set<String> _inFlight = {};
 
   static const refillBelow = 4;
+  static const maxRefillRounds = 4;
 
   @override
   DeckState build() {
-    ref.watch(profileIdProvider);
+    final profile = ref.watch(profileIdProvider);
+    final settingsLoading = ref.watch(
+      settingsProvider.select((s) => s.isLoading),
+    );
     ref.watch(deckFiltersProvider);
     ref.watch(libraryVersionProvider);
     // Settings that change eligibility re-deal; motion or haptics do not.
@@ -139,7 +152,7 @@ class DeckController extends Notifier<DeckState> {
         ),
       ),
     );
-    Future.microtask(_deal);
+    if (!profile.isLoading && !settingsLoading) Future.microtask(_deal);
     return const DeckState();
   }
 
@@ -244,7 +257,7 @@ class DeckController extends Notifier<DeckState> {
         .eligible(
           title,
           signals,
-          f,
+          state.lengthFallback ? f.copyWith(shortOnly: false) : f,
           showAdult: ref.read(currentSettingsProvider).showAdult,
           enabledKinds: _enabledKinds,
         );
@@ -283,6 +296,9 @@ class DeckController extends Notifier<DeckState> {
       return;
     }
     _dealing = true;
+    if (state.cards.isEmpty) {
+      state = state.copyWith(loading: true, clearEmpty: true);
+    }
     try {
       do {
         _again = false;
@@ -292,6 +308,7 @@ class DeckController extends Notifier<DeckState> {
       if (!ref.mounted) return;
       state = state.copyWith(
         loading: false,
+        catalogPending: true,
         error: 'Could not prepare recommendations. Try again.',
         emptyMessage: state.cards.isEmpty
             ? 'Your local library or candidate cache could not be read.'
@@ -411,6 +428,7 @@ class DeckController extends Notifier<DeckState> {
       for (final t in [...pool, ...related]) t.id: t,
     });
     String? notice;
+    var catalogPending = false;
 
     int eligibleCount() => pool
         .where(
@@ -444,45 +462,60 @@ class DeckController extends Notifier<DeckState> {
         (_wantRetrieval ||
             eligibleCount() < Ranker.deckSize * 2 ||
             (filters.activeCount == 0 && missingKinds.isNotEmpty))) {
-      notice = await _refill(
-        _wantRetrieval || eligibleCount() < Ranker.deckSize * 2
-            ? kinds
-            : missingKinds,
-        filters,
-        routes: _wantRetrieval
-            ? retrievalPlan(
-                kinds.difference(filters.excludedKinds),
-                [
-                  ...clusters,
-                  if (_temporary.bias.bias.values.any((v) => v > 0))
-                    InterestCluster(
-                      _temporary.bias.bias.entries
-                          .where((e) => e.value > 0)
-                          .take(8)
-                          .map((e) => e.key)
-                          .toSet(),
-                      0.2,
-                    ),
-                ],
-                signals.kindRatings,
-                _retrievalRound,
-                explicitMood: switch (filters.mood) {
-                  QuickMood.hype => 'hype',
-                  QuickMood.comfort => 'comfort',
-                  QuickMood.gripping => 'gripping',
-                  QuickMood.feels => 'feels',
-                  _ => null,
-                },
-              )
-            : null,
-      );
+      final refillKinds =
+          (_wantRetrieval || eligibleCount() < Ranker.deckSize * 2
+                  ? kinds
+                  : missingKinds)
+              .difference(filters.excludedKinds);
+      final routes = _wantRetrieval
+          ? retrievalPlan(
+              kinds.difference(filters.excludedKinds),
+              [
+                ...clusters,
+                if (_temporary.bias.bias.values.any((v) => v > 0))
+                  InterestCluster(
+                    _temporary.bias.bias.entries
+                        .where((e) => e.value > 0)
+                        .take(8)
+                        .map((e) => e.key)
+                        .toSet(),
+                    0.2,
+                  ),
+              ],
+              signals.kindRatings,
+              _retrievalRound,
+              explicitMood: switch (filters.mood) {
+                QuickMood.hype => 'hype',
+                QuickMood.comfort => 'comfort',
+                QuickMood.gripping => 'gripping',
+                QuickMood.feels => 'feels',
+                _ => null,
+              },
+            )
+          : null;
+      for (var round = 0; round < maxRefillRounds; round++) {
+        final result = await _refill(refillKinds, routes: routes);
+        notice = result.notice;
+        catalogPending = result.pending;
+        if (!ref.mounted) return;
+        signals = await library.signals(profileId);
+        if (!ref.mounted) return;
+        pool = await _pool(filters, kinds, signals);
+        if (!ref.mounted) return;
+        if (ref.read(deckFiltersProvider) != filters ||
+            await _profile != profileId) {
+          _again = true;
+          return;
+        }
+        if (eligibleCount() >= Ranker.deckSize * 2 ||
+            !result.pending ||
+            result.failed ||
+            !result.advanced) {
+          break;
+        }
+      }
       _retrievalRound++;
       _wantRetrieval = false;
-      if (!ref.mounted) return;
-      signals = await library.signals(profileId);
-      if (!ref.mounted) return;
-      pool = await _pool(filters, kinds, signals);
-      if (!ref.mounted) return;
     }
 
     final byId = {for (final t in pool) t.id: t};
@@ -514,17 +547,73 @@ class DeckController extends Notifier<DeckState> {
     final target = filters.mood == QuickMood.forYou ? mood?.target : null;
     ref.read(moodReadProvider.notifier).set(target ?? MoodTarget.none);
 
-    final keep = keepTop ? state.top : null;
+    var rankingFilters = filters;
+    var rankingPool = pool;
+    var lengthFallback = false;
+    if (!catalogPending &&
+        filters.shortOnly &&
+        !filters.isRevisit &&
+        kinds.length == 1 &&
+        kinds.contains(MediaKind.anime) &&
+        eligibleCount() == 0) {
+      final nearbyFilters = filters.copyWith(shortOnly: false);
+      final nearby =
+          pool
+              .where(
+                (t) =>
+                    t.episodes != null &&
+                    t.episodes! > 13 &&
+                    ranker.eligible(
+                      t,
+                      signals,
+                      nearbyFilters,
+                      showAdult: settings.showAdult,
+                      enabledKinds: _enabledKinds,
+                    ),
+              )
+              .toList()
+            ..sort((a, b) => a.episodes!.compareTo(b.episodes!));
+      if (nearby.isNotEmpty) {
+        rankingFilters = nearbyFilters;
+        rankingPool = nearby;
+        lengthFallback = true;
+      }
+    }
+    final previous = keepTop ? state.top : null;
+    final keep =
+        previous != null &&
+            ranker.eligible(
+              previous.title,
+              signals,
+              rankingFilters,
+              showAdult: settings.showAdult,
+              enabledKinds: _enabledKinds,
+            )
+        ? previous
+        : null;
     final exposures =
         (await ref.read(recommendationRepositoryProvider).exposures(profileId))
             .keys
             .toSet();
     if (!ref.mounted) return;
     poolSize = pool.length;
+    final unseenEligible = rankingPool
+        .where(
+          (t) =>
+              !_temporary.shown.contains(t.id) &&
+              ranker.eligible(
+                t,
+                signals,
+                rankingFilters,
+                showAdult: settings.showAdult,
+                enabledKinds: _enabledKinds,
+              ),
+        )
+        .isNotEmpty;
     final dealt = ranker.deal(
-      pool,
+      rankingPool,
       signals,
-      filters,
+      rankingFilters,
       showAdult: settings.showAdult,
       enabledKinds: _enabledKinds,
       titlesById: byId,
@@ -532,6 +621,7 @@ class DeckController extends Notifier<DeckState> {
       session: _session,
       target: target,
       size: keep == null ? Ranker.deckSize : Ranker.deckSize - 1,
+      shortestFirst: lengthFallback,
       temporary: _temporary.bias,
       preferShorter: _temporary.preferShorter,
       clusters: clusters,
@@ -541,24 +631,25 @@ class DeckController extends Notifier<DeckState> {
         if (keep != null) keep.title.id,
         if (_skipCurrent && eligibleCount() > 1 && _visibleId != null)
           _visibleId!,
-        if (pool.length > 20) ..._temporary.shown,
+        if (unseenEligible) ..._temporary.shown,
       },
     );
-    final cards = diversify(
-      dealt,
-      (target?.confidence ?? 0) > 0.4 ? mood?.secondMode : null,
-    );
-    final keepStill =
-        keep != null &&
-        ranker.eligible(
-          keep.title,
-          signals,
-          filters,
-          showAdult: settings.showAdult,
-          enabledKinds: _enabledKinds,
-          includeRewatchesDefault: settings.includeRewatches,
-        );
-    final next = [if (keepStill) keep, ...cards];
+    final cards = lengthFallback
+        ? [
+            for (final c in dealt.take(
+              keep == null ? Ranker.deckSize : Ranker.deckSize - 1,
+            ))
+              RankedCard(
+                c.title,
+                c.score,
+                'Longer than requested - ${c.title.episodes} episodes. ${c.reason}',
+              ),
+          ]
+        : diversify(
+            dealt,
+            (target?.confidence ?? 0) > 0.4 ? mood?.secondMode : null,
+          );
+    final next = [?keep, ...cards];
     final notices = [?notice, ?_aiNotice];
     final canUndo = await ref.read(decisionServiceProvider).canUndo(profileId);
     if (!ref.mounted) return;
@@ -578,19 +669,24 @@ class DeckController extends Notifier<DeckState> {
     }
     _dealtProfile = profileId;
     _skipCurrent = false;
+    final empty = next.isEmpty
+        ? ranker.explainEmpty(
+            pool,
+            signals,
+            filters,
+            showAdult: settings.showAdult,
+            enabledKinds: _enabledKinds,
+          )
+        : null;
     state = state.copyWith(
       cards: next,
       loading: false,
+      catalogPending: catalogPending,
+      lengthFallback: lengthFallback,
       emptyMessage: next.isEmpty
-          ? ranker
-                .explainEmpty(
-                  pool,
-                  signals,
-                  filters,
-                  showAdult: settings.showAdult,
-                  enabledKinds: _enabledKinds,
-                )
-                .message
+          ? catalogPending && pool.isNotEmpty
+                ? notice ?? 'More catalog pages remain. Try again to keep looking with these filters.'
+                : empty?.message
           : null,
       clearEmpty: next.isNotEmpty,
       // "Showing saved stories" only when there are saved stories to show.
@@ -620,49 +716,66 @@ class DeckController extends Notifier<DeckState> {
     return catalog.pool(kinds);
   }
 
-  /// Pulls one more page for each kind that is running low. Returns a
-  /// notice when the network is unavailable.
-  Future<String?> _refill(
-    Set<MediaKind> kinds,
-    DeckFilters filters, {
+  /// One bounded pass; only a provider's final page proves exhaustion.
+  Future<({String? notice, bool pending, bool failed, bool advanced})> _refill(
+    Set<MediaKind> kinds, {
     List<RetrievalRequest>? routes,
   }) async {
     final catalog = ref.read(catalogRepositoryProvider);
-    final mood = switch (filters.mood) {
-      QuickMood.hype => 'hype',
-      QuickMood.comfort => 'comfort',
-      QuickMood.gripping => 'gripping',
-      QuickMood.feels => 'feels',
-      _ => null,
-    };
     var offline = false;
     var gotAny = false;
+    var pending = false;
+    var advanced = false;
+    var limited = false;
     final failedKinds = <MediaKind>{
       ...catalog.unavailableKinds.intersection(kinds),
     };
     await Future.wait([
       for (final request
-          in routes ??
-              [for (final k in kinds) RetrievalRequest(k, 'broad', mood: mood)])
-        if (!catalog.unavailableKinds.contains(request.kind))
-          () async {
-            try {
-              final n = await catalog.fetchNext(
-                request.kind,
-                mood: request.mood,
-              );
-              if (n > 0) gotAny = true;
-            } on CatalogUnavailable catch (e) {
-              if (e.code == 'offline') offline = true;
-              failedKinds.add(request.kind);
+          in routes ?? [for (final k in kinds) RetrievalRequest(k, 'broad')])
+        () async {
+          final before = await catalog.pageState(
+            request.kind,
+            mood: request.mood,
+          );
+          final broad = request.mood == null;
+          if (before == CatalogPageState.exhausted) return;
+          if (before == CatalogPageState.limited) {
+            if (broad) pending = limited = true;
+            return;
+          }
+          if (before == CatalogPageState.unavailable) {
+            if (broad) pending = true;
+            return;
+          }
+          try {
+            final n = await catalog.fetchNext(request.kind, mood: request.mood);
+            advanced = true;
+            if (n > 0) gotAny = true;
+            if (broad &&
+                await catalog.pageState(request.kind, mood: request.mood) !=
+                    CatalogPageState.exhausted) {
+              if (broad) pending = true;
             }
-          }(),
+          } on CatalogUnavailable catch (e) {
+            pending = true;
+            if (e.code == 'offline') offline = true;
+            failedKinds.add(request.kind);
+          }
+        }(),
     ]);
-    if (offline && !gotAny) return 'Offline. Showing saved stories.';
-    if (failedKinds.isNotEmpty) {
-      return 'Some formats unavailable: ${failedKinds.map((k) => k.label).join(', ')}. Showing available cached stories.';
-    }
-    return null;
+    return (
+      notice: offline && !gotAny
+          ? 'Offline. Showing saved stories when available; retry when connected.'
+          : failedKinds.isNotEmpty
+          ? 'Some formats unavailable: ${failedKinds.map((k) => k.label).join(', ')}. Retry to check more stories; cached matches are still available.'
+          : limited
+          ? 'The catalog browsing limit was reached for now. Your filters have not been changed.'
+          : null,
+      pending: pending,
+      failed: failedKinds.isNotEmpty,
+      advanced: advanced,
+    );
   }
 
   /// Records a decision on the top card. The card leaves the deck at once;
@@ -911,13 +1024,16 @@ class DeckController extends Notifier<DeckState> {
         .signals(profileId);
     if (!current()) return undone;
     final settings = ref.read(currentSettingsProvider);
+    final undoFilters = state.lengthFallback
+        ? filters.copyWith(shortOnly: false)
+        : filters;
     if (filters != ref.read(deckFiltersProvider) ||
         !ref
             .read(rankerProvider)
             .eligible(
               title,
               signals,
-              filters,
+              undoFilters,
               showAdult: settings.showAdult,
               enabledKinds: _enabledKinds,
               includeRewatchesDefault: settings.includeRewatches,
@@ -925,15 +1041,18 @@ class DeckController extends Notifier<DeckState> {
       await _deal();
       return undone;
     }
+    final reason = reasonFor(
+      title,
+      signals,
+      undoFilters,
+      titlesById: {title.id: title},
+    );
     final card = RankedCard(
       title,
       1,
-      reasonFor(
-        title,
-        signals,
-        ref.read(deckFiltersProvider),
-        titlesById: {title.id: title},
-      ),
+      state.lengthFallback && title.episodes != null && title.episodes! > 13
+          ? 'Longer than requested - ${title.episodes} episodes. $reason'
+          : reason,
     );
     state = state.copyWith(
       cards: [card, ...state.cards.where((c) => c.title.id != titleId)],

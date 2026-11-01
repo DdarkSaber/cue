@@ -287,6 +287,7 @@ class Ranker {
     Set<String> recentExposures = const {},
     double? explorePreference,
     Set<String> skip = const {},
+    bool shortestFirst = false,
     int size = deckSize,
   }) {
     final scored = <RankedCard>[];
@@ -318,7 +319,29 @@ class Ranker {
           _random.nextDouble() * 0.02;
       scored.add(RankedCard(t, sc, ''));
     }
-    scored.sort((a, b) => b.score.compareTo(a.score));
+    scored.sort((a, b) {
+      if (shortestFirst) {
+        final length = (a.title.episodes ?? 1 << 30).compareTo(
+          b.title.episodes ?? 1 << 30,
+        );
+        if (length != 0) return length;
+      }
+      return b.score.compareTo(a.score);
+    });
+    if (shortestFirst) {
+      final franchises = <String>{};
+      return [
+        for (final c
+            in scored
+                .where((c) => franchises.add(c.title.franchiseKey))
+                .take(size))
+          RankedCard(
+            c.title,
+            c.score,
+            reasonFor(c.title, s, f, titlesById: titlesById, now: _now()),
+          ),
+      ];
+    }
     if (explorePreference != null) {
       return [
         for (final c in _adaptive(
@@ -576,7 +599,7 @@ class Ranker {
       }
     }
     return const EmptyReason(
-      'You have decided on every cached story for these filters. Cue will fetch more when online.',
+      'No more untried stories in the checked catalog pages. Try a different direction or choose from saved.',
     );
   }
 }

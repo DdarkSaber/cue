@@ -152,6 +152,9 @@ class AniListClient {
     if (res.statusCode != 200) throw const CatalogUnavailable('upstream_error');
     try {
       final body = jsonDecode(utf8.decode(res.bodyBytes)) as Map;
+      if (body['errors'] is List && (body['errors'] as List).isNotEmpty) {
+        throw const CatalogUnavailable('upstream_error');
+      }
       return (body['data'] as Map?)?.cast<String, dynamic>();
     } on FormatException {
       throw const CatalogUnavailable('bad_response');
@@ -226,11 +229,8 @@ class AniListClient {
           : k == null
           ? ''
           : ', type: ${k.type}';
-      final country = kind == MediaKind.manhwa || kind == MediaKind.manhua
-          ? ', countryOfOrigin: ${k!.country}'
-          : '';
       parts.add(
-        's$i: Page(page: 1, perPage: 5) { media(search: \$q$i$type$country, isAdult: ${items[i].adult}) { $_fields } }',
+        's$i: Page(page: 1, perPage: 5) { media(search: \$q$i$type, isAdult: ${items[i].adult}) { $_fields } }',
       );
     }
     final data = await _query(

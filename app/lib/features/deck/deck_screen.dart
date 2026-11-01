@@ -261,10 +261,7 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
     } else {
       cardArea = LoadingCard(
         message: deck.emptyMessage ?? 'No stories right now.',
-        action: _EmptyAction(
-          hasFilters: filters.activeCount > 0,
-          revisit: filters.isRevisit,
-        ),
+        action: _EmptyAction(revisit: filters.isRevisit),
       );
     }
 
@@ -380,8 +377,7 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
 }
 
 class _EmptyAction extends ConsumerWidget {
-  const _EmptyAction({required this.hasFilters, required this.revisit});
-  final bool hasFilters;
+  const _EmptyAction({required this.revisit});
   final bool revisit;
 
   @override
@@ -390,21 +386,6 @@ class _EmptyAction extends ConsumerWidget {
       return CuePrimaryButton(
         label: 'Open Library',
         onPressed: () => context.go(CueRoutes.library),
-      );
-    }
-    if (hasFilters) {
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CuePrimaryButton(
-            label: 'Review filters',
-            onPressed: () => showFilterSheet(context),
-          ),
-          TextButton(
-            onPressed: () => context.go(CueRoutes.willTry),
-            child: const Text('Choose from saved'),
-          ),
-        ],
       );
     }
     return Column(

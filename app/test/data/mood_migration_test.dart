@@ -16,6 +16,9 @@ void main() {
       var db = CueDatabase(NativeDatabase(file));
       final profile = await ProfileRepository(db).ensureActive();
       await db.customStatement('DROP TABLE recommendation_states');
+      await db.customStatement(
+        'ALTER TABLE source_observations DROP COLUMN record_json',
+      );
       await db.customStatement('PRAGMA user_version = 3');
       await db.close();
       db = CueDatabase(NativeDatabase(file));
@@ -53,6 +56,9 @@ void main() {
     await v2.customStatement(
       'ALTER TABLE source_observations DROP COLUMN candidate_json',
     );
+    await v2.customStatement(
+      'ALTER TABLE source_observations DROP COLUMN record_json',
+    );
     await v2.customStatement('PRAGMA user_version = 1');
     await v2.close();
 
@@ -67,6 +73,7 @@ void main() {
         .map((r) => r.read<String>('name'))
         .get();
     expect(cols, contains('candidate_json'));
+    expect(cols, contains('record_json'));
     await upgraded.close();
     await dir.delete(recursive: true);
   });

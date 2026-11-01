@@ -253,6 +253,9 @@ class SourceObservations extends Table {
   /// queue can accept it later in one go.
   TextColumn get candidateJson => text().nullable()();
 
+  /// Local-only original fields needed when an unresolved row is reviewed.
+  TextColumn get recordJson => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

@@ -22,11 +22,36 @@ void main() {
     }
     expect(gateway.calls, hasLength(50));
     expect(gateway.calls.last, 'discover:anime:-:50');
+    expect(await catalog.pageState(MediaKind.anime), CatalogPageState.limited);
+    expect(await catalog.pageState(MediaKind.manhwa), CatalogPageState.more);
     await catalog.fetchNext(MediaKind.anime, mood: 'comfort');
     expect(gateway.calls.last, 'discover:anime:comfort:1');
     now = now.add(const Duration(days: 7));
     await catalog.fetchNext(MediaKind.anime);
     expect(gateway.calls.last, 'discover:anime:-:1');
     expect(await db.select(db.catalogTitles).get(), hasLength(50));
+  });
+
+  test('an empty nonterminal page does not mean catalog exhaustion', () async {
+    final db = memoryDb();
+    addTearDown(db.close);
+    final catalog = CatalogRepository(
+      db,
+      FakeGateway(
+        pages: {
+          MediaKind.anime: [
+            [],
+            [item(1)],
+          ],
+        },
+      ),
+    );
+    expect(await catalog.fetchNext(MediaKind.anime), 0);
+    expect(await catalog.pageState(MediaKind.anime), CatalogPageState.more);
+    expect(await catalog.fetchNext(MediaKind.anime), 1);
+    expect(
+      await catalog.pageState(MediaKind.anime),
+      CatalogPageState.exhausted,
+    );
   });
 }

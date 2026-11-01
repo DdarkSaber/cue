@@ -59,16 +59,24 @@ Cue ranks a growing cached sample. Each round includes one unfiltered broad
 route per enabled kind plus at most three supported related-mood routes,
 with a total cap of 12 requests. Enabled-kind order rotates. Missing kinds
 are refilled even if another kind fills the cache; unavailable formats are
-reported.
+reported. A refill checks up to four rounds while fewer than 20 eligible
+candidates are cached. Swiping refills again as the deck runs low.
 
 AniList pages contain up to 50 titles. Cinemeta offsets advance by 50.
 TVmaze discovery samples four index pages with variable result counts.
 App page cursors stop at 50 per kind/mood and refresh after seven days.
 
-Hard filters and saved-history exclusions apply to every route and exploration
-slot. Candidates can still run out. Recovery means retry/refill, explicitly
-review filters, or choose from saved—not fabricated candidates or silently
-widened constraints.
+Hard filters and saved-history exclusions apply to every exact-match route and
+exploration slot. A bounded batch or network failure is not proof of exhaustion:
+Cue keeps the constraints and offers Retry, not a Review filters dead-end.
+
+Short anime means at most 13 total episodes. When the broad anime catalog has
+reported its final page and no eligible short anime remain, Cue can deal nearby
+unwatched anime, shortest known episode count first. Each such card is labelled
+"Longer than requested" with its episode count; the original filter stays visible.
+Other constraints and saved-history exclusions still apply. New exact matches
+take precedence when available again. Unknown lengths are not called short.
+No titles are fabricated, and an unavailable catalog cannot guarantee a card.
 
 ## Familiar, adjacent and exploring picks
 

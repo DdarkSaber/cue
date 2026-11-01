@@ -32,6 +32,12 @@ import '../test/features/try_now_gesture_test.dart' as gestures;
 import '../test/features/try_now_flow_test.dart' as saved;
 import '../test/features/details_actions_test.dart' as details;
 import '../test/features/franchise_exclusions_section_test.dart' as franchises;
+import '../test/data/catalog_search_test.dart' as catalog_search;
+import '../test/data/hybrid_gateway_test.dart' as gateway_search;
+import '../test/features/review_search_test.dart' as review_search;
+import '../test/imports/matcher_test.dart' as import_matching;
+import '../test/imports/review_metadata_test.dart' as review_metadata;
+import '../test/features/deck_refill_test.dart' as deck_refill;
 import '../test/helpers.dart';
 import '../test/imports/xlsx_test.dart' show buildXlsx;
 import '../test/support/fakes.dart';
@@ -83,6 +89,18 @@ Future<void> _until(WidgetTester t, bool Function() ready) async {
 /// user history, server deletion or existing on-device database is used.
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  if (const String.fromEnvironment('CUE_ANDROID_E2E_GROUP') == 'matching') {
+    group('device cached catalog search', catalog_search.main);
+    group('device provider search routes', gateway_search.main);
+    group('device explicit unresolved review', review_search.main);
+    group('device safe import matching', import_matching.main);
+    group('device review metadata restart and migration', review_metadata.main);
+    group(
+      'device bounded deck refills and watched exclusions',
+      deck_refill.main,
+    );
+    return;
+  }
   group('library browsing and removal on device', browser.main);
   group('library names and settings on device', settings.main);
   group('merged history and filters on device', recommendations.main);

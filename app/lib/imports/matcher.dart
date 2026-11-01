@@ -1,7 +1,10 @@
 import '../data/catalog_gateway.dart';
 import '../data/catalog_repository.dart';
 import '../domain/models/title.dart';
+import '../domain/title_names.dart';
 import 'records.dart';
+
+export '../domain/title_names.dart' show normTitle;
 
 /// How a record was tied to a catalog title. Similarity is never shown as a
 /// probability: `similar` only means "worth a look" and is never imported
@@ -45,45 +48,53 @@ class MatchedRecord {
   }
 }
 
-/// Lower-case, punctuation-free form used for exact title comparison.
-String normTitle(String s) => s
-    .toLowerCase()
-    .replaceAll(RegExp('[’‘`´]'), "'")
-    .replaceAll("'", '')
-    .replaceAll(RegExp(r'[^a-z0-9぀-ヿ一-鿿가-힯]+'), ' ')
-    .trim();
-
 /// The text sent to a catalog: curly quotes straightened, trailing "(2020)"
 /// or "(webtoon)" dropped, and season, part and "all seasons" suffixes
 /// removed (a franchise row stands for the whole show).
-String cleanQuery(String title, {bool screen = false}) {
+String cleanQuery(
+  String title, {
+  bool screen = false,
+  bool preserveParts = false,
+}) {
   var s = title
       .replaceAll(RegExp('[’‘`´]'), "'")
-      .replaceAll(RegExp(r'\s*\([^)]*\)\s*$'), '')
       .replaceAll(
         RegExp(
-          r'\s+(all seasons|trilogy|complete series)$',
+          preserveParts
+              ? r'\s*\((?:\d{4}|webtoon|anime|manga|manhwa|manhua)\)\s*$'
+              : r'\s*\([^)]*\)\s*$',
           caseSensitive: false,
         ),
         '',
       )
-      .replaceAll(
-        RegExp(
-          r'[\s:–-]+(season|part|cour|series)\s*\d+\s*$',
-          caseSensitive: false,
-        ),
-        '',
-      )
-      // "2nd Season", "Second Season", "Final Season".
-      .replaceAll(
-        RegExp(
-          r'[\s:–-]+(\d+(st|nd|rd|th)|second|third|fourth|final)\s+season\s*$',
-          caseSensitive: false,
-        ),
-        '',
-      )
-      .replaceAll(RegExp(r'[\s.,;:]+$'), '')
       .trim();
+  if (!preserveParts) {
+    s = s
+        .replaceAll(
+          RegExp(
+            r'\s+(all seasons|trilogy|complete series)$',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .replaceAll(
+          RegExp(
+            r'[\s:–-]+(season|part|cour|series)\s*\d+\s*$',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        // "2nd Season", "Second Season", "Final Season".
+        .replaceAll(
+          RegExp(
+            r'[\s:–-]+(\d+(st|nd|rd|th)|second|third|fourth|final)\s+season\s*$',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .replaceAll(RegExp(r'[\s.,;:]+$'), '')
+        .trim();
+  }
   // "The Uncanny Counter 2": for shows a bare trailing number is a sequel.
   if (screen) s = s.replaceAll(RegExp(r'\s+\d{1,2}$'), '').trim();
   return s.isEmpty ? title : s;
@@ -209,12 +220,32 @@ class ImportMatcher {
   /// AniList caps query complexity: 12 titles x 5 results stays under it.
   static const batchSize = 12;
   static const similarThreshold = 0.74;
+  final _ambiguous = <int>{};
+
+  String _query(NormalizedRecord r, String title) => cleanQuery(
+    title,
+    screen: _isScreen(r.kind) && r.kind != MediaKind.movie,
+    preserveParts: !_isScreen(r.kind) || r.kind == MediaKind.movie,
+  );
+
+  Future<String?> _malIdentity(NormalizedRecord r) async {
+    if (r.malId == null) return null;
+    final unspecified = r.kind == null || r.kind == MediaKind.unknown;
+    final ids = <String>{
+      if (unspecified || r.kind == MediaKind.anime)
+        ?await catalog.findByIdentity('mal', '${r.malId}', 'anime'),
+      if (unspecified || r.kind!.isReading)
+        ?await catalog.findByIdentity('mal', '${r.malId}', 'manga'),
+    };
+    return ids.length == 1 ? ids.single : null;
+  }
 
   Future<List<MatchedRecord>> match(
     List<NormalizedRecord> records, {
     bool offlineOnly = false,
     void Function(int done, int total)? onProgress,
   }) async {
+    _ambiguous.clear();
     final out = List<MatchedRecord?>.filled(records.length, null);
     final pending = <int>[];
 
@@ -229,9 +260,26 @@ class ImportMatcher {
         id = await catalog.findByIdentity('anilist', '${r.anilistId}');
       }
       if (id == null && r.malId != null) {
-        id =
-            await catalog.findByIdentity('mal', '${r.malId}', 'anime') ??
-            await catalog.findByIdentity('mal', '${r.malId}', 'manga');
+        id = await _malIdentity(r);
+      }
+      if (id != null) {
+        final title = await catalog.titleById(id);
+        if (title == null ||
+            !_kindFits(r.kind, title.kind) ||
+            (r.screenOnly && title.kind.isReading) ||
+            title.format == 'NOVEL' ||
+            title.format == 'MUSIC') {
+          id = null;
+        } else if (title.adult) {
+          out[i] = MatchedRecord(
+            r,
+            null,
+            MatchClass.unresolved,
+            included: false,
+            adultHidden: true,
+          );
+          continue;
+        }
       }
       if (id != null) {
         out[i] = MatchedRecord(
@@ -249,27 +297,38 @@ class ImportMatcher {
     final cached = await catalog.pool(MediaKind.values);
     final byTitle = <String, List<Title>>{};
     for (final t in cached) {
+      if (t.adult || t.format == 'NOVEL' || t.format == 'MUSIC') continue;
       for (final n in {t.titleEn, t.titleRomaji, t.titleNative}) {
-        if (n != null) byTitle.putIfAbsent(normTitle(n), () => []).add(t);
+        if (n != null) byTitle.putIfAbsent(_key(n), () => []).add(t);
       }
     }
-    String? localTitle(NormalizedRecord r) {
-      for (final name in {r.title, cleanQuery(r.title), ...r.altTitles}) {
-        final hits = [
-          for (final t in byTitle[normTitle(name)] ?? const <Title>[])
-            if (_kindFits(r.kind, t.kind)) t,
-        ];
-        if (hits.isEmpty) continue;
-        return (hits.where((t) => _yearFits(r.year, t.year)).firstOrNull ??
-                hits.first)
-            .id;
-      }
+    String? localTitle(int index) {
+      final r = records[index];
+      final unique = <String, Title>{
+        for (final name in {r.title, _query(r, r.title), ...r.altTitles})
+          for (final t in byTitle[_key(name)] ?? const <Title>[])
+            if (_kindFits(r.kind, t.kind) &&
+                !(r.screenOnly && t.kind.isReading))
+              t.id: t,
+      }.values.toList();
+      if (unique.isEmpty) return null;
+      if (unique.length == 1) return unique.single.id;
+      final dated = [
+        for (final t in unique)
+          if (r.year != null &&
+              t.year != null &&
+              _yearFits(r.year, t.year) &&
+              (r.kind == null || t.kind == r.kind))
+            t,
+      ];
+      if (dated.length == 1) return dated.single.id;
+      _ambiguous.add(index);
       return null;
     }
 
     final remote = <int>[];
     for (final i in pending) {
-      final id = localTitle(records[i]);
+      final id = localTitle(i);
       if (id != null) {
         out[i] = MatchedRecord(
           records[i],
@@ -326,16 +385,76 @@ class ImportMatcher {
     void Function(int) progressed,
   ) async {
     final gateway = catalog.gateway;
-    final withMal = remote.where((i) => records[i].malId != null).toList();
+    for (final anime in [true, false]) {
+      final withAl = [
+        for (final i in remote)
+          if (out[i] == null &&
+              records[i].anilistId != null &&
+              (records[i].kind == null ||
+                  records[i].kind == MediaKind.unknown ||
+                  (anime
+                      ? records[i].kind == MediaKind.anime
+                      : records[i].kind!.isReading)))
+            i,
+      ];
+      for (var s = 0; s < withAl.length; s += 50) {
+        final chunk = withAl.skip(s).take(50).toList();
+        try {
+          final found = await gateway.byAniListIds(
+            chunk.map((i) => records[i].anilistId!).toSet().toList(),
+            anime: anime,
+          );
+          for (final i in chunk) {
+            final item = found
+                .where(
+                  (d) =>
+                      d.provider == 'anilist' &&
+                      d.providerId == '${records[i].anilistId}' &&
+                      _allowed(records[i], d),
+                )
+                .firstOrNull;
+            if (item == null) continue;
+            if (item.json['adult'] == true) {
+              out[i] = MatchedRecord(
+                records[i],
+                null,
+                MatchClass.unresolved,
+                included: false,
+                adultHidden: true,
+              );
+              continue;
+            }
+            final ids = await catalog.upsert([item]);
+            out[i] = MatchedRecord(
+              records[i],
+              ids.single,
+              MatchClass.exactId,
+              included: records[i].confirmed,
+            );
+            unchecked.remove(i);
+          }
+        } on CatalogUnavailable {
+          unchecked.addAll(chunk.where((i) => out[i] == null));
+        }
+      }
+    }
+    final withMal = remote
+        .where((i) => out[i] == null && records[i].malId != null)
+        .toList();
     for (var s = 0; s < withMal.length; s += 50) {
       final chunk = withMal.skip(s).take(50).toList();
       final anime = [
         for (final i in chunk)
-          if (records[i].kind == MediaKind.anime) records[i].malId!,
+          if (records[i].kind == MediaKind.anime ||
+              records[i].kind == null ||
+              records[i].kind == MediaKind.unknown)
+            records[i].malId!,
       ];
       final manga = [
         for (final i in chunk)
-          if (records[i].kind != MediaKind.anime) records[i].malId!,
+          if ((records[i].kind?.isReading ?? true) ||
+              records[i].kind == MediaKind.unknown)
+            records[i].malId!,
       ];
       final res = await gateway.match(
         const [],
@@ -344,13 +463,30 @@ class ImportMatcher {
       );
       await catalog.upsert(res.mal);
       for (final i in chunk) {
-        final id = await catalog.findByIdentity(
-          'mal',
-          '${records[i].malId}',
-          records[i].kind == MediaKind.anime ? 'anime' : 'manga',
-        );
+        final id = await _malIdentity(records[i]);
         if (id != null) {
-          out[i] = MatchedRecord(records[i], id, MatchClass.exactId);
+          final title = await catalog.titleById(id);
+          if (title == null ||
+              title.format == 'NOVEL' ||
+              title.format == 'MUSIC') {
+            continue;
+          }
+          if (title.adult) {
+            out[i] = MatchedRecord(
+              records[i],
+              null,
+              MatchClass.unresolved,
+              included: false,
+              adultHidden: true,
+            );
+            continue;
+          }
+          out[i] = MatchedRecord(
+            records[i],
+            id,
+            MatchClass.exactId,
+            included: records[i].confirmed,
+          );
         }
       }
     }
@@ -360,24 +496,19 @@ class ImportMatcher {
     await _titlePass(
       records,
       byTitle,
-      (i) => [
-        cleanQuery(
-          records[i].title,
-          screen:
-              _isScreen(records[i].kind) && records[i].kind != MediaKind.movie,
-        ),
-      ],
+      (i) => _initialQueries(records[i]),
       out,
       unchecked,
-      progressed: progressed,
     );
+    progressed(byTitle.length);
 
     // 3b. AniList's search chokes on long or complex titles but finds the
     // show from its first few words, an alternate name from the sheet, or
     // the part before the colon. Try those for what is still unmatched.
     final retry = [
       for (final i in remote)
-        if ((out[i] == null || out[i]!.matchClass == MatchClass.similar) &&
+        if (!_ambiguous.contains(i) &&
+            (out[i] == null || out[i]!.matchClass == MatchClass.similar) &&
             !unchecked.contains(i))
           i,
     ];
@@ -387,8 +518,11 @@ class ImportMatcher {
     // work's other names and its AniList link.
     final stuck = [
       for (final i in remote)
-        if ((out[i] == null || out[i]!.matchClass == MatchClass.similar) &&
-            (records[i].kind?.isReading ?? false) &&
+        if (!_ambiguous.contains(i) &&
+            (out[i] == null || out[i]!.matchClass == MatchClass.similar) &&
+            !records[i].screenOnly &&
+            ((records[i].kind?.isReading ?? true) ||
+                records[i].kind == MediaKind.unknown) &&
             !unchecked.contains(i))
           i,
     ];
@@ -401,6 +535,38 @@ class ImportMatcher {
         if (out[i] == null || out[i]!.matchClass == MatchClass.similar) i,
     ];
     await _viaMangaUpdates(records, stillStuck, out);
+
+    // The compact batch query returns five hits. The full search used by
+    // review can recover a unique exact title beyond that first page.
+    for (final i in remote) {
+      if (_ambiguous.contains(i) ||
+          unchecked.contains(i) ||
+          (out[i] != null && out[i]!.matchClass != MatchClass.similar)) {
+        continue;
+      }
+      List<CatalogItemDto> candidates;
+      try {
+        candidates = await gateway.search(
+          _query(records[i], records[i].title),
+          kind: records[i].kind,
+        );
+      } on CatalogUnavailable {
+        unchecked.add(i);
+        continue;
+      }
+      final exact = _exact(records[i], candidates);
+      if (exact != null) {
+        final ids = await catalog.upsert([exact]);
+        out[i] = MatchedRecord(
+          records[i],
+          ids.single,
+          MatchClass.suggested,
+          included: records[i].confirmed,
+        );
+      } else if (_exactHits(records[i], candidates).length > 1) {
+        _ambiguous.add(i);
+      }
+    }
 
     // 5. Whatever is left may simply be rated adult, which Cue keeps out of
     // search by design. Say so instead of leaving it as an unexplained miss.
@@ -458,10 +624,19 @@ class ImportMatcher {
   }
 
   /// Other forms of a name to search with, most specific first.
+  List<String> _initialQueries(NormalizedRecord r) {
+    final names = <String, String>{};
+    for (final n in [r.title, ...r.altTitles.take(4)]) {
+      final q = _query(r, n);
+      names.putIfAbsent(_key(q), () => q);
+    }
+    return names.values.toList();
+  }
+
   List<String> _shorterQueries(int i, [List<NormalizedRecord>? all]) {
     final r = (all ?? _records)[i];
-    final base = cleanQuery(r.title);
-    final tried = {normTitle(base)};
+    final base = _query(r, r.title);
+    final tried = _initialQueries(r).map(normTitle).toSet();
     final out = <String>[];
     void add(String q) {
       final c = q.trim();
@@ -469,9 +644,6 @@ class ImportMatcher {
       out.add(c);
     }
 
-    for (final alt in r.altTitles.take(1)) {
-      add(cleanQuery(alt));
-    }
     final beforeColon = base.split(RegExp(r'\s*:\s*')).first;
     if (beforeColon != base && beforeColon.length >= 8) add(beforeColon);
     final words = base.split(RegExp(r'\s+'));
@@ -489,15 +661,16 @@ class ImportMatcher {
     List<int> idx,
     List<String> Function(int) queriesFor,
     List<MatchedRecord?> out,
-    Set<int> unchecked, {
-    void Function(int)? progressed,
-  }) async {
+    Set<int> unchecked,
+  ) async {
     _records = records;
     final gateway = catalog.gateway;
     final jobs = <(int, String)>[
       for (final i in idx)
         for (final q in queriesFor(i)) (i, q),
     ];
+    final candidates = <int, List<CatalogItemDto>>{};
+    final failed = <int>{};
     for (var s = 0; s < jobs.length; s += batchSize) {
       final chunk = jobs.skip(s).take(batchSize).toList();
       final MatchResponse res;
@@ -508,45 +681,55 @@ class ImportMatcher {
         ]);
       } on CatalogUnavailable {
         unchecked.addAll(chunk.map((c) => c.$1));
-        progressed?.call(chunk.length);
+        failed.addAll(chunk.map((c) => c.$1));
         continue;
       }
       for (var j = 0; j < chunk.length && j < res.results.length; j++) {
         final idx = chunk[j].$1;
         if (res.failed.contains(j)) {
           unchecked.add(idx);
+          failed.add(idx);
           continue;
         }
-        final r = records[idx];
-        if (out[idx] != null && out[idx]!.matchClass != MatchClass.similar) {
-          continue;
-        }
-        final exact = _exact(r, res.results[j]);
-        if (exact != null) {
-          final ids = await catalog.upsert([exact]);
-          out[idx] = MatchedRecord(
-            r,
-            ids.first,
-            MatchClass.suggested,
-            included: r.confirmed,
-          );
-          unchecked.remove(idx);
-          continue;
-        }
-        if (out[idx] != null) continue;
-        final like = _similar(r, res.results[j]);
-        if (like != null) {
-          // Offered, not linked: the catalog row is added only if ticked.
-          out[idx] = MatchedRecord(
-            r,
-            like.titleId,
-            MatchClass.similar,
-            included: false,
-            candidate: like,
-          );
-        }
+        candidates.putIfAbsent(idx, () => []).addAll(res.results[j]);
       }
-      progressed?.call(chunk.length);
+    }
+    for (final idx in candidates.keys) {
+      final r = records[idx];
+      if (out[idx] != null && out[idx]!.matchClass != MatchClass.similar) {
+        continue;
+      }
+      final resolved = await catalog.resolveIds(candidates[idx]!);
+      final unique = <String, CatalogItemDto>{
+        for (final c in candidates[idx]!) resolved[c]!: c,
+      }.values.toList();
+      final exact = _exact(r, unique);
+      if (exact != null && !_ambiguous.contains(idx) && !failed.contains(idx)) {
+        final ids = await catalog.upsert([exact]);
+        out[idx] = MatchedRecord(
+          r,
+          ids.first,
+          MatchClass.suggested,
+          included: r.confirmed,
+        );
+        unchecked.remove(idx);
+        continue;
+      }
+      if (exact == null && _exactHits(r, unique).length > 1) {
+        _ambiguous.add(idx);
+      }
+      if (out[idx] != null) continue;
+      final like = _similar(r, unique);
+      if (like != null) {
+        // Offered, not linked: the catalog row is added only if ticked.
+        out[idx] = MatchedRecord(
+          r,
+          like.titleId,
+          MatchClass.similar,
+          included: false,
+          candidate: like,
+        );
+      }
     }
   }
 
@@ -569,20 +752,26 @@ class ImportMatcher {
         continue;
       }
       for (var j = 0; j < chunk.length && j < res.length; j++) {
+        if (_ambiguous.contains(chunk[j])) continue;
         final r = records[chunk[j]];
         final names = _names(r);
-        for (final c in res[j]) {
-          final item = c.item;
-          if (item == null || !_kindFits(r.kind, item.kind)) continue;
-          if (!c.names.any((n) => names.contains(_key(n)))) continue;
-          final ids = await catalog.upsert([item]);
+        final matches = <String, CatalogItemDto>{
+          for (final c in res[j])
+            if (c.item case final item?)
+              if (item.json['adult'] != true &&
+                  _allowed(r, item) &&
+                  c.names.any((n) => names.contains(_key(n))))
+                item.titleId: item,
+        };
+        if (matches.length > 1) _ambiguous.add(chunk[j]);
+        if (matches.length == 1) {
+          final ids = await catalog.upsert([matches.values.single]);
           out[chunk[j]] = MatchedRecord(
             r,
             ids.first,
             MatchClass.suggested,
             included: r.confirmed,
           );
-          break;
         }
       }
     }
@@ -598,8 +787,7 @@ class ImportMatcher {
   ) async {
     if (idx.isEmpty) return;
     final gateway = catalog.gateway;
-    final wantedAl = <int, int>{}; // record index -> AniList id
-    final wantedMal = <int, int>{};
+    final wanted = <int, List<AliasCandidateDto>>{};
     for (var s = 0; s < idx.length; s += 8) {
       final chunk = idx.skip(s).take(8).toList();
       final List<List<AliasCandidateDto>> res;
@@ -613,24 +801,22 @@ class ImportMatcher {
       for (var j = 0; j < chunk.length && j < res.length; j++) {
         final r = records[chunk[j]];
         final names = _names(r);
-        for (final c in res[j]) {
-          if (!_langFits(r.kind, c.lang)) continue;
-          if (!c.names.any((n) => names.contains(_key(n)))) continue;
-          if (c.al != null) {
-            wantedAl[chunk[j]] = c.al!;
-          } else if (c.mal != null) {
-            wantedMal[chunk[j]] = c.mal!;
-          } else {
-            continue;
-          }
-          break;
-        }
+        final matches = <AliasCandidateDto>[
+          for (final c in res[j])
+            if (_langFits(r.kind, c.lang) &&
+                c.names.any((n) => names.contains(_key(n))) &&
+                (c.al != null || c.mal != null))
+              c,
+        ];
+        if (matches.isNotEmpty) wanted[chunk[j]] = matches;
       }
     }
-    if (wantedAl.isEmpty && wantedMal.isEmpty) return;
+    if (wanted.isEmpty) return;
     final found = <int, CatalogItemDto>{};
+    final byMal = <int, CatalogItemDto>{};
     try {
-      final ids = wantedAl.values.toSet().toList();
+      final ids = {for (final c in wanted.values.expand((cs) => cs)) ?c.al}
+          .toList();
       for (var s = 0; s < ids.length; s += 50) {
         for (final d in await gateway.byAniListIds(
           ids.skip(s).take(50).toList(),
@@ -639,8 +825,10 @@ class ImportMatcher {
           found[int.parse(d.providerId)] = d;
         }
       }
-      final mals = wantedMal.values.toSet().toList();
-      final byMal = <int, CatalogItemDto>{};
+      final mals = {
+        for (final c in wanted.values.expand((cs) => cs))
+          if (c.al == null) ?c.mal,
+      }.toList();
       for (var s = 0; s < mals.length; s += 50) {
         final res = await gateway.match(
           const [],
@@ -650,17 +838,27 @@ class ImportMatcher {
           if (d.idMal != null) byMal[d.idMal!] = d;
         }
       }
-      for (final e in wantedMal.entries) {
-        final d = byMal[e.value];
-        if (d != null) found[int.parse(d.providerId)] = d;
-        wantedAl[e.key] = d == null ? 0 : int.parse(d.providerId);
-      }
     } on CatalogUnavailable {
       return;
     }
-    for (final e in wantedAl.entries) {
-      final d = found[e.value];
-      if (d == null || !_kindFits(records[e.key].kind, d.kind)) continue;
+    for (final e in wanted.entries) {
+      final candidates = <CatalogItemDto>[];
+      var missing = false;
+      for (final c in e.value) {
+        final d = c.al != null ? found[c.al] : byMal[c.mal];
+        if (d == null) {
+          missing = true;
+        } else if (d.json['adult'] != true && _allowed(records[e.key], d)) {
+          candidates.add(d);
+        }
+      }
+      final resolved = await catalog.resolveIds(candidates);
+      final unique = <String, CatalogItemDto>{
+        for (final c in candidates) resolved[c]!: c,
+      };
+      if (unique.length > 1 || missing) _ambiguous.add(e.key);
+      if (unique.length != 1 || missing) continue;
+      final d = unique.values.single;
       final ids = await catalog.upsert([d]);
       out[e.key] = MatchedRecord(
         records[e.key],
@@ -686,13 +884,7 @@ class ImportMatcher {
   static String _key(String s) => normTitle(s).replaceAll(' ', '');
 
   Set<String> _names(NormalizedRecord r) => {
-    for (final n in [
-      r.title,
-      cleanQuery(r.title),
-      cleanQuery(r.title, screen: true),
-      ...r.altTitles,
-    ])
-      _key(n),
+    for (final n in [r.title, _query(r, r.title), ...r.altTitles]) _key(n),
   };
 
   /// Titles and alternate names (AniList synonyms) of a candidate.
@@ -720,20 +912,17 @@ class ImportMatcher {
   }
 
   bool _allowed(NormalizedRecord r, CatalogItemDto c) =>
-      _kindFits(r.kind, c.kind) && !(r.screenOnly && c.kind.isReading);
+      _kindFits(r.kind, c.kind) &&
+      !(r.screenOnly && c.kind.isReading) &&
+      c.json['format'] != 'NOVEL' &&
+      c.json['format'] != 'MUSIC';
 
   /// The first candidate whose title equals one of the record's names.
   /// Several exact titles (two shows called "Big Mouth") are told apart by
   /// year and kind.
   CatalogItemDto? _exact(NormalizedRecord r, List<CatalogItemDto> candidates) {
-    final names = _names(r);
-    var hits = [
-      for (final c in candidates)
-        if (_allowed(r, c) &&
-            _candidateNames(c).any((n) => names.contains(_key(n))))
-          c,
-    ];
-    if (hits.isEmpty) {
+    var hits = _exactHits(r, candidates);
+    if (hits.isEmpty && _isScreen(r.kind) && r.kind != MediaKind.movie) {
       hits = [
         for (final c in candidates)
           if (_allowed(r, c) && _longPrefix(r, c)) c,
@@ -741,14 +930,27 @@ class ImportMatcher {
     }
     if (hits.isEmpty) return null;
     if (hits.length == 1) return hits.first;
-    CatalogItemDto? best;
-    for (final c in hits) {
-      final sameKind = r.kind == null || c.kind == r.kind;
-      final yearOk = _yearFits(r.year, (c.json['year'] as num?)?.toInt());
-      if (sameKind && yearOk) return c;
-      best ??= sameKind ? c : null;
-    }
-    return best ?? hits.first;
+    final dated = hits.where((c) {
+      final year = (c.json['year'] as num?)?.toInt();
+      return r.year != null &&
+          year != null &&
+          _yearFits(r.year, year) &&
+          (r.kind == null || c.kind == r.kind);
+    }).toList();
+    return dated.length == 1 ? dated.single : null;
+  }
+
+  List<CatalogItemDto> _exactHits(
+    NormalizedRecord r,
+    List<CatalogItemDto> candidates,
+  ) {
+    final names = _names(r);
+    return <String, CatalogItemDto>{
+      for (final c in candidates)
+        if (_allowed(r, c) &&
+            _candidateNames(c).any((n) => names.contains(_key(n))))
+          c.titleId: c,
+    }.values.toList();
   }
 
   /// The most similar candidate above the threshold, for review.

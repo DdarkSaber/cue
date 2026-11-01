@@ -123,6 +123,12 @@ class CatalogUnavailable implements Exception {
   String toString() => 'CatalogUnavailable($code)';
 }
 
+/// Search can still offer usable candidates when one source failed.
+class CatalogSearchIncomplete extends CatalogUnavailable {
+  const CatalogSearchIncomplete(super.code, this.items);
+  final List<CatalogItemDto> items;
+}
+
 /// One title to match, as sent to the Worker.
 class MatchQuery {
   const MatchQuery(
@@ -559,13 +565,84 @@ class HybridCatalogGateway implements CatalogGateway {
 
   @override
   Future<List<CatalogItemDto>> search(String query, {MediaKind? kind}) async {
-    if (_ani(kind)) return anilist.search(query, kind: kind);
-    if (kind != null) return worker.search(query, kind: kind);
+    final q = query.trim();
+    if (q.isEmpty) return const [];
+    final wanted = kind == MediaKind.unknown ? null : kind;
+    final failures = <String>[];
+    Future<List<CatalogItemDto>> attempt(
+      Future<List<CatalogItemDto>> Function() load,
+    ) async {
+      try {
+        return await load();
+      } on CatalogSearchIncomplete catch (e) {
+        failures.add(e.code);
+        return e.items;
+      } on CatalogUnavailable catch (e) {
+        failures.add(e.code);
+        return const [];
+      }
+    }
+
     final results = await Future.wait([
-      anilist.search(query).catchError((Object _) => <CatalogItemDto>[]),
-      worker.search(query).catchError((Object _) => <CatalogItemDto>[]),
+      if (wanted == null || wanted == MediaKind.anime)
+        attempt(() => anilist.search(q, kind: MediaKind.anime)),
+      if (wanted == null || wanted.isReading)
+        attempt(() => anilist.search(q, kind: MediaKind.manga)),
+      if (wanted == null || !_ani(wanted))
+        attempt(() => worker.search(q, kind: wanted)),
+      if (wanted == null || wanted.isReading) attempt(() => _searchAliases(q)),
     ]);
-    return [...results[0].take(6), ...results[1].take(6)];
+    final byId = <String, CatalogItemDto>{};
+    for (final item in results.expand((r) => r)) {
+      if (item.json['adult'] != true &&
+          item.json['format'] != 'NOVEL' &&
+          item.json['format'] != 'MUSIC') {
+        byId.putIfAbsent(item.titleId, () => item);
+      }
+    }
+    final items = byId.values.toList();
+    if (failures.isNotEmpty) {
+      throw CatalogSearchIncomplete(failures.first, items);
+    }
+    return items;
+  }
+
+  Future<List<CatalogItemDto>> _searchAliases(String query) async {
+    final items = <CatalogItemDto>[];
+    CatalogUnavailable? failure;
+    final al = <int>{};
+    final mal = <int>{};
+    for (final source in ['mangadex', 'mangaupdates']) {
+      try {
+        final groups = await aliases([query], source: source);
+        for (final candidate in groups.expand((g) => g).take(5)) {
+          if (candidate.item case final item?) {
+            if (item.kind.isReading) items.add(item);
+          }
+          if (candidate.al case final id?) {
+            al.add(id);
+          } else if (candidate.mal case final id?) {
+            mal.add(id);
+          }
+        }
+      } on CatalogUnavailable catch (e) {
+        failure ??= e;
+      }
+    }
+    for (final load in <Future<List<CatalogItemDto>> Function()>[
+      if (al.isNotEmpty) () => anilist.byIds(al.toList(), anime: false),
+      if (mal.isNotEmpty) () => anilist.byMalIds(mal.toList(), 'MANGA'),
+    ]) {
+      try {
+        items.addAll(await load());
+      } on CatalogUnavailable catch (e) {
+        failure ??= e;
+      }
+    }
+    if (failure != null) {
+      throw CatalogSearchIncomplete(failure.code, items);
+    }
+    return items;
   }
 
   @override
@@ -575,21 +652,29 @@ class HybridCatalogGateway implements CatalogGateway {
     List<int> malManga = const [],
   }) async {
     final out = [for (final _ in items) <CatalogItemDto>[]];
+    final failed = <int>{};
     final aniIdx = [
       for (var i = 0; i < items.length; i++)
-        if (_ani(items[i].kind) || items[i].kind == null || items[i].adult) i,
+        if (_ani(items[i].kind) ||
+            items[i].kind == null ||
+            items[i].kind == MediaKind.unknown ||
+            items[i].adult)
+          i,
     ];
     final screenIdx = [
       for (var i = 0; i < items.length; i++)
         if (!_ani(items[i].kind) && !items[i].adult) i,
     ];
     if (aniIdx.isNotEmpty) {
-      final r = await anilist.searchMany([for (final i in aniIdx) items[i]]);
-      for (var j = 0; j < aniIdx.length; j++) {
-        out[aniIdx[j]].addAll(r[j]);
+      try {
+        final r = await anilist.searchMany([for (final i in aniIdx) items[i]]);
+        for (var j = 0; j < aniIdx.length; j++) {
+          out[aniIdx[j]].addAll(r[j]);
+        }
+      } on CatalogUnavailable {
+        failed.addAll(aniIdx);
       }
     }
-    final failed = <int>{};
     // Smaller batches, each retried once: a cold catalog can be slow, and a
     // failed batch is reported as "not checked", never as "no match".
     for (var s = 0; s < screenIdx.length; s += 8) {

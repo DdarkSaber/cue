@@ -85,30 +85,93 @@ class NormalizedRecord {
   final int? plays;
   final String? note;
 
-  NormalizedRecord copyWith({MediaKind? kind}) => NormalizedRecord(
-    sourceEntryKey: sourceEntryKey,
-    title: title,
-    altTitles: altTitles,
-    kind: kind ?? this.kind,
-    malId: malId,
-    anilistId: anilistId,
-    year: year,
-    state: state,
-    statusOriginal: statusOriginal,
-    rating: rating,
-    ratingOriginal: ratingOriginal,
-    ratingScale: ratingScale,
-    rewatchMood: rewatchMood,
-    progressUnit: progressUnit,
-    progressValue: progressValue,
-    latestKnown: latestKnown,
-    activityDate: activityDate,
-    actualWatchedAt: actualWatchedAt,
-    plays: plays,
-    note: note,
-    cueId: cueId,
-    confirmed: confirmed,
-    screenOnly: screenOnly,
+  NormalizedRecord copyWith({MediaKind? kind, LibraryState? state}) =>
+      NormalizedRecord(
+        sourceEntryKey: sourceEntryKey,
+        title: title,
+        altTitles: altTitles,
+        kind: kind ?? this.kind,
+        malId: malId,
+        anilistId: anilistId,
+        year: year,
+        state: state ?? this.state,
+        statusOriginal: statusOriginal,
+        rating: rating,
+        ratingOriginal: ratingOriginal,
+        ratingScale: ratingScale,
+        rewatchMood: rewatchMood,
+        progressUnit: progressUnit,
+        progressValue: progressValue,
+        latestKnown: latestKnown,
+        activityDate: activityDate,
+        actualWatchedAt: actualWatchedAt,
+        plays: plays,
+        note: note,
+        cueId: cueId,
+        confirmed: confirmed,
+        screenOnly: screenOnly,
+      );
+
+  Map<String, Object?> toJson() => {
+    'sourceEntryKey': sourceEntryKey,
+    'title': title,
+    'altTitles': altTitles,
+    'kind': kind?.name,
+    'malId': malId,
+    'anilistId': anilistId,
+    'year': year,
+    'state': state.name,
+    'statusOriginal': statusOriginal,
+    'rating': rating?.name,
+    'ratingOriginal': ratingOriginal,
+    'ratingScale': ratingScale,
+    'rewatchMood': rewatchMood?.name,
+    'progressUnit': progressUnit,
+    'progressValue': progressValue,
+    'latestKnown': latestKnown,
+    'activityDate': activityDate?.toIso8601String(),
+    'actualWatchedAt': actualWatchedAt?.toIso8601String(),
+    'plays': plays,
+    'note': note,
+    'cueId': cueId,
+    'confirmed': confirmed,
+    'screenOnly': screenOnly,
+  };
+
+  factory NormalizedRecord.fromJson(Map<String, dynamic> r) => NormalizedRecord(
+    sourceEntryKey: r['sourceEntryKey'] as String,
+    title: r['title'] as String,
+    altTitles: List<String>.from(r['altTitles'] as List),
+    kind: r['kind'] == null
+        ? null
+        : MediaKind.values.byName(r['kind'] as String),
+    malId: r['malId'] as int?,
+    anilistId: r['anilistId'] as int?,
+    year: r['year'] as int?,
+    state: LibraryState.values.byName(r['state'] as String),
+    statusOriginal: r['statusOriginal'] as String?,
+    rating: r['rating'] == null
+        ? null
+        : Rating.values.byName(r['rating'] as String),
+    ratingOriginal: r['ratingOriginal'] as String?,
+    ratingScale: r['ratingScale'] as String?,
+    rewatchMood: r['rewatchMood'] == null
+        ? null
+        : RewatchMood.values.byName(r['rewatchMood'] as String),
+    progressUnit: r['progressUnit'] as String?,
+    progressValue: (r['progressValue'] as num?)?.toDouble(),
+    latestKnown: (r['latestKnown'] as num?)?.toDouble(),
+    activityDate: r['activityDate'] == null
+        ? null
+        : DateTime.parse(r['activityDate'] as String),
+    actualWatchedAt: r['actualWatchedAt'] == null
+        ? null
+        : DateTime.parse(r['actualWatchedAt'] as String),
+    plays: r['plays'] as int?,
+    note: r['note'] as String?,
+    cueId: r['cueId'] as String?,
+    confirmed: r['confirmed'] as bool,
+    screenOnly: r['screenOnly'] as bool,
   );
 }
 

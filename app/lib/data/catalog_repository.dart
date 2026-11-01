@@ -3,8 +3,25 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 
 import '../domain/models/title.dart';
+import '../domain/title_names.dart';
 import 'catalog_gateway.dart';
 import 'db/database.dart';
+
+enum CatalogPageState { more, exhausted, limited, unavailable }
+
+class CatalogSearchResult {
+  const CatalogSearchResult(this.items, {this.failureCode});
+  final List<CatalogItemDto> items;
+  final String? failureCode;
+
+  String? get warning => switch (failureCode) {
+    null => null,
+    'rate_limited' =>
+      'A catalog is busy. Results may be incomplete; try again shortly.',
+    'offline' => 'A catalog could not be reached. Showing available matches; try again when connected.',
+    _ => 'A catalog search failed. Results may be incomplete; try again.',
+  };
+}
 
 /// Local catalog cache plus the Worker behind it. Everything the deck shows
 /// comes from the local tables, so the deck works offline after first run.
@@ -28,7 +45,7 @@ class CatalogRepository {
     final ids = <String>[];
     await db.transaction(() async {
       // One query for every identity and existing row, not one per item.
-      final resolved = await _resolveIds(items);
+      final resolved = await resolveIds(items);
       final existingRows = await (db.select(
         db.catalogTitles,
       )..where((t) => t.id.isIn(resolved.values.toSet().toList()))).get();
@@ -82,7 +99,8 @@ class CatalogRepository {
     return ids;
   }
 
-  Future<Map<CatalogItemDto, String>> _resolveIds(
+  /// Resolve a batch without writing it, including shared MAL identities.
+  Future<Map<CatalogItemDto, String>> resolveIds(
     List<CatalogItemDto> items,
   ) async {
     final providerIds = items.map((d) => d.providerId).toSet().toList();
@@ -268,6 +286,93 @@ class CatalogRepository {
     return rows.map(Title.fromRow).toList();
   }
 
+  /// The same cached catalog that supplies the deck remains searchable offline.
+  Future<CatalogSearchResult> search(String query) async {
+    final q = query.trim();
+    final key = normTitle(q);
+    if (key.isEmpty) return const CatalogSearchResult([]);
+    final cached = await pool(MediaKind.values);
+    final local = cached
+        .where(
+          (t) =>
+              !t.adult &&
+              t.format != 'NOVEL' &&
+              t.format != 'MUSIC' &&
+              [
+                t.titleEn,
+                t.titleRomaji,
+                t.titleNative,
+              ].any((n) => n != null && normTitle(n).contains(key)),
+        )
+        .toList();
+    bool exact(Iterable<String> names) => names.any((n) => normTitle(n) == key);
+    local.sort((a, b) {
+      bool matches(Title t) =>
+          exact([?t.titleEn, ?t.titleRomaji, ?t.titleNative]);
+      return (matches(b) ? 1 : 0).compareTo(matches(a) ? 1 : 0);
+    });
+    final identities = await (db.select(
+      db.catalogIdentities,
+    )..where((i) => i.titleId.isIn(local.take(20).map((t) => t.id)))).get();
+    final byId = <String, CatalogItemDto>{};
+    for (final t in local.take(20)) {
+      final identity = identities
+          .where((i) => i.titleId == t.id && i.provider != 'mal')
+          .firstOrNull;
+      final parts = t.id.split(':');
+      if (identity == null && parts.length < 2) continue;
+      byId[t.id] = CatalogItemDto({
+        'provider': identity?.provider ?? parts.first,
+        'providerId': identity?.providerId ?? parts.last,
+        'providerKind':
+            identity?.providerKind ?? (parts.length == 3 ? parts[1] : null),
+        'kind': t.kind.name,
+        'titleEn': t.titleEn,
+        'titleRomaji': t.titleRomaji,
+        'titleNative': t.titleNative,
+        'year': t.year,
+        'country': t.country,
+        'format': t.format,
+        'status': t.status,
+        'episodes': t.episodes,
+        'chapters': t.chapters,
+        'seasons': t.seasons.map((s) => s.toJson()).toList(),
+        'genres': t.genres,
+        'tags': t.tags,
+        'score': t.score,
+        'posterUrl': t.posterUrl,
+        'backdropUrl': t.backdropUrl,
+        'synopsis': t.synopsis,
+        'franchiseKey': t.franchiseId,
+        'adult': t.adult,
+      });
+    }
+    String? failure;
+    List<CatalogItemDto> remote;
+    try {
+      remote = await gateway.search(q);
+    } on CatalogSearchIncomplete catch (e) {
+      remote = e.items;
+      failure = e.code;
+    } on CatalogUnavailable catch (e) {
+      remote = const [];
+      failure = e.code;
+    }
+    final resolved = await resolveIds(remote);
+    for (final item in remote) {
+      if (item.json['adult'] != true &&
+          item.json['format'] != 'NOVEL' &&
+          item.json['format'] != 'MUSIC') {
+        byId.putIfAbsent(resolved[item]!, () => item);
+      }
+    }
+    final results = byId.values.toList()
+      ..sort(
+        (a, b) => (exact(b.names) ? 1 : 0).compareTo(exact(a.names) ? 1 : 0),
+      );
+    return CatalogSearchResult(results, failureCode: failure);
+  }
+
   Future<int> countFor(MediaKind kind) async {
     final c = db.catalogTitles.id.count();
     final q = db.selectOnly(db.catalogTitles)
@@ -280,18 +385,9 @@ class CatalogRepository {
   /// Returns how many items arrived; 0 when exhausted or unavailable.
   Future<int> fetchNext(MediaKind kind, {String? mood}) async {
     if (unavailableKinds.contains(kind)) return 0;
+    final next = await _nextPage(kind, mood);
+    if (next == 0 || next > 50) return 0;
     final moodKey = mood ?? '';
-    final pages =
-        await (db.select(db.catalogPages)..where(
-              (p) => p.mediaKind.equals(kind.name) & p.mood.equals(moodKey),
-            ))
-            .get();
-    final stale = _now().subtract(const Duration(days: 7));
-    final fresh = pages.where((p) => p.fetchedAt.isAfter(stale)).toList()
-      ..sort((a, b) => a.page.compareTo(b.page));
-    if (fresh.isNotEmpty && !fresh.last.hasNext) return 0;
-    final next = fresh.isEmpty ? 1 : fresh.last.page + 1;
-    if (next > 50) return 0;
     final CatalogPageDto page;
     try {
       page = await gateway.discover(kind, mood: mood, page: next);
@@ -312,6 +408,27 @@ class CatalogRepository {
           ),
         );
     return page.items.length;
+  }
+
+  Future<CatalogPageState> pageState(MediaKind kind, {String? mood}) async {
+    if (unavailableKinds.contains(kind)) return CatalogPageState.unavailable;
+    final next = await _nextPage(kind, mood);
+    if (next == 0) return CatalogPageState.exhausted;
+    return next > 50 ? CatalogPageState.limited : CatalogPageState.more;
+  }
+
+  Future<int> _nextPage(MediaKind kind, String? mood) async {
+    final moodKey = mood ?? '';
+    final pages =
+        await (db.select(db.catalogPages)..where(
+              (p) => p.mediaKind.equals(kind.name) & p.mood.equals(moodKey),
+            ))
+            .get();
+    final stale = _now().subtract(const Duration(days: 7));
+    final fresh = pages.where((p) => p.fetchedAt.isAfter(stale)).toList()
+      ..sort((a, b) => a.page.compareTo(b.page));
+    if (fresh.isNotEmpty && !fresh.last.hasNext) return 0;
+    return fresh.isEmpty ? 1 : fresh.last.page + 1;
   }
 
   /// Full title (seasons, keywords) for the details sheet. Falls back to the

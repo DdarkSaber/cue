@@ -207,6 +207,276 @@ void main() {
       catalog = CatalogRepository(db, gateway);
     });
 
+    test(
+      'conflicting supplied aliases stay ambiguous both locally and remotely',
+      () async {
+        final works = [
+          {...item(81), 'titleEn': 'Invented Alias Alpha'},
+          {...item(82), 'titleEn': 'Invented Alias Beta'},
+        ];
+        gateway.matchCatalog['invented alias alpha'] = [works.first];
+        gateway.matchCatalog['invented alias beta'] = [works.last];
+        var result = (await ImportMatcher(catalog).match([
+          rec(
+            'Invented Missing Name',
+            kind: MediaKind.anime,
+            alts: ['Invented Alias Alpha', 'Invented Alias Beta'],
+          ),
+        ])).single;
+        expect(result.included, isFalse);
+        expect(result.matchClass, MatchClass.similar);
+        result = (await ImportMatcher(catalog).match([
+          rec(
+            'Invented Alias Alpha',
+            kind: MediaKind.anime,
+            alts: ['Invented Alias Beta'],
+          ),
+        ])).single;
+        expect(result.included, isFalse);
+        expect(result.matchClass, MatchClass.similar);
+        await catalog.upsert(works.map(CatalogItemDto.new).toList());
+        result = (await ImportMatcher(catalog).match([
+          rec(
+            'Invented Alias Alpha',
+            kind: MediaKind.anime,
+            alts: ['Invented Alias Beta'],
+          ),
+        ], offlineOnly: true)).single;
+        expect(result.included, isFalse);
+        expect(result.resolved, isFalse);
+      },
+    );
+
+    test(
+      'offline title matching cannot reintroduce cached adult or novel entries',
+      () async {
+        await catalog.upsert([
+          CatalogItemDto({
+            ...item(83, adult: true),
+            'titleEn': 'Invented Hidden Work',
+          }),
+          CatalogItemDto({
+            ...item(84, kind: 'manga'),
+            'titleEn': 'Invented Novel',
+            'format': 'NOVEL',
+          }),
+        ]);
+        final results = await ImportMatcher(catalog).match([
+          rec('Invented Hidden Work', kind: MediaKind.anime),
+          rec('Invented Novel', kind: MediaKind.manga),
+        ], offlineOnly: true);
+        expect(results.map((m) => m.included), everyElement(isFalse));
+        expect(results.map((m) => m.resolved), everyElement(isFalse));
+      },
+    );
+
+    test('seasons, parts and adaptations are never silently collapsed for anime or movies', () async {
+      for (final (kind, imported) in [
+        (MediaKind.anime, 'Invented Explorer Season 2'),
+        (MediaKind.anime, 'Invented Explorer (Final Season)'),
+        (MediaKind.movie, 'Invented Explorer Part 2'),
+      ]) {
+        gateway.matchCatalog
+          ..clear()
+          ..[imported.toLowerCase()] = [
+            {...item(61, kind: kind.name), 'titleEn': 'Invented Explorer'},
+          ];
+        final result = (await ImportMatcher(
+          catalog,
+        ).match([rec(imported, kind: kind)])).single;
+        expect(result.included, isFalse);
+        expect(result.matchClass, isNot(MatchClass.suggested));
+      }
+    });
+
+    test(
+      'multiple aliases of the same identity still auto-resolve once',
+      () async {
+        final same = {
+          ...item(44),
+          'titleEn': 'Invented Official Name',
+          'synonyms': ['Invented Fan Name', 'Invented Other Name'],
+        };
+        gateway.matchCatalog['invented fan name'] = [same, same];
+        final result = (await ImportMatcher(catalog).match([
+          rec(
+            'Invented Fan Name',
+            kind: MediaKind.anime,
+            alts: ['Invented Other Name'],
+          ),
+        ])).single;
+        expect(result.matchClass, MatchClass.suggested);
+        expect(result.included, isTrue);
+        expect(result.titleId, 'anilist:44');
+      },
+    );
+
+    test(
+      'an ambiguous comic is not arbitrarily resolved by a later alias source',
+      () async {
+        gateway.matchCatalog['invented shared comic'] = [
+          {...item(41, kind: 'manhwa'), 'titleEn': 'Invented Shared Comic'},
+          {...item(42, kind: 'manhwa'), 'titleEn': 'Invented Shared Comic'},
+        ];
+        gateway.aliasCatalog['invented shared comic'] = [
+          const AliasCandidateDto(
+            names: ['Invented Shared Comic'],
+            al: 41,
+            lang: 'ko',
+          ),
+        ];
+        gateway.aniListById[41] = {
+          ...item(41, kind: 'manhwa'),
+          'titleEn': 'Invented Shared Comic',
+        };
+        final result = (await ImportMatcher(
+          catalog,
+        ).match([rec('Invented Shared Comic', kind: MediaKind.manhwa)])).single;
+        expect(result.matchClass, MatchClass.similar);
+        expect(result.included, isFalse);
+      },
+    );
+
+    test('unlabelled comics can resolve through verified alias IDs', () async {
+      gateway.aliasCatalog['invented obscure alias'] = [
+        const AliasCandidateDto(names: ['Invented Obscure Alias'], al: 70),
+      ];
+      gateway.aniListById[70] = {
+        ...item(70, kind: 'manhwa'),
+        'titleEn': 'Invented Official Comic',
+      };
+      for (final kind in [null, MediaKind.unknown]) {
+        final result = (await ImportMatcher(
+          catalog,
+        ).match([rec('Invented Obscure Alias', kind: kind)])).single;
+        expect(result.matchClass, MatchClass.suggested);
+        expect(result.titleId, 'anilist:70');
+      }
+    });
+
+    test(
+      'uncached AniList IDs resolve before title search for anime and comics',
+      () async {
+        gateway.aniListById[31] = {
+          ...item(31),
+          'titleEn': 'Invented official anime',
+        };
+        gateway.aniListById[32] = {
+          ...item(32, kind: 'manhwa'),
+          'titleEn': 'Invented official comic',
+        };
+        final matches = await ImportMatcher(catalog).match([
+          const NormalizedRecord(
+            sourceEntryKey: 'anime-id',
+            title: 'Unsearchable alias',
+            kind: MediaKind.anime,
+            anilistId: 31,
+            confirmed: false,
+          ),
+          const NormalizedRecord(
+            sourceEntryKey: 'comic-id',
+            title: 'Another unsearchable alias',
+            kind: MediaKind.manga,
+            anilistId: 32,
+          ),
+        ]);
+        expect(
+          matches.map((m) => m.matchClass),
+          everyElement(MatchClass.exactId),
+        );
+        expect(matches.map((m) => m.titleId), ['anilist:31', 'anilist:32']);
+        expect(matches.first.included, isFalse);
+        expect(gateway.matchCalls, 0);
+      },
+    );
+
+    test(
+      'MAL anime and manga IDs never collide in the local catalog',
+      () async {
+        await catalog.upsert([
+          CatalogItemDto({...item(1, idMal: 55), 'titleEn': 'Invented anime'}),
+          CatalogItemDto({
+            ...item(2, idMal: 55, kind: 'manhwa'),
+            'titleEn': 'Invented comic',
+          }),
+        ]);
+        final matches = await ImportMatcher(catalog).match([
+          const NormalizedRecord(
+            sourceEntryKey: 'a',
+            title: 'Imported alias',
+            kind: MediaKind.anime,
+            malId: 55,
+          ),
+          const NormalizedRecord(
+            sourceEntryKey: 'b',
+            title: 'Imported alias',
+            kind: MediaKind.manhwa,
+            malId: 55,
+          ),
+        ]);
+        expect(matches.map((m) => m.titleId), ['anilist:1', 'anilist:2']);
+      },
+    );
+
+    test(
+      'later supplied aliases are searched, not just the first one',
+      () async {
+        gateway.matchCatalog['invented third alias'] = [
+          {...item(6), 'titleEn': 'Invented third alias'},
+        ];
+        final result = (await ImportMatcher(catalog).match([
+          rec(
+            'Invented unlisted name',
+            kind: MediaKind.anime,
+            alts: [
+              'Invented first alias',
+              'Invented second alias',
+              'Invented third alias',
+            ],
+          ),
+        ])).single;
+        expect(result.titleId, 'anilist:6');
+        expect(result.matchClass, MatchClass.suggested);
+      },
+    );
+
+    test(
+      'a unique exact hit beyond the compact batch is recovered by full search',
+      () async {
+        gateway.searchResults['invented hidden exact title'] = [
+          {...item(25), 'titleEn': 'Invented Hidden Exact Title'},
+        ];
+        final result = (await ImportMatcher(catalog).match([
+          rec('Invented Hidden Exact Title', kind: MediaKind.anime),
+        ])).single;
+        expect(result.matchClass, MatchClass.suggested);
+        expect(result.included, isTrue);
+        expect(result.titleId, 'anilist:25');
+      },
+    );
+
+    test(
+      'same-name works without a unique year stay unticked, local or remote',
+      () async {
+        final items = [
+          {...item(11, year: 2000), 'titleEn': 'Invented Shared Name'},
+          {...item(12, year: 2020), 'titleEn': 'Invented Shared Name'},
+        ];
+        gateway.matchCatalog['invented shared name'] = items;
+        var result = (await ImportMatcher(
+          catalog,
+        ).match([rec('Invented Shared Name', kind: MediaKind.anime)])).single;
+        expect(result.matchClass, MatchClass.similar);
+        expect(result.included, isFalse);
+        await catalog.upsert(items.map(CatalogItemDto.new).toList());
+        result = (await ImportMatcher(
+          catalog,
+        ).match([rec('Invented Shared Name', kind: MediaKind.anime)])).single;
+        expect(result.matchClass, MatchClass.similar);
+        expect(result.included, isFalse);
+      },
+    );
+
     test('spacing differences still match exactly', () async {
       gateway.matchCatalog['konna ni kawaii'] = [
         {...item(1), 'titleEn': 'Konnani Kawaii'},
@@ -304,6 +574,62 @@ void main() {
       'titleEn': name,
       'synonyms': synonyms,
     };
+
+    test('AniList and MAL alias links for the same canonical comic are not ambiguous', () async {
+      gateway.aliasCatalog['invented canonical alias'] = [
+        const AliasCandidateDto(names: ['Invented Canonical Alias'], al: 97),
+        const AliasCandidateDto(names: ['Invented Canonical Alias'], mal: 98),
+      ];
+      final work = {...comic(97, 'Invented Official Name'), 'idMal': 98};
+      gateway.aniListById[97] = work;
+      gateway.malCatalog[98] = work;
+      final result = (await ImportMatcher(catalog).match([
+        rec('Invented Canonical Alias', kind: MediaKind.manhwa),
+      ])).single;
+      expect(result.titleId, 'anilist:97');
+      expect(result.included, isTrue);
+      expect(result.matchClass, MatchClass.suggested);
+    });
+
+    test(
+      'ambiguous alias identities cannot be bypassed by another provider',
+      () async {
+        gateway.aliasCatalog['invented shared alias'] = [
+          const AliasCandidateDto(names: ['Invented Shared Alias'], al: 91),
+          const AliasCandidateDto(names: ['Invented Shared Alias'], al: 92),
+        ];
+        gateway.mangaUpdatesCatalog['invented shared alias'] = [
+          AliasCandidateDto(
+            names: ['Invented Shared Alias'],
+            item: CatalogItemDto(comic(93, 'Invented Shared Alias')),
+          ),
+        ];
+        gateway.searchResults['invented shared alias'] = [
+          comic(91, 'Invented Shared Alias'),
+        ];
+        final result = (await ImportMatcher(
+          catalog,
+        ).match([rec('Invented Shared Alias', kind: MediaKind.manhwa)])).single;
+        expect(result.included, isFalse);
+        expect(result.resolved, isFalse);
+        expect(await catalog.titleById('anilist:93'), isNull);
+      },
+    );
+
+    test('a linked novel is not accepted as a comic', () async {
+      gateway.aliasCatalog['invented novel alias'] = [
+        const AliasCandidateDto(names: ['Invented Novel Alias'], al: 94),
+      ];
+      gateway.aniListById[94] = {
+        ...comic(94, 'Invented Novel Alias'),
+        'format': 'NOVEL',
+      };
+      final result = (await ImportMatcher(
+        catalog,
+      ).match([rec('Invented Novel Alias', kind: MediaKind.manhwa)])).single;
+      expect(result.included, isFalse);
+      expect(result.resolved, isFalse);
+    });
 
     test(
       'an alternate name AniList lists as a synonym is an exact match',

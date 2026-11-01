@@ -6086,6 +6086,17 @@ class $SourceObservationsTable extends SourceObservations
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _recordJsonMeta = const VerificationMeta(
+    'recordJson',
+  );
+  @override
+  late final GeneratedColumn<String> recordJson = GeneratedColumn<String>(
+    'record_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -6101,6 +6112,7 @@ class $SourceObservationsTable extends SourceObservations
     activityDate,
     included,
     candidateJson,
+    recordJson,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -6216,6 +6228,12 @@ class $SourceObservationsTable extends SourceObservations
         ),
       );
     }
+    if (data.containsKey('record_json')) {
+      context.handle(
+        _recordJsonMeta,
+        recordJson.isAcceptableOrUnknown(data['record_json']!, _recordJsonMeta),
+      );
+    }
     return context;
   }
 
@@ -6277,6 +6295,10 @@ class $SourceObservationsTable extends SourceObservations
         DriftSqlType.string,
         data['${effectivePrefix}candidate_json'],
       ),
+      recordJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}record_json'],
+      ),
     );
   }
 
@@ -6304,6 +6326,9 @@ class SourceObservation extends DataClass
   /// The similar title offered but not ticked (catalog JSON), so the review
   /// queue can accept it later in one go.
   final String? candidateJson;
+
+  /// Local-only original fields needed when an unresolved row is reviewed.
+  final String? recordJson;
   const SourceObservation({
     required this.id,
     required this.batchId,
@@ -6318,6 +6343,7 @@ class SourceObservation extends DataClass
     this.activityDate,
     required this.included,
     this.candidateJson,
+    this.recordJson,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -6346,6 +6372,9 @@ class SourceObservation extends DataClass
     map['included'] = Variable<bool>(included);
     if (!nullToAbsent || candidateJson != null) {
       map['candidate_json'] = Variable<String>(candidateJson);
+    }
+    if (!nullToAbsent || recordJson != null) {
+      map['record_json'] = Variable<String>(recordJson);
     }
     return map;
   }
@@ -6377,6 +6406,9 @@ class SourceObservation extends DataClass
       candidateJson: candidateJson == null && nullToAbsent
           ? const Value.absent()
           : Value(candidateJson),
+      recordJson: recordJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(recordJson),
     );
   }
 
@@ -6399,6 +6431,7 @@ class SourceObservation extends DataClass
       activityDate: serializer.fromJson<DateTime?>(json['activityDate']),
       included: serializer.fromJson<bool>(json['included']),
       candidateJson: serializer.fromJson<String?>(json['candidateJson']),
+      recordJson: serializer.fromJson<String?>(json['recordJson']),
     );
   }
   @override
@@ -6418,6 +6451,7 @@ class SourceObservation extends DataClass
       'activityDate': serializer.toJson<DateTime?>(activityDate),
       'included': serializer.toJson<bool>(included),
       'candidateJson': serializer.toJson<String?>(candidateJson),
+      'recordJson': serializer.toJson<String?>(recordJson),
     };
   }
 
@@ -6435,6 +6469,7 @@ class SourceObservation extends DataClass
     Value<DateTime?> activityDate = const Value.absent(),
     bool? included,
     Value<String?> candidateJson = const Value.absent(),
+    Value<String?> recordJson = const Value.absent(),
   }) => SourceObservation(
     id: id ?? this.id,
     batchId: batchId ?? this.batchId,
@@ -6453,6 +6488,7 @@ class SourceObservation extends DataClass
     candidateJson: candidateJson.present
         ? candidateJson.value
         : this.candidateJson,
+    recordJson: recordJson.present ? recordJson.value : this.recordJson,
   );
   SourceObservation copyWithCompanion(SourceObservationsCompanion data) {
     return SourceObservation(
@@ -6481,6 +6517,9 @@ class SourceObservation extends DataClass
       candidateJson: data.candidateJson.present
           ? data.candidateJson.value
           : this.candidateJson,
+      recordJson: data.recordJson.present
+          ? data.recordJson.value
+          : this.recordJson,
     );
   }
 
@@ -6499,7 +6538,8 @@ class SourceObservation extends DataClass
           ..write('progress: $progress, ')
           ..write('activityDate: $activityDate, ')
           ..write('included: $included, ')
-          ..write('candidateJson: $candidateJson')
+          ..write('candidateJson: $candidateJson, ')
+          ..write('recordJson: $recordJson')
           ..write(')'))
         .toString();
   }
@@ -6519,6 +6559,7 @@ class SourceObservation extends DataClass
     activityDate,
     included,
     candidateJson,
+    recordJson,
   );
   @override
   bool operator ==(Object other) =>
@@ -6536,7 +6577,8 @@ class SourceObservation extends DataClass
           other.progress == this.progress &&
           other.activityDate == this.activityDate &&
           other.included == this.included &&
-          other.candidateJson == this.candidateJson);
+          other.candidateJson == this.candidateJson &&
+          other.recordJson == this.recordJson);
 }
 
 class SourceObservationsCompanion extends UpdateCompanion<SourceObservation> {
@@ -6553,6 +6595,7 @@ class SourceObservationsCompanion extends UpdateCompanion<SourceObservation> {
   final Value<DateTime?> activityDate;
   final Value<bool> included;
   final Value<String?> candidateJson;
+  final Value<String?> recordJson;
   final Value<int> rowid;
   const SourceObservationsCompanion({
     this.id = const Value.absent(),
@@ -6568,6 +6611,7 @@ class SourceObservationsCompanion extends UpdateCompanion<SourceObservation> {
     this.activityDate = const Value.absent(),
     this.included = const Value.absent(),
     this.candidateJson = const Value.absent(),
+    this.recordJson = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   SourceObservationsCompanion.insert({
@@ -6584,6 +6628,7 @@ class SourceObservationsCompanion extends UpdateCompanion<SourceObservation> {
     this.activityDate = const Value.absent(),
     this.included = const Value.absent(),
     this.candidateJson = const Value.absent(),
+    this.recordJson = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        batchId = Value(batchId),
@@ -6605,6 +6650,7 @@ class SourceObservationsCompanion extends UpdateCompanion<SourceObservation> {
     Expression<DateTime>? activityDate,
     Expression<bool>? included,
     Expression<String>? candidateJson,
+    Expression<String>? recordJson,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -6621,6 +6667,7 @@ class SourceObservationsCompanion extends UpdateCompanion<SourceObservation> {
       if (activityDate != null) 'activity_date': activityDate,
       if (included != null) 'included': included,
       if (candidateJson != null) 'candidate_json': candidateJson,
+      if (recordJson != null) 'record_json': recordJson,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -6639,6 +6686,7 @@ class SourceObservationsCompanion extends UpdateCompanion<SourceObservation> {
     Value<DateTime?>? activityDate,
     Value<bool>? included,
     Value<String?>? candidateJson,
+    Value<String?>? recordJson,
     Value<int>? rowid,
   }) {
     return SourceObservationsCompanion(
@@ -6655,6 +6703,7 @@ class SourceObservationsCompanion extends UpdateCompanion<SourceObservation> {
       activityDate: activityDate ?? this.activityDate,
       included: included ?? this.included,
       candidateJson: candidateJson ?? this.candidateJson,
+      recordJson: recordJson ?? this.recordJson,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -6701,6 +6750,9 @@ class SourceObservationsCompanion extends UpdateCompanion<SourceObservation> {
     if (candidateJson.present) {
       map['candidate_json'] = Variable<String>(candidateJson.value);
     }
+    if (recordJson.present) {
+      map['record_json'] = Variable<String>(recordJson.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -6723,6 +6775,7 @@ class SourceObservationsCompanion extends UpdateCompanion<SourceObservation> {
           ..write('activityDate: $activityDate, ')
           ..write('included: $included, ')
           ..write('candidateJson: $candidateJson, ')
+          ..write('recordJson: $recordJson, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -13953,6 +14006,7 @@ typedef $$SourceObservationsTableCreateCompanionBuilder =
       Value<DateTime?> activityDate,
       Value<bool> included,
       Value<String?> candidateJson,
+      Value<String?> recordJson,
       Value<int> rowid,
     });
 typedef $$SourceObservationsTableUpdateCompanionBuilder =
@@ -13970,6 +14024,7 @@ typedef $$SourceObservationsTableUpdateCompanionBuilder =
       Value<DateTime?> activityDate,
       Value<bool> included,
       Value<String?> candidateJson,
+      Value<String?> recordJson,
       Value<int> rowid,
     });
 
@@ -14073,6 +14128,11 @@ class $$SourceObservationsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get recordJson => $composableBuilder(
+    column: $table.recordJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$ImportBatchesTableFilterComposer get batchId {
     final $$ImportBatchesTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -14166,6 +14226,11 @@ class $$SourceObservationsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get recordJson => $composableBuilder(
+    column: $table.recordJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ImportBatchesTableOrderingComposer get batchId {
     final $$ImportBatchesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -14247,6 +14312,11 @@ class $$SourceObservationsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get recordJson => $composableBuilder(
+    column: $table.recordJson,
+    builder: (column) => column,
+  );
+
   $$ImportBatchesTableAnnotationComposer get batchId {
     final $$ImportBatchesTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -14317,6 +14387,7 @@ class $$SourceObservationsTableTableManager
                 Value<DateTime?> activityDate = const Value.absent(),
                 Value<bool> included = const Value.absent(),
                 Value<String?> candidateJson = const Value.absent(),
+                Value<String?> recordJson = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SourceObservationsCompanion(
                 id: id,
@@ -14332,6 +14403,7 @@ class $$SourceObservationsTableTableManager
                 activityDate: activityDate,
                 included: included,
                 candidateJson: candidateJson,
+                recordJson: recordJson,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -14349,6 +14421,7 @@ class $$SourceObservationsTableTableManager
                 Value<DateTime?> activityDate = const Value.absent(),
                 Value<bool> included = const Value.absent(),
                 Value<String?> candidateJson = const Value.absent(),
+                Value<String?> recordJson = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SourceObservationsCompanion.insert(
                 id: id,
@@ -14364,6 +14437,7 @@ class $$SourceObservationsTableTableManager
                 activityDate: activityDate,
                 included: included,
                 candidateJson: candidateJson,
+                recordJson: recordJson,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

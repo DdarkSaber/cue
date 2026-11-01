@@ -29,6 +29,7 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
   List<CatalogItemDto>? _results;
   String? _message;
   bool _busy = false;
+  int _searchEpoch = 0;
 
   @override
   void initState() {
@@ -43,19 +44,27 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
   }
 
   Future<void> _search() async {
+    final epoch = ++_searchEpoch;
     setState(() {
       _busy = true;
       _message = null;
+      _results = null;
     });
     try {
-      final r = await ref.read(catalogGatewayProvider).search(_query.text);
-      if (mounted) setState(() => _results = r);
-    } on CatalogUnavailable {
-      if (mounted) {
-        setState(() => _message = 'Offline. Search needs a connection.');
+      final r = await ref.read(catalogRepositoryProvider).search(_query.text);
+      if (mounted && epoch == _searchEpoch) {
+        setState(() {
+          _results = r.items;
+          _message = r.warning;
+        });
+      }
+    } on Object catch (error) {
+      debugPrint('Import review search failed (${error.runtimeType}).');
+      if (mounted && epoch == _searchEpoch) {
+        setState(() => _message = 'Search could not finish. Try again.');
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && epoch == _searchEpoch) setState(() => _busy = false);
     }
   }
 
@@ -143,7 +152,7 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
               style: const TextStyle(color: CueColors.notInterested),
             ),
           ),
-        if (_results != null && _results!.isEmpty)
+        if (_results != null && _results!.isEmpty && _message == null)
           const Padding(
             padding: EdgeInsets.only(top: 8),
             child: Text('No catalog matches. Try another spelling.'),

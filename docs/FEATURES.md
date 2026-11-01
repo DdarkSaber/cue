@@ -44,8 +44,36 @@ Unmatched or uncertain rows require review before becoming known history.
 Library exposes those queues, which survive reopening. Resolving a title changes
 that library, not an active neighbour.
 
-Comic matching checks official, romanized and alternate names using AniList,
-MangaDex and MangaUpdates, asking before uncertain links.
+Matching uses known provider IDs first, then official, romanized, native and
+alternate names. Anime and comics use AniList; MangaDex and MangaUpdates can
+provide additional comic names and verified catalog links. Import labels do not
+restrict comic searches to one country. Discovery filters are unchanged.
+
+Unique verified matches are selected automatically in the import preview.
+Multiple aliases of one canonical title are not treated as separate matches.
+Unresolved, ambiguous or merely similar works stay for review; anime seasons,
+movie parts and adaptations are not silently collapsed to a base title.
+Manual review and Add a title also search titles already cached from the deck,
+including offline. Provider failures produce an incomplete-results warning,
+not a false "no matches" result.
+
+The deck checks further catalog pages when the first batch is mostly saved,
+watched or outside the requested filters. Each refill is bounded; a batch limit
+or provider failure offers Retry rather than blaming the filters. An empty
+non-final page is not treated as the end of the catalog.
+
+For "short anime", short means at most 13 total episodes, not short episode
+runtime. Exact matches come first. Once the checked anime catalog is exhausted,
+Cue can offer unwatched anime with more episodes, nearest lengths first, labelled
+"Longer than requested" with the actual episode count. Other format, genre and
+history exclusions still apply. Unknown lengths are not claimed to be short.
+Offline or unavailable catalogs cannot guarantee a new card; cached matches
+remain usable and Cue reports when retry is needed.
+
+New unresolved rows retain their original normalized rating and progress fields
+locally until reviewed, including across restart. Older review rows retain only
+the fields that the earlier app stored; missing metadata cannot be reconstructed
+from those rows alone. Review never bulk-confirms ambiguous matches.
 
 ## Browse and correct
 

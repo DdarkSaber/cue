@@ -20,6 +20,11 @@ import '../test/features/try_now_flow_test.dart' as try_now_flow;
 import '../test/features/try_now_gesture_test.dart' as try_now_gesture;
 import '../test/domain/try_now_intent_test.dart' as try_now_intent;
 import '../test/diagnostics/capability_lifecycle_test.dart' as capabilities;
+import '../test/data/catalog_search_test.dart' as catalog_search;
+import '../test/data/hybrid_gateway_test.dart' as gateway_search;
+import '../test/features/review_search_test.dart' as review_search;
+import '../test/imports/matcher_test.dart' as import_matching;
+import '../test/features/deck_refill_test.dart' as deck_refill;
 import '../test/support/test_database_web.dart';
 import 'web_persistence_test.dart' as persistence;
 import 'web_test_binding.dart';
@@ -49,6 +54,14 @@ void main() {
     await deleteAllSyntheticDatabases();
     binding.reportData!['syntheticStorageCleanup'] = 'verified';
   });
+  if (const String.fromEnvironment('CUE_WEB_E2E_GROUP') == 'matching') {
+    group('web cached catalog search', catalog_search.main);
+    group('web provider search routes', gateway_search.main);
+    group('web explicit unresolved review', review_search.main);
+    group('web safe import matching', import_matching.main);
+    group('web bounded deck refills and watched exclusions', deck_refill.main);
+    return;
+  }
   if (const String.fromEnvironment('CUE_WEB_E2E_GROUP') == 'diagnostics') {
     group('web diagnostics lifecycle', capabilities.main);
     group('web local Worker capability isolation', diagnostics_local.main);

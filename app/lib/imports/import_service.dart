@@ -279,6 +279,7 @@ class ImportService {
                 progress: Value(r.progressValue),
                 activityDate: Value(r.activityDate),
                 included: Value(m.included && tid != null),
+                recordJson: Value(tid == null ? jsonEncode(r.toJson()) : null),
                 candidateJson: Value(
                   tid == null && m.candidate != null
                       ? jsonEncode(m.candidate!.json)
@@ -683,22 +684,33 @@ class ImportService {
           titleId: Value(titleId),
           matchClass: const Value('confirmed'),
           included: const Value(true),
+          recordJson: const Value(null),
+          candidateJson: const Value(null),
         ),
       );
       final state = LibraryState.values.firstWhere(
-        (s) => s.code == o.status,
+        (s) => s.code == current.status,
         orElse: () => LibraryState.seen,
       );
+      final original = current.recordJson == null
+          ? NormalizedRecord(
+              sourceEntryKey: current.sourceEntryKey,
+              title: current.rawTitle,
+              state: state == LibraryState.none ? LibraryState.seen : state,
+              ratingOriginal: current.ratingOriginal,
+              ratingScale: current.ratingScale,
+              progressValue: current.progress,
+              activityDate: current.activityDate,
+            )
+          : NormalizedRecord.fromJson(
+              jsonDecode(current.recordJson!) as Map<String, dynamic>,
+            );
       await _merge(
         profileId,
         titleId,
-        NormalizedRecord(
-          sourceEntryKey: o.sourceEntryKey,
-          title: o.rawTitle,
-          state: state == LibraryState.none ? LibraryState.seen : state,
-          progressValue: o.progress,
-          activityDate: o.activityDate,
-        ),
+        original.state == LibraryState.none
+            ? original.copyWith(state: LibraryState.seen)
+            : original,
         o.batchId,
         _now(),
       );

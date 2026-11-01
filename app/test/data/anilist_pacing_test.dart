@@ -108,9 +108,10 @@ void main() {
       expect(sent['variables'], {'q0': 'Bleach', 'q1': 'Murim Login'});
       final q = sent['query'] as String;
       expect(q, contains('perPage: 5'));
-      // Only manhwa and manhua are narrowed by country; manga comes from anywhere.
-      expect(q, contains('countryOfOrigin: KR'));
-      expect(q, isNot(contains('countryOfOrigin: JP')));
+      // Import labels can misclassify reading origins; discovery stays strict.
+      expect(q, isNot(contains('countryOfOrigin:')));
+      expect(q, contains('type: ANIME'));
+      expect(q, contains('type: MANGA'));
     },
   );
 

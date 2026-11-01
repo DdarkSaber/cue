@@ -43,6 +43,7 @@ class _AddTitleBodyState extends ConsumerState<_AddTitleBody> {
   Set<String> _owned = const {};
   bool _busy = false;
   String? _message;
+  int _searchEpoch = 0;
 
   @override
   void dispose() {
@@ -53,30 +54,36 @@ class _AddTitleBodyState extends ConsumerState<_AddTitleBody> {
   Future<void> _search() async {
     final q = _query.text.trim();
     if (q.isEmpty) return;
+    final epoch = ++_searchEpoch;
     setState(() {
       _busy = true;
       _message = null;
+      _results = null;
     });
     try {
-      final r = await ref.read(catalogGatewayProvider).search(q);
+      final catalog = ref.read(catalogRepositoryProvider);
+      final r = await catalog.search(q);
       final profileId = await ref.read(profileIdProvider.future);
       final library = ref.read(libraryRepositoryProvider);
-      final owned = <String>{
-        for (final dto in r)
-          if (await library.entry(profileId, dto.titleId) != null) dto.titleId,
-      };
-      if (mounted) {
+      final owned = <String>{};
+      for (final dto in r.items) {
+        final id = await catalog.resolveId(dto);
+        if (await library.entry(profileId, id) != null) owned.add(dto.titleId);
+      }
+      if (mounted && epoch == _searchEpoch) {
         setState(() {
-          _results = r;
+          _results = r.items;
           _owned = owned;
+          _message = r.warning;
         });
       }
-    } on CatalogUnavailable {
-      if (mounted) {
-        setState(() => _message = 'Offline. Search needs a connection.');
+    } on Object catch (error) {
+      debugPrint('Add title search failed (${error.runtimeType}).');
+      if (mounted && epoch == _searchEpoch) {
+        setState(() => _message = 'Search could not finish. Try again.');
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && epoch == _searchEpoch) setState(() => _busy = false);
     }
   }
 
@@ -136,7 +143,7 @@ class _AddTitleBodyState extends ConsumerState<_AddTitleBody> {
               ),
             ),
           ),
-        if (_results != null && _results!.isEmpty)
+        if (_results != null && _results!.isEmpty && _message == null)
           const Padding(
             padding: EdgeInsets.only(top: 8),
             child: Text('No matches. Try another spelling or name.'),

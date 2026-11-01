@@ -5,8 +5,6 @@ import 'package:drift/drift.dart';
 import '../data/catalog_gateway.dart';
 import '../data/db/database.dart';
 import '../data/profile_repository.dart';
-import '../domain/models/library.dart';
-import '../domain/models/title.dart';
 import 'import_service.dart';
 import 'matcher.dart';
 import 'records.dart';
@@ -49,7 +47,7 @@ class ImportDraft {
     'parsed': {
       'sourceType': parsed.sourceType,
       'adapterVersion': parsed.adapterVersion,
-      'records': [for (final r in parsed.records) _recordJson(r)],
+      'records': [for (final r in parsed.records) r.toJson()],
       'warnings': parsed.warnings,
       'skipped': parsed.skipped,
       'needsDateOrder': parsed.needsDateOrder,
@@ -99,7 +97,7 @@ class ImportDraft {
     final p = j['parsed'] as Map<String, dynamic>;
     final records = [
       for (final r in p['records'] as List)
-        _recordFromJson(r as Map<String, dynamic>),
+        NormalizedRecord.fromJson(r as Map<String, dynamic>),
     ];
     final extras = p['extras'] as Map<String, dynamic>?;
     final dates = p['dateRange'] as List?;
@@ -243,63 +241,3 @@ class ImportDraftStore {
     )..where((b) => b.profileId.equals(profileId) & b.state.isIn(states))).go();
   }
 }
-
-Map<String, Object?> _recordJson(NormalizedRecord r) => {
-  'sourceEntryKey': r.sourceEntryKey,
-  'title': r.title,
-  'altTitles': r.altTitles,
-  'kind': r.kind?.name,
-  'malId': r.malId,
-  'anilistId': r.anilistId,
-  'year': r.year,
-  'state': r.state.name,
-  'statusOriginal': r.statusOriginal,
-  'rating': r.rating?.name,
-  'ratingOriginal': r.ratingOriginal,
-  'ratingScale': r.ratingScale,
-  'rewatchMood': r.rewatchMood?.name,
-  'progressUnit': r.progressUnit,
-  'progressValue': r.progressValue,
-  'latestKnown': r.latestKnown,
-  'activityDate': r.activityDate?.toIso8601String(),
-  'actualWatchedAt': r.actualWatchedAt?.toIso8601String(),
-  'plays': r.plays,
-  'note': r.note,
-  'cueId': r.cueId,
-  'confirmed': r.confirmed,
-  'screenOnly': r.screenOnly,
-};
-
-NormalizedRecord _recordFromJson(Map<String, dynamic> r) => NormalizedRecord(
-  sourceEntryKey: r['sourceEntryKey'] as String,
-  title: r['title'] as String,
-  altTitles: List<String>.from(r['altTitles'] as List),
-  kind: r['kind'] == null ? null : MediaKind.values.byName(r['kind'] as String),
-  malId: r['malId'] as int?,
-  anilistId: r['anilistId'] as int?,
-  year: r['year'] as int?,
-  state: LibraryState.values.byName(r['state'] as String),
-  statusOriginal: r['statusOriginal'] as String?,
-  rating: r['rating'] == null
-      ? null
-      : Rating.values.byName(r['rating'] as String),
-  ratingOriginal: r['ratingOriginal'] as String?,
-  ratingScale: r['ratingScale'] as String?,
-  rewatchMood: r['rewatchMood'] == null
-      ? null
-      : RewatchMood.values.byName(r['rewatchMood'] as String),
-  progressUnit: r['progressUnit'] as String?,
-  progressValue: (r['progressValue'] as num?)?.toDouble(),
-  latestKnown: (r['latestKnown'] as num?)?.toDouble(),
-  activityDate: r['activityDate'] == null
-      ? null
-      : DateTime.parse(r['activityDate'] as String),
-  actualWatchedAt: r['actualWatchedAt'] == null
-      ? null
-      : DateTime.parse(r['actualWatchedAt'] as String),
-  plays: r['plays'] as int?,
-  note: r['note'] as String?,
-  cueId: r['cueId'] as String?,
-  confirmed: r['confirmed'] as bool,
-  screenOnly: r['screenOnly'] as bool,
-);
