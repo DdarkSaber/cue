@@ -67,6 +67,9 @@ class _FilterBodyState extends State<FilterBody> {
       _understood = parsed.understood;
       _tellMeMissed = parsed.isEmpty;
     });
+    // Unrecognised words still count: the live mood learner (and, when on,
+    // Smarter mood text) reads the whole sentence.
+    if (parsed.isEmpty) _f = _f.copyWith(tellMe: text);
     if (!parsed.isEmpty) {
       _f = parsed.applyTo(_f, text);
       if (parsed.shortOnly || parsed.era != EraFilter.any || parsed.rewatches) {
@@ -129,7 +132,7 @@ class _FilterBodyState extends State<FilterBody> {
           const Padding(
             padding: EdgeInsets.only(top: 8),
             child: Text(
-              'Cue did not catch a mood or format there. Try words like cozy, gripping, short, manhwa or K-drama.',
+              'Saved. Cue learns what these words mean from what you pick next. For instant understanding, turn on Smarter mood text in Settings.',
               style: TextStyle(fontSize: 13, color: CueColors.textMuted),
             ),
           ),
