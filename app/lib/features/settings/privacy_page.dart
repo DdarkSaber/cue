@@ -99,6 +99,7 @@ class _PrivacyPageState extends ConsumerState<PrivacyPage> {
           ),
         ),
         const CueSectionLabel('Local is not the same as encrypted'),
+        const DiagnosticsSection(),
         const Text(
           'Anyone with access to this device or browser profile can read the library. Clearing browser data can erase it on the web, so export a backup now and then.',
           style: _body,

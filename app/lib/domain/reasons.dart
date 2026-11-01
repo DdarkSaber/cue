@@ -69,6 +69,7 @@ String reasonFor(
       final verb = switch (bestRating!) {
         Rating.rewatched => 'which you rewatched',
         Rating.favourite => 'a favourite of yours',
+        Rating.enjoyed => 'which you enjoyed',
         _ => 'which you would rewatch',
       };
       final lead = mood == null ? 'Like' : '${mood.label} like';
@@ -86,6 +87,16 @@ String reasonFor(
     if (hits.isNotEmpty) {
       return _fit('${f.mood.label} pick: ${hits.take(2).join(', ')}.');
     }
+  }
+
+  if (s.tasteConfidence > 0 &&
+      s.weakHistoryIds.any((id) {
+        final other = titlesById[id];
+        return other != null &&
+            other.id != t.id &&
+            other.features.intersection(t.features).length >= 2;
+      })) {
+    return _fit('Shares themes with your imports; not a confirmed like.');
   }
 
   // Cold start: describe the work, not the person.

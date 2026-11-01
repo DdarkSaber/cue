@@ -26,6 +26,7 @@ part 'database.g.dart';
     ImportChanges,
     MoodStates,
     MoodSessions,
+    RecommendationStates,
   ],
 )
 class CueDatabase extends _$CueDatabase {
@@ -43,7 +44,7 @@ class CueDatabase extends _$CueDatabase {
   );
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -70,6 +71,7 @@ class CueDatabase extends _$CueDatabase {
       if (from < 3) {
         await m.addColumn(sourceObservations, sourceObservations.candidateJson);
       }
+      if (from < 4) await m.createTable(recommendationStates);
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');

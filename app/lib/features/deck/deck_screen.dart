@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,6 +25,8 @@ import 'swipe_tutorial.dart';
 import 'poster.dart';
 import 'swipe_deck.dart';
 import 'toast.dart';
+import '../../domain/recommendation_context.dart';
+import 'not_now_options.dart';
 
 /// For you: the home screen. Header, mood rail, card, four actions.
 class DeckScreen extends ConsumerStatefulWidget {
@@ -41,6 +45,7 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
 
   /// Set by the Not now long-press menu for the next Not now.
   Duration? _pendingDefer;
+  NotNowReason? _pendingReason;
 
   @override
   void initState() {
@@ -72,37 +77,21 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
       decision: decision,
     );
     final defer = decision == Decision.notNow ? _pendingDefer : null;
+    final reason = decision == Decision.notNow ? _pendingReason : null;
     _pendingDefer = null;
+    _pendingReason = null;
     await ref
         .read(deckControllerProvider.notifier)
-        .decide(decision, defer: defer);
+        .decide(decision, defer: defer, notNowReason: reason);
   }
 
   /// Long press on Not now: choose how long to hide the title.
   Future<void> _longAct(Decision d) async {
     if (d != Decision.notNow) return _act(d);
-    final picked = await showModalBottomSheet<Duration>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final (label, length) in [
-              ('Tomorrow', const Duration(days: 1)),
-              ('For a week', const Duration(days: 7)),
-              ('For two weeks', const Duration(days: 14)),
-              ('For a month', const Duration(days: 30)),
-            ])
-              ListTile(
-                title: Text('Not now: $label'),
-                onTap: () => Navigator.of(ctx).pop(length),
-              ),
-          ],
-        ),
-      ),
-    );
+    final picked = await showNotNowOptions(context);
     if (picked == null || !mounted) return;
-    _pendingDefer = picked;
+    _pendingDefer = picked.delay;
+    _pendingReason = picked.reason;
     _act(Decision.notNow);
   }
 
@@ -127,6 +116,19 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
       await _deckKey.currentState?.bringBack(from);
     }
     if (mounted) _say('Undone');
+  }
+
+  Future<void> _tryNow(String titleId) async {
+    if (_sheetOpen) return;
+    final result = await ref
+        .read(deckControllerProvider.notifier)
+        .tryNow(expectedTitleId: titleId);
+    if (!mounted || result == null) return;
+    _say(
+      result.repeated
+          ? 'Already in Tonight\u2019s picks'
+          : 'Try now saved. Undo is available.',
+    );
   }
 
   Future<void> _openDetails() async {
@@ -155,6 +157,13 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
     if (FocusManager.instance.primaryFocus?.context?.widget is EditableText) {
       return KeyEventResult.ignored;
     }
+    if (e.logicalKey == LogicalKeyboardKey.enter &&
+        HardwareKeyboard.instance.isShiftPressed) {
+      final top = ref.read(deckControllerProvider).top;
+      if (top == null) return KeyEventResult.ignored;
+      unawaited(_tryNow(top.title.id));
+      return KeyEventResult.handled;
+    }
     final dir = switch (e.logicalKey) {
       LogicalKeyboardKey.arrowLeft => SwipeDirection.left,
       LogicalKeyboardKey.arrowRight => SwipeDirection.right,
@@ -177,12 +186,48 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
     final settings = ref.watch(currentSettingsProvider);
     final filters = ref.watch(deckFiltersProvider);
     final top = deck.top;
+    if (top != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted &&
+            (ModalRoute.of(context)?.isCurrent ?? true) &&
+            ref.read(deckControllerProvider).top?.title.id == top.title.id) {
+          unawaited(
+            ref.read(deckControllerProvider.notifier).recordVisible(top.title),
+          );
+        }
+      });
+    }
 
     ref.listen(deckControllerProvider.select((s) => s.error), (_, err) {
       if (err != null) {
         _say(err);
         ref.read(deckControllerProvider.notifier).clearError();
       }
+    });
+    ref.listen(deckControllerProvider.select((s) => s.directionSuggestion), (
+      _,
+      offer,
+    ) {
+      if (!offer) return;
+      ref.read(deckControllerProvider.notifier).dismissDirectionSuggestion();
+      if (_sheetOpen || !(ModalRoute.of(context)?.isCurrent ?? true)) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Not the right mix? Try a different direction.'),
+          action: SnackBarAction(
+            label: 'Shift mix',
+            onPressed: () async {
+              try {
+                await ref
+                    .read(deckControllerProvider.notifier)
+                    .differentDirection();
+              } on Object {
+                if (mounted) _say('Could not shift the mix. Try again.');
+              }
+            },
+          ),
+        ),
+      );
     });
 
     // Decode the next two posters while this one is on screen.
@@ -206,6 +251,7 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
         swipeMap: settings.swipeMap,
         onSwipe: _onSwipe,
         onDetails: _openDetails,
+        onTryNow: (id) => unawaited(_tryNow(id)),
         enabled: !_sheetOpen,
         reduceMotion: settings.reduceMotion,
         haptics: settings.haptics,
@@ -250,11 +296,26 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
               if (deck.notice != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 6, left: 4),
-                  child: Text(
-                    deck.notice!,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: CueColors.textMuted,
+                  child: TextButton.icon(
+                    onPressed: () => showDialog<void>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Catalog and mood status'),
+                        content: SingleChildScrollView(
+                          child: Text(deck.notice!),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(ctx).pop(),
+                            child: const Text('Close'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    icon: const CueIcon(CueIcons.info, size: 16),
+                    label: const Text(
+                      'Catalog / AI status · Details',
+                      style: TextStyle(fontSize: 12),
                     ),
                   ),
                 ),
@@ -332,14 +393,32 @@ class _EmptyAction extends ConsumerWidget {
       );
     }
     if (hasFilters) {
-      return CuePrimaryButton(
-        label: 'Reset filters',
-        onPressed: () => ref.read(deckFiltersProvider.notifier).reset(),
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CuePrimaryButton(
+            label: 'Review filters',
+            onPressed: () => showFilterSheet(context),
+          ),
+          TextButton(
+            onPressed: () => context.go(CueRoutes.willTry),
+            child: const Text('Choose from saved'),
+          ),
+        ],
       );
     }
-    return CuePrimaryButton(
-      label: 'Try again',
-      onPressed: () => ref.read(deckControllerProvider.notifier).redeal(),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CuePrimaryButton(
+          label: 'Try again',
+          onPressed: () => ref.read(deckControllerProvider.notifier).redeal(),
+        ),
+        TextButton(
+          onPressed: () => context.go(CueRoutes.willTry),
+          child: const Text('Choose from saved'),
+        ),
+      ],
     );
   }
 }

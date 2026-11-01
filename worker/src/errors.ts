@@ -13,6 +13,7 @@ export type ErrorCode =
   | "origin_not_allowed"
   | "payload_too_large"
   | "rate_limited"
+  | "quota_exceeded"
   | "unavailable"
   | "internal";
 

@@ -13,7 +13,9 @@ import '../../domain/mood/mood_engine.dart';
 import '../../domain/mood/mood_features.dart';
 import '../../domain/mood/sessions.dart' show sessionGap;
 import '../../domain/ranker.dart';
+import '../../domain/mood_rules.dart';
 import '../../domain/reasons.dart';
+import '../../domain/recommendation_context.dart';
 
 class DeckState {
   const DeckState({
@@ -25,6 +27,7 @@ class DeckState {
     this.lastDecision,
     this.sessionDecisions = 0,
     this.error,
+    this.directionSuggestion = false,
   });
 
   final List<RankedCard> cards;
@@ -41,6 +44,7 @@ class DeckState {
 
   /// A decision that could not be stored; the card stays.
   final String? error;
+  final bool directionSuggestion;
 
   RankedCard? get top => cards.isEmpty ? null : cards.first;
 
@@ -56,6 +60,7 @@ class DeckState {
     int? sessionDecisions,
     String? error,
     bool clearError = false,
+    bool? directionSuggestion,
   }) => DeckState(
     cards: cards ?? this.cards,
     loading: loading ?? this.loading,
@@ -65,6 +70,7 @@ class DeckState {
     lastDecision: lastDecision ?? this.lastDecision,
     sessionDecisions: sessionDecisions ?? this.sessionDecisions,
     error: clearError ? null : (error ?? this.error),
+    directionSuggestion: directionSuggestion ?? this.directionSuggestion,
   );
 }
 
@@ -86,8 +92,29 @@ final deckFiltersProvider =
 /// writes decisions and undoes them.
 class DeckController extends Notifier<DeckState> {
   final SessionMood _session = SessionMood();
+  late final _temporary = RecommendationSession(clock: ref.read(clockProvider));
+  bool _wantRetrieval = true;
+  bool _skipCurrent = false;
+  int _retrievalRound = 0;
+  int poolSize = 0;
+  String? _dealtProfile;
+  String? _visibleId;
+  List<InterestCluster> clusters = const [];
+  double get exploration => _temporary.exploration;
+  int get surpriseRemaining => _temporary.surpriseRemaining;
+  bool get repeatedNotNow => _temporary.repeatedNotNow;
+  void _activate(String id) {
+    if (_temporary.activate(id)) {
+      _session.bias.clear();
+      _visibleId = null;
+      _wantRetrieval = true;
+    }
+  }
+
   MoodEngine? _engine;
   String _typed = '';
+  bool _usedSmartText = false;
+  String? _aiNotice;
   bool _dealing = false;
   bool _again = false;
 
@@ -98,6 +125,7 @@ class DeckController extends Notifier<DeckState> {
 
   @override
   DeckState build() {
+    ref.watch(profileIdProvider);
     ref.watch(deckFiltersProvider);
     ref.watch(libraryVersionProvider);
     // Settings that change eligibility re-deal; motion or haptics do not.
@@ -106,6 +134,7 @@ class DeckController extends Notifier<DeckState> {
         (s) => (
           s.showAdult,
           s.includeRewatches,
+          s.smartMoodText,
           Object.hashAllUnordered(s.defaultKinds),
         ),
       ),
@@ -119,6 +148,125 @@ class DeckController extends Notifier<DeckState> {
   /// The person corrected or renamed the mood: re-rank, keeping the top card.
   void moodChanged() => unawaited(_deal(keepTop: true));
 
+  /// More/Less does not call the persistent decision or mood engines.
+  Future<void> temporaryFeedback(bool more) async {
+    final card = state.top;
+    if (card == null) return;
+    final id = await _profile;
+    if (id != _dealtProfile) throw StateError('library_changed');
+    _activate(id);
+    _temporary.feedback(card.title, more: more);
+    _wantRetrieval = true;
+    await _deal(keepTop: true);
+  }
+
+  Future<void> setExploration(double value) async {
+    _activate(await _profile);
+    _temporary.explore(value);
+    _wantRetrieval = true;
+    await _deal(keepTop: true);
+  }
+
+  Future<void> moreOfTrait(
+    String profileId,
+    Title title,
+    String feature,
+  ) async {
+    if (await _profile != profileId) throw StateError('library_changed');
+    _activate(profileId);
+    _temporary.trait(title, feature);
+    _wantRetrieval = true;
+    await _deal(keepTop: true);
+  }
+
+  Future<void> immediateInterest(
+    String profileId,
+    Title title,
+    String eventId,
+  ) async {
+    if (await _profile != profileId) throw StateError('library_changed');
+    _activate(profileId);
+    _temporary.immediateInterest(title, eventId);
+    _wantRetrieval = true;
+    await _deal(keepTop: true);
+  }
+
+  Future<void> undoImmediateInterest(String profileId, String eventId) async {
+    if (!ref.mounted || await _profile != profileId || !ref.mounted) return;
+    _activate(profileId);
+    _temporary.undoInterest(eventId);
+    _wantRetrieval = true;
+    await _deal(keepTop: true);
+  }
+
+  Future<void> surprise() async {
+    _activate(await _profile);
+    _temporary.surprise();
+    _wantRetrieval = true;
+    _skipCurrent = true;
+    await _deal();
+  }
+
+  Future<void> differentDirection() async {
+    _activate(await _profile);
+    _temporary.differentDirection();
+    _session.bias.clear();
+    _wantRetrieval = true;
+    _skipCurrent = true;
+    await _deal();
+  }
+
+  void dismissDirectionSuggestion() =>
+      state = state.copyWith(directionSuggestion: false);
+
+  Future<void> resetSession() async {
+    _temporary.reset();
+    _session.bias.clear();
+    _wantRetrieval = true;
+    await _deal();
+  }
+
+  Future<void> recordVisible(Title title) async {
+    final id = await _profile;
+    if (id != _dealtProfile) return;
+    _activate(id);
+    if (_visibleId == title.id) return;
+    _visibleId = title.id;
+    _temporary.shown.add(title.id);
+    if (_temporary.shown.length > 200) {
+      _temporary.shown.remove(_temporary.shown.first);
+    }
+    final f = ref.read(deckFiltersProvider);
+    final signals = await ref.read(libraryRepositoryProvider).signals(id);
+    if (!ref.mounted) return;
+    final valid = ref
+        .read(rankerProvider)
+        .eligible(
+          title,
+          signals,
+          f,
+          showAdult: ref.read(currentSettingsProvider).showAdult,
+          enabledKinds: _enabledKinds,
+        );
+    try {
+      await ref
+          .read(recommendationRepositoryProvider)
+          .present(
+            id,
+            {title.id},
+            kinds: {title.kind.name},
+            leaks: valid ? 0 : 1,
+          );
+      if (!ref.mounted) return;
+      ref.read(recommendationMeasuresVersionProvider.notifier).bump();
+    } on Object {
+      if (!ref.mounted) return;
+      state = state.copyWith(
+        error: 'Local recommendation measures could not be saved.',
+      );
+    }
+  }
+
   Set<MediaKind> get _enabledKinds {
     final s = ref.read(currentSettingsProvider);
     return s.defaultKinds.isEmpty
@@ -129,6 +277,7 @@ class DeckController extends Notifier<DeckState> {
   /// Rebuilds the upcoming deck. The current top card is kept when it is
   /// still eligible, so filters never yank a card mid-look.
   Future<void> _deal({bool keepTop = false}) async {
+    if (!ref.mounted) return;
     if (_dealing) {
       _again = true;
       return;
@@ -139,6 +288,15 @@ class DeckController extends Notifier<DeckState> {
         _again = false;
         await _dealOnce(keepTop: keepTop);
       } while (_again);
+    } on Object {
+      if (!ref.mounted) return;
+      state = state.copyWith(
+        loading: false,
+        error: 'Could not prepare recommendations. Try again.',
+        emptyMessage: state.cards.isEmpty
+            ? 'Your local library or candidate cache could not be read.'
+            : null,
+      );
     } finally {
       _dealing = false;
     }
@@ -146,45 +304,44 @@ class DeckController extends Notifier<DeckState> {
 
   /// The mood learner, with a session open. A new session starts after a
   /// 45-minute gap or when the typed "Tell me" text changes.
-  Future<MoodEngine?> _mood(DeckFilters f, List<Title> pool) async {
+  Future<MoodEngine?> _mood(
+    DeckFilters f,
+    List<Title> pool,
+    String profileId,
+  ) async {
     final MoodEngine e;
     try {
       e = await ref.read(moodEngineProvider.future);
     } on Object {
       return null;
     }
+    if (!ref.mounted ||
+        e.profileId != profileId ||
+        ref.read(deckFiltersProvider) != f) {
+      return null;
+    }
     final now = DateTime.now();
     final text = f.tellMe ?? '';
+    final smart = ref.read(currentSettingsProvider).smartMoodText;
     final last = e.lastActivity;
     final stale = last != null && now.difference(last) > sessionGap;
-    if (!e.inSession || stale || text != _typed) {
+    if (!e.inSession || stale || text != _typed || smart != _usedSmartText) {
       await e.endSession();
-      e.startSession(now: now, text: text, hints: await _hints(e, text, pool));
+      if (!ref.mounted) return null;
+      final hints = await _hints(e, text, pool);
+      if (!ref.mounted ||
+          await _profile != profileId ||
+          !ref.mounted ||
+          ref.read(deckFiltersProvider) != f ||
+          ref.read(currentSettingsProvider).smartMoodText != smart) {
+        return null;
+      }
+      e.startSession(now: now, text: text, hints: hints);
       _typed = text;
+      _usedSmartText = smart;
     }
     return _engine = e;
   }
-
-  /// Genre words understood without AI. Pace is not a genre.
-  static const _genreWords = [
-    'comedy',
-    'romance',
-    'action',
-    'horror',
-    'mystery',
-    'drama',
-    'fantasy',
-    'sci-fi',
-    'slice of life',
-    'sports',
-    'thriller',
-    'adventure',
-    'isekai',
-    'psychological',
-    'supernatural',
-    'shounen',
-    'school',
-  ];
 
   /// Hints for typed text: plain genre words always, plus AI suggestions
   /// when Smarter mood text is on. Any AI failure just means fewer hints.
@@ -194,11 +351,10 @@ class DeckController extends Notifier<DeckState> {
     List<Title> pool,
   ) async {
     final lower = text.toLowerCase();
+    _aiNotice = null;
     if (lower.trim().isEmpty) return null;
-    final local = <String>{
-      for (final g in _genreWords)
-        if (lower.contains(g)) g,
-    };
+    final parsed = parseMood(text);
+    final local = parsed.genres;
     var ai = (<String>[], <String>[]);
     if (ref.read(currentSettingsProvider).smartMoodText) {
       try {
@@ -208,18 +364,29 @@ class DeckController extends Notifier<DeckState> {
               text,
               e.allowedFeatures({for (final t in pool) ...moodFeatures(t)}),
             );
+        _aiNotice = ai.$1.isEmpty && ai.$2.isEmpty
+            ? 'Smarter mood text returned no usable hints. Local filters still apply.'
+            : 'Smarter mood text supplied preference hints, not recommendation titles.';
       } on Object {
-        // Local words still apply.
+        _aiNotice = 'Smarter mood text unavailable. Using local filters and preferences; no AI success claimed.';
       }
     }
-    final features = {...local, ...ai.$1}.toList();
+    final features = {
+      ...local,
+      ...ai.$1,
+    }.where((g) => !parsed.excludedGenres.contains(g.toLowerCase())).toList();
     if (features.isEmpty && ai.$2.isEmpty) return null;
-    return (features, ai.$2);
+    return (features, {...ai.$2, ...parsed.excludedGenres}.toList());
   }
 
   Future<void> _dealOnce({required bool keepTop}) async {
+    final libraryEpoch = ref.read(libraryVersionProvider);
+    final decisionEpoch = ref.read(decisionVersionProvider);
     final profileId = await _profile;
+    if (!ref.mounted) return;
+    _activate(profileId);
     await ref.read(settingsProvider.future);
+    if (!ref.mounted) return;
     final filters = ref.read(deckFiltersProvider);
     final settings = ref.read(currentSettingsProvider);
     final catalog = ref.read(catalogRepositoryProvider);
@@ -228,7 +395,21 @@ class DeckController extends Notifier<DeckState> {
     final kinds = filters.kinds.isEmpty ? _enabledKinds : filters.kinds;
 
     var signals = await library.signals(profileId);
+    if (!ref.mounted) return;
     var pool = await _pool(filters, kinds, signals);
+    if (!ref.mounted) return;
+    final history = signals.library.values.toList()
+      ..sort(
+        (a, b) => (b.rating?.weight ?? 0).compareTo(a.rating?.weight ?? 0),
+      );
+    final related = await catalog.titlesByIds({
+      ...history.take(64).map((e) => e.titleId),
+      ...signals.shortlisted.take(64),
+    });
+    if (!ref.mounted) return;
+    clusters = interestClusters(signals, {
+      for (final t in [...pool, ...related]) t.id: t,
+    });
     String? notice;
 
     int eligibleCount() => pool
@@ -244,27 +425,102 @@ class DeckController extends Notifier<DeckState> {
         )
         .length;
 
-    if (!filters.isRevisit && eligibleCount() < Ranker.deckSize * 2) {
-      notice = await _refill(kinds, filters);
+    final missingKinds = {
+      for (final kind in kinds)
+        if (!pool.any(
+          (t) =>
+              t.kind == kind &&
+              ranker.eligible(
+                t,
+                signals,
+                filters,
+                showAdult: settings.showAdult,
+                enabledKinds: _enabledKinds,
+              ),
+        ))
+          kind,
+    };
+    if (!filters.isRevisit &&
+        (_wantRetrieval ||
+            eligibleCount() < Ranker.deckSize * 2 ||
+            (filters.activeCount == 0 && missingKinds.isNotEmpty))) {
+      notice = await _refill(
+        _wantRetrieval || eligibleCount() < Ranker.deckSize * 2
+            ? kinds
+            : missingKinds,
+        filters,
+        routes: _wantRetrieval
+            ? retrievalPlan(
+                kinds.difference(filters.excludedKinds),
+                [
+                  ...clusters,
+                  if (_temporary.bias.bias.values.any((v) => v > 0))
+                    InterestCluster(
+                      _temporary.bias.bias.entries
+                          .where((e) => e.value > 0)
+                          .take(8)
+                          .map((e) => e.key)
+                          .toSet(),
+                      0.2,
+                    ),
+                ],
+                signals.kindRatings,
+                _retrievalRound,
+                explicitMood: switch (filters.mood) {
+                  QuickMood.hype => 'hype',
+                  QuickMood.comfort => 'comfort',
+                  QuickMood.gripping => 'gripping',
+                  QuickMood.feels => 'feels',
+                  _ => null,
+                },
+              )
+            : null,
+      );
+      _retrievalRound++;
+      _wantRetrieval = false;
+      if (!ref.mounted) return;
       signals = await library.signals(profileId);
+      if (!ref.mounted) return;
       pool = await _pool(filters, kinds, signals);
+      if (!ref.mounted) return;
     }
 
     final byId = {for (final t in pool) t.id: t};
     // Rated titles may not be in this pool; reasons need them.
     final ratedIds = signals.library.values
-        .where((e) => e.rating != null)
+        .where(
+          (e) => e.rating != null || signals.weakHistoryIds.contains(e.titleId),
+        )
         .map((e) => e.titleId)
         .where((id) => !byId.containsKey(id));
     for (final t in await catalog.titlesByIds(ratedIds)) {
       byId[t.id] = t;
     }
+    if (!ref.mounted) return;
 
-    final mood = await _mood(filters, pool);
+    if (!ref.mounted) return;
+    final activeProfile = await _profile;
+    if (!ref.mounted) return;
+    if (activeProfile != profileId) {
+      _again = true;
+      return;
+    }
+    if (ref.read(deckFiltersProvider) != filters) {
+      _again = true;
+      return;
+    }
+    final mood = await _mood(filters, pool, profileId);
+    if (!ref.mounted) return;
     final target = filters.mood == QuickMood.forYou ? mood?.target : null;
     ref.read(moodReadProvider.notifier).set(target ?? MoodTarget.none);
 
     final keep = keepTop ? state.top : null;
+    final exposures =
+        (await ref.read(recommendationRepositoryProvider).exposures(profileId))
+            .keys
+            .toSet();
+    if (!ref.mounted) return;
+    poolSize = pool.length;
     final dealt = ranker.deal(
       pool,
       signals,
@@ -275,7 +531,18 @@ class DeckController extends Notifier<DeckState> {
       includeRewatchesDefault: settings.includeRewatches,
       session: _session,
       target: target,
-      skip: {if (keep != null) keep.title.id},
+      size: keep == null ? Ranker.deckSize : Ranker.deckSize - 1,
+      temporary: _temporary.bias,
+      preferShorter: _temporary.preferShorter,
+      clusters: clusters,
+      recentExposures: exposures,
+      explorePreference: _temporary.effectiveExploration,
+      skip: {
+        if (keep != null) keep.title.id,
+        if (_skipCurrent && eligibleCount() > 1 && _visibleId != null)
+          _visibleId!,
+        if (pool.length > 20) ..._temporary.shown,
+      },
     );
     final cards = diversify(
       dealt,
@@ -292,6 +559,25 @@ class DeckController extends Notifier<DeckState> {
           includeRewatchesDefault: settings.includeRewatches,
         );
     final next = [if (keepStill) keep, ...cards];
+    final notices = [?notice, ?_aiNotice];
+    final canUndo = await ref.read(decisionServiceProvider).canUndo(profileId);
+    if (!ref.mounted) return;
+    final liveId = await _profile;
+    if (!ref.mounted) return;
+    final liveSettings = ref.read(currentSettingsProvider);
+    if (liveId != profileId ||
+        libraryEpoch != ref.read(libraryVersionProvider) ||
+        decisionEpoch != ref.read(decisionVersionProvider) ||
+        ref.read(deckFiltersProvider) != filters ||
+        liveSettings.showAdult != settings.showAdult ||
+        liveSettings.smartMoodText != settings.smartMoodText ||
+        Object.hashAllUnordered(liveSettings.defaultKinds) !=
+            Object.hashAllUnordered(settings.defaultKinds)) {
+      _again = true;
+      return;
+    }
+    _dealtProfile = profileId;
+    _skipCurrent = false;
     state = state.copyWith(
       cards: next,
       loading: false,
@@ -308,9 +594,9 @@ class DeckController extends Notifier<DeckState> {
           : null,
       clearEmpty: next.isNotEmpty,
       // "Showing saved stories" only when there are saved stories to show.
-      notice: pool.isEmpty ? null : notice,
-      clearNotice: notice == null || pool.isEmpty,
-      canUndo: await ref.read(decisionServiceProvider).canUndo(profileId),
+      notice: notices.isEmpty ? null : notices.join(' '),
+      clearNotice: notices.isEmpty,
+      canUndo: canUndo,
     );
   }
 
@@ -336,7 +622,11 @@ class DeckController extends Notifier<DeckState> {
 
   /// Pulls one more page for each kind that is running low. Returns a
   /// notice when the network is unavailable.
-  Future<String?> _refill(Set<MediaKind> kinds, DeckFilters filters) async {
+  Future<String?> _refill(
+    Set<MediaKind> kinds,
+    DeckFilters filters, {
+    List<RetrievalRequest>? routes,
+  }) async {
     final catalog = ref.read(catalogRepositoryProvider);
     final mood = switch (filters.mood) {
       QuickMood.hype => 'hype',
@@ -347,19 +637,31 @@ class DeckController extends Notifier<DeckState> {
     };
     var offline = false;
     var gotAny = false;
+    final failedKinds = <MediaKind>{
+      ...catalog.unavailableKinds.intersection(kinds),
+    };
     await Future.wait([
-      for (final k in kinds)
-        if (!catalog.unavailableKinds.contains(k))
+      for (final request
+          in routes ??
+              [for (final k in kinds) RetrievalRequest(k, 'broad', mood: mood)])
+        if (!catalog.unavailableKinds.contains(request.kind))
           () async {
             try {
-              final n = await catalog.fetchNext(k, mood: mood);
+              final n = await catalog.fetchNext(
+                request.kind,
+                mood: request.mood,
+              );
               if (n > 0) gotAny = true;
             } on CatalogUnavailable catch (e) {
               if (e.code == 'offline') offline = true;
+              failedKinds.add(request.kind);
             }
           }(),
     ]);
     if (offline && !gotAny) return 'Offline. Showing saved stories.';
+    if (failedKinds.isNotEmpty) {
+      return 'Some formats unavailable: ${failedKinds.map((k) => k.label).join(', ')}. Showing available cached stories.';
+    }
     return null;
   }
 
@@ -369,14 +671,28 @@ class DeckController extends Notifier<DeckState> {
     Decision d, {
     DeckContext context = DeckContext.deck,
     Duration? defer,
+    NotNowReason? notNowReason,
+    String? expectedTitleId,
   }) async {
     final card = state.top;
-    if (card == null || !_inFlight.add(card.title.id)) return null;
+    final profileId = _dealtProfile;
+    if (card == null ||
+        profileId == null ||
+        (expectedTitleId != null && card.title.id != expectedTitleId) ||
+        !_inFlight.add(card.title.id)) {
+      return null;
+    }
     final filters = ref.read(deckFiltersProvider);
     final rest = state.cards.skip(1).toList();
     state = state.copyWith(cards: rest, clearError: true);
     try {
-      final profileId = await _profile;
+      if (await _profile != profileId) {
+        if (ref.mounted) {
+          state = state.copyWith(error: 'Library changed. No choice saved.');
+          unawaited(_deal());
+        }
+        return null;
+      }
       final result = await ref
           .read(decisionServiceProvider)
           .decide(
@@ -387,10 +703,21 @@ class DeckController extends Notifier<DeckState> {
             mood: filters.mood == QuickMood.forYou ? null : filters.mood.name,
             defer: defer,
           );
+      if (!ref.mounted) return result;
+      if (await _profile != profileId) {
+        ref.read(decisionVersionProvider.notifier).bump();
+        return result;
+      }
+      _activate(profileId);
+      final suggestion = _temporary.choice(
+        notNow: d == Decision.notNow,
+        eventId: result.eventId,
+        reason: d == Decision.notNow ? notNowReason : null,
+      );
       _session.record(card.title.features, switch (d) {
         Decision.willTry => 0.6,
         Decision.notInterested => -0.6,
-        Decision.notNow => -0.2,
+        Decision.notNow => notNowReason == NotNowReason.savingLater ? 0 : -0.2,
         Decision.watched => 0.1,
       });
       // The session may have closed while the app was hidden.
@@ -398,22 +725,47 @@ class DeckController extends Notifier<DeckState> {
       if (engine != null && !engine.inSession) {
         engine.startSession(now: DateTime.now(), text: _typed);
       }
-      engine?.onSwipe(card.title, d);
+      if (d != Decision.notNow) engine?.onSwipe(card.title, d);
       final count = state.sessionDecisions + 1;
+      try {
+        await ref
+            .read(recommendationRepositoryProvider)
+            .decision(
+              profileId,
+              picked: d == Decision.willTry,
+              eventId: result.eventId,
+            );
+      } on Object {
+        state = state.copyWith(
+          error: 'Your choice was saved, but local quality measures could not be updated.',
+        );
+      }
       state = state.copyWith(
         canUndo: true,
         lastDecision: result,
         sessionDecisions: count,
+        directionSuggestion: suggestion,
       );
       ref.read(decisionVersionProvider.notifier).bump();
       final total = await ref
           .read(libraryRepositoryProvider)
           .decisionCount(profileId);
-      if (total % 10 == 0) {
-        await ref.read(libraryRepositoryProvider).recomputeWeights(profileId);
+      if (d == Decision.willTry ||
+          d == Decision.notInterested ||
+          total % 10 == 0) {
+        try {
+          await ref.read(libraryRepositoryProvider).recomputeWeights(profileId);
+        } on Object {
+          if (ref.mounted) {
+            state = state.copyWith(
+              error: 'Choice saved, but taste refresh failed. Retry recommendations.',
+            );
+          }
+        }
       }
       // Re-rank every few swipes so a change of mood shows up quickly.
       if (state.cards.length < refillBelow || count % 3 == 0) {
+        _wantRetrieval = true;
         unawaited(_deal(keepTop: true));
       }
       return result;
@@ -428,19 +780,128 @@ class DeckController extends Notifier<DeckState> {
     }
   }
 
+  Future<DecisionResult?> tryNow({String? expectedTitleId}) async {
+    final card = state.top;
+    final profileId = _dealtProfile;
+    if (card == null ||
+        profileId == null ||
+        (expectedTitleId != null && expectedTitleId != card.title.id) ||
+        !_inFlight.add(card.title.id)) {
+      return null;
+    }
+    state = state.copyWith(
+      cards: state.cards.skip(1).toList(),
+      clearError: true,
+    );
+    try {
+      if (await _profile != profileId) {
+        if (ref.mounted) {
+          state = state.copyWith(error: 'Library changed. No choice saved.');
+          unawaited(_deal());
+        }
+        return null;
+      }
+      final result = await ref
+          .read(decisionServiceProvider)
+          .tryNow(profileId, card.title);
+      if (!ref.mounted) return result;
+      if (await _profile != profileId) {
+        ref.read(decisionVersionProvider.notifier).bump();
+        return result;
+      }
+      _activate(profileId);
+      if (!result.repeated) {
+        _temporary.immediateInterest(card.title, result.eventId);
+        _temporary.choice(notNow: false, eventId: result.eventId);
+        try {
+          await ref
+              .read(recommendationRepositoryProvider)
+              .decision(profileId, picked: true, eventId: result.eventId);
+        } on Object {
+          if (ref.mounted) {
+            state = state.copyWith(
+              error: 'Try now saved, but local choice measures could not be updated.',
+            );
+          }
+        }
+      }
+      if (!ref.mounted) return result;
+      state = state.copyWith(
+        canUndo: true,
+        lastDecision: result,
+        sessionDecisions: state.sessionDecisions + (result.repeated ? 0 : 1),
+      );
+      ref.read(decisionVersionProvider.notifier).bump();
+      try {
+        await ref.read(libraryRepositoryProvider).recomputeWeights(profileId);
+      } on Object {
+        if (ref.mounted) {
+          state = state.copyWith(
+            error: 'Try now saved, but taste refresh failed.',
+          );
+        }
+      }
+      _wantRetrieval = true;
+      unawaited(_deal(keepTop: true));
+      return result;
+    } on DecisionFailed {
+      if (ref.mounted) {
+        state = state.copyWith(
+          cards: [
+            card,
+            ...state.cards.where((c) => c.title.id != card.title.id),
+          ],
+          error: 'Could not save Try now. Try again.',
+        );
+      }
+      return null;
+    } finally {
+      _inFlight.remove(card.title.id);
+    }
+  }
+
   /// Undoes the last decision and puts its card back on top. Returns the
   /// decision it reversed, so the card can return from that side.
   Future<UndoResult?> undo() async {
     final profileId = await _profile;
+    if (!ref.mounted) return null;
+    final filters = ref.read(deckFiltersProvider);
     final undone = await ref.read(decisionServiceProvider).undoLast(profileId);
+    if (!ref.mounted) return undone;
+    ref.read(decisionVersionProvider.notifier).bump();
+    bool current() =>
+        ref.mounted && ref.read(profileIdProvider).value == profileId;
+    if (!current()) return undone;
     if (undone == null) {
       state = state.copyWith(canUndo: false);
       return null;
     }
     final titleId = undone.titleId;
+    _activate(profileId);
+    if (undone.eventId != null) {
+      _temporary.undoInterest(undone.eventId!);
+      try {
+        await ref
+            .read(recommendationRepositoryProvider)
+            .undoDecision(profileId, undone.eventId!);
+        if (!current()) return undone;
+        ref.read(recommendationMeasuresVersionProvider.notifier).bump();
+      } on Object {
+        if (ref.mounted) {
+          state = state.copyWith(
+            error: 'Undo saved, but local measures could not be restored.',
+          );
+        }
+      }
+    }
     _engine?.undo(titleId);
+    if (!current()) return undone;
+    await ref.read(libraryRepositoryProvider).recomputeWeights(profileId);
+    if (!current()) return undone;
     final title = await ref.read(catalogRepositoryProvider).titleById(titleId);
+    if (!current()) return undone;
     final canUndo = await ref.read(decisionServiceProvider).canUndo(profileId);
+    if (!current()) return undone;
     if (title == null) {
       state = state.copyWith(canUndo: canUndo);
       return undone;
@@ -448,6 +909,22 @@ class DeckController extends Notifier<DeckState> {
     final signals = await ref
         .read(libraryRepositoryProvider)
         .signals(profileId);
+    if (!current()) return undone;
+    final settings = ref.read(currentSettingsProvider);
+    if (filters != ref.read(deckFiltersProvider) ||
+        !ref
+            .read(rankerProvider)
+            .eligible(
+              title,
+              signals,
+              filters,
+              showAdult: settings.showAdult,
+              enabledKinds: _enabledKinds,
+              includeRewatchesDefault: settings.includeRewatches,
+            )) {
+      await _deal();
+      return undone;
+    }
     final card = RankedCard(
       title,
       1,
@@ -463,7 +940,6 @@ class DeckController extends Notifier<DeckState> {
       canUndo: canUndo,
       clearEmpty: true,
     );
-    ref.read(decisionVersionProvider.notifier).bump();
     return undone;
   }
 

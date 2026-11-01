@@ -9,21 +9,27 @@ import 'mood/mood_target.dart';
 import 'mood/vec.dart';
 import 'mood_tags.dart';
 import 'reasons.dart';
+import 'recommendation_context.dart';
+import 'franchise_identity.dart';
 
 /// Everything personal the ranker may use. Built from the active profile
 /// only; no names or constants about any person.
 class ProfileSignals {
   const ProfileSignals({
     this.excluded = const {},
+    this.excludedFranchises = const {},
     this.deferred = const {},
     this.shortlisted = const {},
     this.library = const {},
     this.weights = const {},
     this.evidenceTitles = 0,
+    this.evidenceStrength,
+    this.weakHistoryIds = const {},
     this.kindRatings = const {},
   });
 
   final Set<String> excluded;
+  final Set<String> excludedFranchises;
   final Set<String> deferred;
   final Set<String> shortlisted;
   final Map<String, LibraryEntry> library;
@@ -33,6 +39,12 @@ class ProfileSignals {
 
   /// Distinct titles that produced taste evidence.
   final int evidenceTitles;
+  final double? evidenceStrength;
+  final Set<String> weakHistoryIds;
+  double get tasteConfidence =>
+      ((evidenceStrength ?? evidenceTitles) / Ranker.coldStartBelow)
+          .clamp(0, 1)
+          .toDouble();
 
   /// How many rated titles exist per kind (drives exploration).
   final Map<MediaKind, int> kindRatings;
@@ -103,6 +115,10 @@ class Ranker {
   }) {
     if (t.adult && !showAdult) return false;
     if (s.excluded.contains(t.id)) return false;
+    final franchise = reliableFranchiseId(t);
+    if (franchise != null && s.excludedFranchises.contains(franchise)) {
+      return false;
+    }
     if (s.deferred.contains(t.id)) return false;
     if (s.shortlisted.contains(t.id)) return false;
 
@@ -121,6 +137,12 @@ class Ranker {
 
     final kinds = f.kinds.isEmpty ? enabledKinds : f.kinds;
     if (!kinds.contains(t.kind)) return false;
+    if (f.excludedKinds.contains(t.kind)) return false;
+    if (f.excludedGenres.isNotEmpty &&
+        (t.genres.isEmpty ||
+            t.genres.any((g) => f.excludedGenres.contains(g.toLowerCase())))) {
+      return false;
+    }
     if (!f.genres.every(
       (g) => t.genres.any((actual) => actual.toLowerCase() == g),
     )) {
@@ -161,11 +183,19 @@ class Ranker {
     DeckFilters f, {
     SessionMood? session,
     MoodTarget? target,
+    SessionMood? temporary,
+    bool preferShorter = false,
+    List<InterestCluster> clusters = const [],
+    Set<String> recentExposures = const {},
   }) {
     final features = t.features;
-    final taste = s.evidenceTitles < coldStartBelow
+    final clusterTaste = clusters.isEmpty ? null : clusterAffinity(t, clusters);
+    final rawTaste = features.isEmpty
         ? 0.5
-        : _cosine(features, s.weights);
+        : clusterTaste == null
+        ? _cosine(features, s.weights)
+        : 0.7 * _cosine(features, s.weights) + 0.3 * clusterTaste;
+    final taste = 0.5 + s.tasteConfidence * (rawTaste - 0.5);
     final mood = switch (f.mood) {
       // The learned mood steers the default deck.
       QuickMood.forYou when target != null && target.confidence > 0 =>
@@ -196,7 +226,18 @@ class Ranker {
         0.15 * freshness +
         0.10 * novelty -
         penalty +
-        0.08 * lean;
+        0.08 * lean +
+        0.08 * (temporary?.lean(features) ?? 0) -
+        (recentExposures.contains(t.id) ? 0.04 : 0) +
+        (preferShorter ? _lengthPreference(t) : 0);
+  }
+
+  static double _lengthPreference(Title t) {
+    // Episode/chapter counts cannot establish a film's runtime.
+    if (t.kind == MediaKind.movie) return 0;
+    final known = t.kind.isReading ? t.chapters : t.episodes;
+    if (known == null) return 0;
+    return _isShort(t) ? 0.04 : -0.08;
   }
 
   double _revisitMood(Title t, ProfileSignals s, DeckFilters f) {
@@ -228,8 +269,8 @@ class Ranker {
     return (-worst / 10).clamp(0, 0.3).toDouble();
   }
 
-  /// Builds a deck: 7 top-scored, 2 exploration, 1 wildcard from another
-  /// kind. One card per franchise.
+  /// Adaptive familiar/adjacent/explore slots when a preference is supplied;
+  /// otherwise retains the legacy 7/2/1 allocation. One card per franchise.
   List<RankedCard> deal(
     List<Title> pool,
     ProfileSignals s,
@@ -240,6 +281,11 @@ class Ranker {
     bool includeRewatchesDefault = false,
     SessionMood? session,
     MoodTarget? target,
+    SessionMood? temporary,
+    bool preferShorter = false,
+    List<InterestCluster> clusters = const [],
+    Set<String> recentExposures = const {},
+    double? explorePreference,
     Set<String> skip = const {},
     int size = deckSize,
   }) {
@@ -258,11 +304,42 @@ class Ranker {
       }
       // Tiny jitter so equal scores do not always deal in the same order.
       final sc =
-          score(t, s, f, session: session, target: target) +
+          score(
+            t,
+            s,
+            f,
+            session: session,
+            target: target,
+            temporary: temporary,
+            preferShorter: preferShorter,
+            clusters: clusters,
+            recentExposures: recentExposures,
+          ) +
           _random.nextDouble() * 0.02;
       scored.add(RankedCard(t, sc, ''));
     }
     scored.sort((a, b) => b.score.compareTo(a.score));
+    if (explorePreference != null) {
+      return [
+        for (final c in _adaptive(
+          scored,
+          size,
+          s,
+          clusters,
+          explorePreference,
+          recentExposures,
+        ))
+          RankedCard(
+            c.title,
+            c.score,
+            (temporary?.lean(c.title.features) ?? 0).abs() > 0.1
+                ? "Today's interest and direction; ratings unchanged."
+                : c.reason.isNotEmpty
+                ? c.reason.trim()
+                : reasonFor(c.title, s, f, titlesById: titlesById, now: _now()),
+          ),
+      ];
+    }
 
     final franchises = <String>{};
     final picked = <RankedCard>[];
@@ -287,28 +364,162 @@ class Ranker {
           s.kindRatings[b.title.kind] ?? 0,
         ),
       );
-    var explored = 0;
+    final exploration = <RankedCard>[];
+    final broadFirstRun =
+        s.evidenceTitles < coldStartBelow &&
+        f.activeCount == 0 &&
+        f.mood == QuickMood.forYou &&
+        (target?.confidence ?? 0) == 0;
+    // The old upper-half-only exploration could repeat the dominant kind.
+    // First-run exploration can use any eligible kind, but never relax filters.
+    if (broadFirstRun) {
+      final candidates = List.of(rest)
+        ..sort(
+          (a, b) => (s.kindRatings[a.title.kind] ?? 0).compareTo(
+            s.kindRatings[b.title.kind] ?? 0,
+          ),
+        );
+      for (final c in candidates) {
+        if (exploration.length >= explore) break;
+        if (picked.any((p) => p.title.kind == c.title.kind)) continue;
+        if (take(c)) exploration.add(c);
+      }
+    }
+    var explored = exploration.length;
     for (final c in half) {
       if (explored >= explore) break;
-      if (take(c)) explored++;
+      if (take(c)) {
+        explored++;
+        if (broadFirstRun) exploration.add(c);
+      }
     }
     // Wildcard: the best card from a kind not yet in the deck.
     final kindsInDeck = picked.map((c) => c.title.kind).toSet();
     for (final c in scored) {
       if (picked.length >= size) break;
-      if (!kindsInDeck.contains(c.title.kind) && take(c)) break;
+      if (!kindsInDeck.contains(c.title.kind) && take(c)) {
+        if (broadFirstRun) exploration.add(c);
+        break;
+      }
     }
     for (final c in scored) {
       if (picked.length >= size) break;
       take(c);
     }
 
+    final ordered = List.of(picked);
+    if (broadFirstRun) {
+      ordered.removeWhere(exploration.contains);
+      for (var i = 0; i < exploration.length; i++) {
+        ordered.insert(min(2 + i * 3, ordered.length), exploration[i]);
+      }
+    }
     return [
-      for (final c in picked)
+      for (final c in ordered)
         RankedCard(
           c.title,
           c.score,
           reasonFor(c.title, s, f, titlesById: titlesById, now: _now()),
+        ),
+    ];
+  }
+
+  List<RankedCard> _adaptive(
+    List<RankedCard> scored,
+    int size,
+    ProfileSignals signals,
+    List<InterestCluster> clusters,
+    double preference,
+    Set<String> recent,
+  ) {
+    final familiar =
+        (size *
+                (0.55 +
+                        0.20 * signals.tasteConfidence -
+                        0.35 * preference.clamp(0, 1))
+                    .clamp(0.25, 0.60))
+            .round();
+    final adjacent = (size * 0.20).round();
+    final picked = <RankedCard>[];
+    final varied = <RankedCard>[];
+    final franchises = <String>{};
+    bool take(RankedCard c, {bool variety = false}) {
+      if (picked.length >= size || !franchises.add(c.title.franchiseKey)) {
+        return false;
+      }
+      picked.add(c);
+      if (variety) varied.add(c);
+      return true;
+    }
+
+    for (final c in scored) {
+      if (picked.length >= familiar) break;
+      take(c);
+    }
+    final remaining = scored
+        .where(
+          (c) =>
+              !picked.contains(c) &&
+              (c.title.score == null || c.title.score! >= 40),
+        )
+        .toList();
+    for (var i = 0; i < adjacent; i++) {
+      final candidates = remaining
+          .where(
+            (c) =>
+                !picked.contains(c) &&
+                !franchises.contains(c.title.franchiseKey),
+          )
+          .toList();
+      candidates.sort((a, b) {
+        double value(RankedCard c) =>
+            (picked.any((p) => p.title.kind == c.title.kind) ? 0 : 1) +
+            (clusters.isEmpty
+                ? 0
+                : clusters.map((g) => g.affinity(c.title)).reduce(max)) +
+            (recent.contains(c.title.id) ? 0 : 0.2);
+        return value(b).compareTo(value(a));
+      });
+      if (candidates.isEmpty) break;
+      take(candidates.first, variety: true);
+    }
+    while (picked.length < size) {
+      final candidates =
+          remaining
+              .where(
+                (c) =>
+                    !picked.contains(c) &&
+                    !franchises.contains(c.title.franchiseKey),
+              )
+              .toList()
+            ..shuffle(_random);
+      candidates.sort((a, b) {
+        double value(RankedCard c) =>
+            (picked.any((p) => p.title.kind == c.title.kind) ? 0 : 1) +
+            1 / (1 + (signals.kindRatings[c.title.kind] ?? 0)) +
+            (recent.contains(c.title.id) ? 0 : 0.2) +
+            (c.title.year != null && c.title.year! >= 2023 ? 0.05 : 0);
+        return value(b).compareTo(value(a));
+      });
+      if (candidates.isEmpty) break;
+      take(candidates.first, variety: true);
+    }
+    for (final c in scored) {
+      if (picked.length >= size) break;
+      take(c);
+    }
+    final ordered = picked.where((c) => !varied.contains(c)).toList();
+    for (var i = 0; i < varied.length; i++) {
+      ordered.insert(min(2 + i * 2, ordered.length), varied[i]);
+    }
+    return [
+      for (final c in ordered)
+        RankedCard(
+          c.title,
+          c.score,
+          varied.contains(c)
+              ? ' Exploring another eligible theme or format.'
+              : '',
         ),
     ];
   }
@@ -338,6 +549,10 @@ class Ranker {
       'the status filter': f.copyWith(status: StatusFilter.any),
       'the country filter': f.copyWith(countries: {}),
       'the genre filter': f.copyWith(genres: {}),
+      'excluded formats': f.copyWith(excludedKinds: {}),
+      'excluded genres (unknown genres are also excluded)': f.copyWith(
+        excludedGenres: {},
+      ),
     };
     for (final e in checks.entries) {
       if (e.value == f) continue;

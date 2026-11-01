@@ -3,6 +3,7 @@ enum Rating {
   favourite('favourite', 'Favourite', 3),
   rewatched('rewatched', 'Rewatched', 3),
   wouldRewatch('would_rewatch', 'Would rewatch', 2),
+  enjoyed('enjoyed', 'Enjoyed', 2),
   once('once', 'Once was enough', 1.5),
   okay('okay', 'Okay', 0.5),
   disliked('disliked', 'Disliked', -1),

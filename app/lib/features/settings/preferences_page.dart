@@ -40,6 +40,7 @@ class PreferencesPage extends ConsumerWidget {
           style: TextStyle(fontSize: 13, color: CueColors.textMuted),
         ),
         const CueSectionLabel('Live mood'),
+        const FranchiseExclusionsSection(),
         _toggle(
           title: 'Smarter mood text',
           subtitle: 'Off by default. When on, the sentence you type in Tell me is sent to an AI service (Groq or Google Gemini) to suggest genres. Nothing else is sent. Mood learning itself always stays on this device.',

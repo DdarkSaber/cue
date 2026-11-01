@@ -28,6 +28,7 @@ class SwipeDeck extends StatefulWidget {
     this.enabled = true,
     this.reduceMotion = false,
     this.haptics = true,
+    this.onTryNow,
   });
 
   final List<RankedCard> cards;
@@ -37,6 +38,7 @@ class SwipeDeck extends StatefulWidget {
   final bool enabled;
   final bool reduceMotion;
   final bool haptics;
+  final void Function(String titleId)? onTryNow;
 
   @override
   State<SwipeDeck> createState() => SwipeDeckState();
@@ -241,6 +243,8 @@ class SwipeDeckState extends State<SwipeDeck>
     final radius = desktop ? CueRadius.cardDesktop : CueRadius.cardPhone;
     final top = widget.cards.isEmpty ? null : widget.cards.first;
     final next = widget.cards.length > 1 ? widget.cards[1] : null;
+    final topTitleId = top?.title.id;
+    final tryNow = widget.onTryNow;
 
     return LayoutBuilder(
       builder: (context, c) {
@@ -310,11 +314,26 @@ class SwipeDeckState extends State<SwipeDeck>
                                 swipeMap: widget.swipeMap,
                                 onSwipe: swipe,
                                 onDetails: widget.onDetails,
-                                child: StoryCard(
-                                  key: ValueKey('top-${top.title.id}'),
-                                  title: top.title,
-                                  reason: top.reason,
-                                  onDetails: widget.onDetails,
+                                onTryNow: widget.onTryNow == null
+                                    ? null
+                                    : () => tryNow!(topTitleId!),
+                                child: GestureDetector(
+                                  key: ValueKey(
+                                    'story-card-actions-${top.title.id}',
+                                  ),
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: tryNow == null
+                                      ? null
+                                      : widget.onDetails,
+                                  onDoubleTap: tryNow == null
+                                      ? null
+                                      : () => tryNow(topTitleId!),
+                                  child: StoryCard(
+                                    key: ValueKey('top-${top.title.id}'),
+                                    title: top.title,
+                                    reason: top.reason,
+                                    onDetails: widget.onDetails,
+                                  ),
                                 ),
                               ),
                             ),
@@ -348,6 +367,7 @@ class _CardSemantics extends StatelessWidget {
     required this.swipeMap,
     required this.onSwipe,
     required this.onDetails,
+    required this.onTryNow,
     required this.child,
   });
 
@@ -355,11 +375,17 @@ class _CardSemantics extends StatelessWidget {
   final SwipeMap swipeMap;
   final Future<void> Function(SwipeDirection) onSwipe;
   final VoidCallback onDetails;
+  final VoidCallback? onTryNow;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final reading = card.title.kind.isReading;
+    final tryNowActions = onTryNow == null
+        ? null
+        : <CustomSemanticsAction, VoidCallback>{
+            const CustomSemanticsAction(label: 'Try now'): onTryNow!,
+          };
     return Semantics(
       container: true,
       label: 'Recommendation: ${card.title.displayTitle}. ${card.reason}',
@@ -367,6 +393,7 @@ class _CardSemantics extends StatelessWidget {
         for (final d in Decision.values)
           CustomSemanticsAction(label: d.labelFor(reading: reading)): () =>
               onSwipe(swipeMap.directionFor(d)),
+        ...?tryNowActions,
         const CustomSemanticsAction(label: 'Open details'): onDetails,
       },
       child: child,

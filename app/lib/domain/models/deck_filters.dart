@@ -16,6 +16,8 @@ class DeckFilters {
     this.status = StatusFilter.any,
     this.countries = const {},
     this.genres = const {},
+    this.excludedKinds = const {},
+    this.excludedGenres = const {},
     this.includeRewatches = false,
     this.tellMe,
   });
@@ -34,6 +36,8 @@ class DeckFilters {
 
   /// Lower-cased explicit genres; every selected genre must match.
   final Set<String> genres;
+  final Set<MediaKind> excludedKinds;
+  final Set<String> excludedGenres;
 
   /// Legacy flag. Only Revisit can include saved titles in the deck.
   final bool includeRewatches;
@@ -50,7 +54,9 @@ class DeckFilters {
       (era == EraFilter.any ? 0 : 1) +
       (status == StatusFilter.any ? 0 : 1) +
       (countries.isEmpty ? 0 : 1) +
-      (genres.isEmpty ? 0 : 1);
+      (genres.isEmpty ? 0 : 1) +
+      (excludedKinds.isEmpty ? 0 : 1) +
+      (excludedGenres.isEmpty ? 0 : 1);
 
   DeckFilters copyWith({
     Set<MediaKind>? kinds,
@@ -60,6 +66,8 @@ class DeckFilters {
     StatusFilter? status,
     Set<String>? countries,
     Set<String>? genres,
+    Set<MediaKind>? excludedKinds,
+    Set<String>? excludedGenres,
     bool? includeRewatches,
     String? tellMe,
     bool clearTellMe = false,
@@ -71,6 +79,8 @@ class DeckFilters {
     status: status ?? this.status,
     countries: countries ?? this.countries,
     genres: genres ?? this.genres,
+    excludedKinds: excludedKinds ?? this.excludedKinds,
+    excludedGenres: excludedGenres ?? this.excludedGenres,
     includeRewatches: includeRewatches ?? this.includeRewatches,
     tellMe: clearTellMe ? null : (tellMe ?? this.tellMe),
   );
@@ -90,7 +100,11 @@ class DeckFilters {
       other.countries.length == countries.length &&
       other.countries.containsAll(countries) &&
       other.genres.length == genres.length &&
-      other.genres.containsAll(genres);
+      other.genres.containsAll(genres) &&
+      other.excludedKinds.length == excludedKinds.length &&
+      other.excludedKinds.containsAll(excludedKinds) &&
+      other.excludedGenres.length == excludedGenres.length &&
+      other.excludedGenres.containsAll(excludedGenres);
 
   @override
   int get hashCode => Object.hash(
@@ -103,5 +117,7 @@ class DeckFilters {
     Object.hashAllUnordered(kinds),
     Object.hashAllUnordered(countries),
     Object.hashAllUnordered(genres),
+    Object.hashAllUnordered(excludedKinds),
+    Object.hashAllUnordered(excludedGenres),
   );
 }

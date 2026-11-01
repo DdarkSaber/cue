@@ -21,6 +21,11 @@ class _ChooseSource extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
+          'All supported sources merge into your currently selected library. Import another list here to combine its matched history without replacing earlier imports. Separate libraries stay separate.',
+          style: _muted,
+        ),
+        const SizedBox(height: CueSpace.sm),
+        const Text(
           'Processed on this device. Matching sends title names or catalog ids to the Cue catalog, never the whole file.',
           style: _muted,
         ),

@@ -5,7 +5,9 @@ import * as catalog from "./catalog/service";
 import { NotConfiguredError, UpstreamError } from "./catalog/types";
 import type { AppEnv } from "./env";
 import * as lists from "./imports/lists";
-import { SyncStore } from "./sync/store";
+import { same, sha256Hex, SyncStore } from "./sync/store";
+import { diagnosticsBody, diagnosticsId, diagnosticsToken } from "./diagnostics/schemas";
+import { DiagnosticsStore } from "./diagnostics/store";
 import { moodHints, underDailyCap } from "./ai/mood";
 import { fail } from "./errors";
 import {
@@ -206,6 +208,45 @@ export function createApp() {
     const r = await a.store.delete(a.id, a.token);
     if (r === "deleted") return c.json({ deleted: true });
     return fail(c, r === "forbidden" ? 403 : 404, r);
+  });
+
+  // Optional, client-consented technical diagnostics. CORS is not authorization.
+  const diagnosticsAuth = async (c: Parameters<typeof fail>[0]) => {
+    const id = diagnosticsId.safeParse(c.req.param("id"));
+    const token = diagnosticsToken(c.req.header("Authorization"));
+    if (!id.success || !token || !same(id.data, await sha256Hex(token))) {
+      return { res: fail(c, 403, "forbidden") };
+    }
+    if (Object.keys(c.req.query()).length) return { res: fail(c, 400, "invalid_request") };
+    if (!c.env.SYNC_DB) return { res: fail(c, 503, "unavailable") };
+    return { id: id.data, store: new DiagnosticsStore(c.env.SYNC_DB) };
+  };
+
+  app.get("/diagnostics/:id", async (c) => {
+    const a = await diagnosticsAuth(c);
+    if ("res" in a) return a.res;
+    try {
+      const events = await a.store.get(a.id, Date.now());
+      return events === null ? fail(c, 404, "not_found") : c.json({ events });
+    } catch {
+      return fail(c, 503, "unavailable");
+    }
+  });
+
+  app.put("/diagnostics/:id", async (c) => {
+    const a = await diagnosticsAuth(c);
+    if ("res" in a) return a.res;
+    // Fixed errors only: even arbitrary unknown field names are not echoed.
+    const body = diagnosticsBody.safeParse(await jsonBody(c));
+    if (!body.success) return fail(c, 400, "invalid_request");
+    try {
+      const result = await a.store.append(a.id, body.data.events, Date.now());
+      if (result.ok) return c.json({ accepted: result.accepted });
+      c.header("Retry-After", result.reason === "rate_limited" ? "5" : "604800");
+      return fail(c, 429, result.reason);
+    } catch {
+      return fail(c, 503, "unavailable");
+    }
   });
 
   app.post("/ai/mood", async (c) => {

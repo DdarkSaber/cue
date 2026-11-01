@@ -58,14 +58,14 @@ class TellMePill extends ConsumerWidget {
     final text = result.trim();
     final filters = ref.read(deckFiltersProvider);
     final parsed = parseMood(text);
-    ref
-        .read(deckFiltersProvider.notifier)
-        .apply(
-          text.isEmpty
-              ? filters.copyWith(tellMe: '')
-              : parsed.isEmpty
-              ? filters.copyWith(tellMe: text)
-              : parsed.applyTo(filters, text),
-        );
+    ref.read(deckFiltersProvider.notifier).apply(parsed.applyTo(filters, text));
+    if (text.isNotEmpty && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(parsed.feedback),
+          duration: const Duration(seconds: 12),
+        ),
+      );
+    }
   }
 }

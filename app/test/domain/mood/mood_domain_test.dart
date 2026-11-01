@@ -90,6 +90,16 @@ void main() {
       expect(hourBucket(DateTime(2026, 1, 1, 8)), 0);
       expect(hourBucket(DateTime(2026, 1, 1, 23)), 3);
     });
+    test('Not now is not learned as a permanent negative mood', () {
+      expect(signalFor(Decision.notNow), 0);
+      expect(
+        splitSessions([
+          e('later', 0, Decision.notNow),
+          e('pick', 1, Decision.willTry),
+        ]).single.picks,
+        [('tpick', 1.0)],
+      );
+    });
   });
 
   group('modes', () {

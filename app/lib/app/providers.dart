@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 
 import '../data/anilist_client.dart';
 import '../data/backup_service.dart';
@@ -10,6 +11,7 @@ import '../data/catalog_gateway.dart';
 import '../data/catalog_repository.dart';
 import '../data/db/database.dart';
 import '../data/library_repository.dart';
+import '../data/recommendation_repository.dart';
 import '../data/profile_repository.dart';
 import '../domain/decisions.dart';
 import '../domain/models/settings.dart';
@@ -20,6 +22,7 @@ import '../imports/token_store.dart';
 import '../data/mood_repository.dart';
 import '../domain/mood/mood_engine.dart';
 import '../sync/sync_service.dart';
+import '../diagnostics/technical_diagnostics.dart';
 import 'config.dart';
 
 /// Overridden in main() with the opened database, and in tests with an
@@ -28,15 +31,45 @@ final databaseProvider = Provider<CueDatabase>(
   (ref) => throw UnimplementedError('databaseProvider must be overridden'),
 );
 
-final catalogGatewayProvider = Provider<CatalogGateway>(
-  (ref) => HybridCatalogGateway(
-    HttpCatalogGateway(cueApiBase, proxyImages: kIsWeb),
-    AniListClient(),
-    web: kIsWeb,
-  ),
+final diagnosticConsentStoreProvider = Provider<DiagnosticConsentStore>(
+  (ref) => SecureDiagnosticConsentStore(),
 );
+final technicalDiagnosticsProvider = Provider<TechnicalDiagnostics>((ref) {
+  final service = TechnicalDiagnostics(
+    cueApiBase,
+    ref.watch(diagnosticConsentStoreProvider),
+  );
+  unawaited(service.load());
+  ref.onDispose(service.dispose);
+  return service;
+});
+
+final catalogGatewayProvider = Provider<CatalogGateway>((ref) {
+  final diagnostics = ref.watch(technicalDiagnosticsProvider);
+  final workerClient = DiagnosticHttpClient(http.Client(), diagnostics);
+  final anilistClient = DiagnosticHttpClient(
+    http.Client(),
+    diagnostics,
+    anilist: true,
+  );
+  ref.onDispose(workerClient.close);
+  ref.onDispose(anilistClient.close);
+  return HybridCatalogGateway(
+    HttpCatalogGateway(cueApiBase, client: workerClient, proxyImages: kIsWeb),
+    AniListClient(client: anilistClient),
+    web: kIsWeb,
+  );
+});
 
 final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+final recommendationRepositoryProvider = Provider<RecommendationRepository>(
+  (ref) => RecommendationRepository(
+    ref.watch(databaseProvider),
+    clock: ref.watch(clockProvider),
+  ),
+);
+final recommendationMeasuresVersionProvider =
+    NotifierProvider<LibraryVersion, int>(LibraryVersion.new);
 
 final catalogRepositoryProvider = Provider<CatalogRepository>(
   (ref) => CatalogRepository(

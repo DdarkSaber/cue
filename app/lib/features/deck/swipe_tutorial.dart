@@ -22,6 +22,7 @@ Future<void> maybeShowSwipeTutorial(BuildContext context, WidgetRef ref) async {
   await showDialog<void>(
     context: context,
     builder: (ctx) => AlertDialog(
+      scrollable: true,
       title: const Text('How to swipe'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -39,7 +40,12 @@ Future<void> maybeShowSwipeTutorial(BuildContext context, WidgetRef ref) async {
             ),
           const SizedBox(height: 8),
           const Text(
-            'The buttons and arrow keys do the same, and Undo always works. Change directions in Settings, Swipe actions.',
+            'Double-tap a card for Try now: save it for tonight, without rating it. A single tap still opens details. Try now is also in Filters, Session picks and Why.',
+            style: TextStyle(fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'The buttons and arrow keys do the same. Shift+Enter means Try now. Undo is available for saved choices that have not changed elsewhere. Change directions in Settings, Swipe actions.',
             style: TextStyle(fontSize: 13),
           ),
         ],

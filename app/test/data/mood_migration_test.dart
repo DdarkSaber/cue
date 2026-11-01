@@ -3,9 +3,44 @@ import 'dart:io';
 import 'package:cue/data/db/database.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:cue/data/profile_repository.dart';
+import 'package:cue/data/recommendation_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'version 3 upgrade preserves profiles and adds device-only measures',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('cue_v3_upgrade_');
+      final file = File('${dir.path}${Platform.pathSeparator}cue.sqlite');
+      var db = CueDatabase(NativeDatabase(file));
+      final profile = await ProfileRepository(db).ensureActive();
+      await db.customStatement('DROP TABLE recommendation_states');
+      await db.customStatement('PRAGMA user_version = 3');
+      await db.close();
+      db = CueDatabase(NativeDatabase(file));
+      try {
+        expect((await ProfileRepository(db).ensureActive()).id, profile.id);
+        expect(await RecommendationRepository(db).read(profile.id), isEmpty);
+        await RecommendationRepository(db)
+            .decision(profile.id, picked: true, eventId: 'synthetic-upgrade');
+        expect(
+          (await RecommendationRepository(db).read(profile.id))['picks'],
+          1,
+        );
+        await db.close();
+        db = CueDatabase(NativeDatabase(file));
+        expect(
+          (await RecommendationRepository(db).read(profile.id))['picks'],
+          1,
+        );
+      } finally {
+        await db.close();
+        await file.delete();
+        await dir.delete();
+      }
+    },
+  );
   test('a version 1 database gains the mood tables and candidate column on upgrade', () async {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
     final dir = await Directory.systemTemp.createTemp('cue_mig');

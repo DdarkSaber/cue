@@ -8,6 +8,7 @@ import '../../domain/models/quick_mood.dart';
 import '../../domain/models/title.dart';
 import '../../domain/mood_rules.dart';
 import '../deck/deck_controller.dart';
+import '../deck/recommendation_controls.dart';
 
 /// Opens the filter sheet. Draft changes apply only on "Show N picks";
 /// closing or Back cancels.
@@ -38,8 +39,10 @@ class FilterBody extends StatefulWidget {
 class _FilterBodyState extends State<FilterBody> {
   late final _text = TextEditingController(text: widget.draft.value.tellMe);
   List<String> _understood = const [];
+  List<String> _unknown = const [];
   bool _tellMeMissed = false;
   bool _more = false;
+  bool _sessionTools = false;
 
   DeckFilters get _f => widget.draft.value;
   set _f(DeckFilters v) => widget.draft.value = v;
@@ -50,6 +53,15 @@ class _FilterBodyState extends State<FilterBody> {
   void initState() {
     super.initState();
     widget.draft.addListener(_changed);
+    final parsed = parseMood(_text.text);
+    _understood = parsed.understood;
+    _unknown = parsed.unrecognised;
+    _tellMeMissed = _text.text.isNotEmpty && parsed.isEmpty;
+    _more =
+        _f.shortOnly ||
+        _f.status != StatusFilter.any ||
+        _f.excludedKinds.isNotEmpty ||
+        _f.excludedGenres.isNotEmpty;
   }
 
   @override
@@ -61,18 +73,22 @@ class _FilterBodyState extends State<FilterBody> {
 
   void _tellMe() {
     final text = _text.text.trim();
-    if (text.isEmpty) return;
     final parsed = parseMood(text);
     setState(() {
       _understood = parsed.understood;
-      _tellMeMissed = parsed.isEmpty;
+      _unknown = parsed.unrecognised;
+      _tellMeMissed = text.isNotEmpty && parsed.isEmpty;
     });
     // Unrecognised words still count: the live mood learner (and, when on,
     // Smarter mood text) reads the whole sentence.
-    if (parsed.isEmpty) _f = _f.copyWith(tellMe: text);
+    _f = parsed.applyTo(_f, text);
     if (!parsed.isEmpty) {
-      _f = parsed.applyTo(_f, text);
-      if (parsed.shortOnly || parsed.era != EraFilter.any || parsed.rewatches) {
+      if (parsed.shortOnly ||
+          parsed.status != StatusFilter.any ||
+          parsed.excludedKinds.isNotEmpty ||
+          parsed.excludedGenres.isNotEmpty ||
+          parsed.era != EraFilter.any ||
+          parsed.rewatches) {
         _more = true;
       }
     }
@@ -84,6 +100,19 @@ class _FilterBodyState extends State<FilterBody> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        TextButton(
+          style: TextButton.styleFrom(
+            minimumSize: const Size(48, 48),
+            textStyle: const TextStyle(fontSize: 15),
+          ),
+          onPressed: () => setState(() => _sessionTools = !_sessionTools),
+          child: Text(
+            _sessionTools
+                ? 'Hide session picks and Why'
+                : 'Session picks and Why',
+          ),
+        ),
+        if (_sessionTools) const RecommendationControls(embedded: true),
         const CueSectionLabel('Tell me'),
         Row(
           spacing: CueSpace.sm,
@@ -136,10 +165,18 @@ class _FilterBodyState extends State<FilterBody> {
               style: TextStyle(fontSize: 13, color: CueColors.textMuted),
             ),
           ),
+        if (_unknown.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              'Not mapped to filters: ${_unknown.join(' ')}.',
+              style: const TextStyle(fontSize: 13, color: CueColors.textMuted),
+            ),
+          ),
         const Padding(
           padding: EdgeInsets.only(top: 8),
           child: Text(
-            'Format and genre are strict. Pace and mood are preferences, not guarantees.',
+            'Format, genre, short duration and completion use known catalog metadata. Pace and mood are preferences, not guarantees.',
             style: TextStyle(fontSize: 13, color: CueColors.textMuted),
           ),
         ),
@@ -180,6 +217,30 @@ class _FilterBodyState extends State<FilterBody> {
           ],
         ),
         const CueSectionLabel('Mood'),
+        if (f.excludedKinds.isNotEmpty || f.excludedGenres.isNotEmpty) ...[
+          const CueSectionLabel('Excluded by Tell me'),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final kind in f.excludedKinds)
+                CueChoiceChip(
+                  label: 'No ${kind.label}',
+                  selected: true,
+                  onTap: () => _f = f.copyWith(
+                    excludedKinds: {...f.excludedKinds}..remove(kind),
+                  ),
+                ),
+              for (final genre in f.excludedGenres)
+                CueChoiceChip(
+                  label: 'No ${moodGenres[genre] ?? genre}',
+                  selected: true,
+                  onTap: () => _f = f.copyWith(
+                    excludedGenres: {...f.excludedGenres}..remove(genre),
+                  ),
+                ),
+            ],
+          ),
+        ],
         Wrap(
           spacing: 8,
           runSpacing: 4,
@@ -209,7 +270,7 @@ class _FilterBodyState extends State<FilterBody> {
         if (_more) ...[
           _Toggle(
             label: 'Short season',
-            hint: '13 episodes or fewer, or a film',
+            hint: 'Known duration: up to 13 episodes / 60 chapters, or a film',
             value: f.shortOnly,
             onChanged: (v) => _f = f.copyWith(shortOnly: v),
           ),

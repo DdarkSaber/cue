@@ -42,6 +42,23 @@ void main() {
     );
   });
 
+  testWidgets('large-text tutorial explains only four swipes and Try now', (
+    tester,
+  ) async {
+    await pumpCue(tester, tutorial: true, size: phoneSmall, textScale: 2);
+    expect(
+      find.textContaining('Double-tap a card for Try now'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Shift+Enter means Try now'), findsOneWidget);
+    await tester.ensureVisible(find.text('Got it'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Got it'));
+    await tester.pumpAndSettle();
+    expect(find.text('How to swipe'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('long-press Not now hides for the chosen length', (tester) async {
     await pumpCue(tester);
     await tester.longPress(find.text('Not now'));

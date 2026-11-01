@@ -1,5 +1,7 @@
 import 'package:cue/app/providers.dart';
 import 'package:cue/domain/models/decision.dart';
+import 'package:cue/features/deck/deck_controller.dart';
+import 'package:cue/features/deck/deck_screen.dart';
 import 'package:cue/features/deck/swipe_deck.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -16,13 +18,46 @@ String topTitle(WidgetTester t) {
 }
 
 Future<void> settle(WidgetTester t) async {
-  for (var i = 0; i < 6; i++) {
+  for (var i = 0; i < 300; i++) {
     await t.pump(const Duration(milliseconds: 100));
+    await t.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    final screen = find.byType(DeckScreen);
+    if (i >= 5 && screen.evaluate().isNotEmpty) {
+      final container = ProviderScope.containerOf(t.element(screen));
+      if (!container.read(deckControllerProvider).loading) break;
+    }
   }
   await t.pumpAndSettle();
+  final screen = find.byType(DeckScreen);
+  if (screen.evaluate().isNotEmpty) {
+    expect(
+      ProviderScope.containerOf(t.element(screen))
+          .read(deckControllerProvider)
+          .loading,
+      isFalse,
+      reason: 'WASM candidate loading must finish before deck assertions.',
+    );
+  }
 }
 
-void main() {
+Future<void> waitForDecisions(WidgetTester t, int count) async {
+  final container = ProviderScope.containerOf(
+    t.element(find.byType(DeckScreen)),
+  );
+  for (var i = 0; i < 300; i++) {
+    if (container.read(deckControllerProvider).sessionDecisions >= count) break;
+    await t.pump(const Duration(milliseconds: 50));
+    await t.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+  }
+  expect(container.read(deckControllerProvider).sessionDecisions, count);
+  await settle(t);
+}
+
+void main({bool releasePersistenceOnly = false}) {
   testWidgets('first open deals a real card from the catalog', (t) async {
     await pumpCue(t);
     await settle(t);
@@ -47,32 +82,36 @@ void main() {
     expect(topTitle(t), first);
   });
 
-  testWidgets('arrow keys follow the swipe map', (t) async {
-    final db = memoryDb();
-    addTearDown(db.close);
-    await pumpCue(t, size: desktop, db: db);
-    await settle(t);
-    await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-    await settle(t);
-    final events = await db.select(db.decisionEvents).get();
-    expect(events.single.action, Decision.willTry.code);
-  });
+  if (!releasePersistenceOnly) {
+    testWidgets('arrow keys follow the swipe map', (t) async {
+      final db = memoryDb();
+      addTearDown(db.close);
+      await pumpCue(t, size: desktop, db: db);
+      await settle(t);
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await settle(t);
+      final events = await db.select(db.decisionEvents).get();
+      expect(events.single.action, Decision.willTry.code);
+    });
 
-  testWidgets('a remapped swipe makes the remapped decision', (t) async {
-    final db = memoryDb();
-    addTearDown(db.close);
-    await pumpCue(t, size: desktop, db: db);
-    await settle(t);
-    final scope = ProviderScope.containerOf(t.element(find.byType(SwipeDeck)));
-    await scope
-        .read(settingsProvider.notifier)
-        .change((s) => s.copyWith(swipeMap: s.swipeMap.mirrored));
-    await settle(t);
-    await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-    await settle(t);
-    final events = await db.select(db.decisionEvents).get();
-    expect(events.single.action, Decision.notInterested.code);
-  });
+    testWidgets('a remapped swipe makes the remapped decision', (t) async {
+      final db = memoryDb();
+      addTearDown(db.close);
+      await pumpCue(t, size: desktop, db: db);
+      await settle(t);
+      final scope = ProviderScope.containerOf(
+        t.element(find.byType(SwipeDeck)),
+      );
+      await scope
+          .read(settingsProvider.notifier)
+          .change((s) => s.copyWith(swipeMap: s.swipeMap.mirrored));
+      await settle(t);
+      await t.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await settle(t);
+      final events = await db.select(db.decisionEvents).get();
+      expect(events.single.action, Decision.notInterested.code);
+    });
+  }
 
   testWidgets(
     'a drag past the commit distance decides; a short one springs back',
@@ -90,7 +129,7 @@ void main() {
       expect(await db.select(db.decisionEvents).get(), isEmpty);
 
       await t.drag(card, const Offset(0, -200));
-      await settle(t);
+      await waitForDecisions(t, 1);
       expect(topTitle(t), isNot(first));
       final events = await db.select(db.decisionEvents).get();
       // Up is Watched, stored as "read" for reading titles.
@@ -103,6 +142,7 @@ void main() {
     addTearDown(db.close);
     await pumpCue(t, db: db);
     await settle(t);
+    var count = 0;
     for (final label in [
       'Will try',
       'Not now',
@@ -110,7 +150,7 @@ void main() {
       'Not interested',
     ]) {
       await t.tap(find.textContaining(RegExp('^($label)\$')).first);
-      await settle(t);
+      await waitForDecisions(t, ++count);
     }
     // Rebuild the whole app on the same database.
     await t.pumpWidget(const SizedBox());
@@ -150,7 +190,7 @@ void main() {
     await pumpCue(t, db: db, disableAnimations: true);
     await settle(t);
     await t.tap(find.text('Will try').first);
-    await settle(t);
+    await waitForDecisions(t, 1);
     expect((await db.select(db.decisionEvents).get()).length, 1);
   });
 }

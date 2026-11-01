@@ -60,20 +60,39 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
   }
 
   Future<void> _dismiss() async {
-    await ref.read(importServiceProvider).dismiss(widget.observation);
-    ref.read(libraryVersionProvider.notifier).bump();
-    if (mounted) Navigator.of(context).pop(true);
+    await _save(
+      () => ref.read(importServiceProvider).dismiss(widget.observation),
+    );
   }
 
   Future<void> _pick(CatalogItemDto dto) async {
-    final ids = await ref.read(catalogRepositoryProvider).upsert([dto]);
-    final profileId = await ref.read(profileIdProvider.future);
-    await ref
-        .read(importServiceProvider)
-        .resolve(profileId, widget.observation, ids.first);
-    await ref.read(libraryRepositoryProvider).recomputeWeights(profileId);
-    ref.read(libraryVersionProvider.notifier).bump();
-    if (mounted) Navigator.of(context).pop(true);
+    await _save(() async {
+      final service = ref.read(importServiceProvider);
+      final profileId = await service.observationProfile(widget.observation);
+      final ids = await ref.read(catalogRepositoryProvider).upsert([dto]);
+      await service.resolve(profileId, widget.observation, ids.first);
+      await ref.read(libraryRepositoryProvider).recomputeWeights(profileId);
+    });
+  }
+
+  Future<void> _save(Future<void> Function() action) async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      await action();
+      ref.read(libraryVersionProvider.notifier).bump();
+      if (mounted) Navigator.of(context).pop(true);
+    } on Object catch (error) {
+      debugPrint('Import review save failed (${error.runtimeType}).');
+      if (mounted) {
+        setState(() => _message = 'Could not save your review. Try again.');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
@@ -108,7 +127,7 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
         Align(
           alignment: Alignment.centerLeft,
           child: TextButton(
-            onPressed: _dismiss,
+            onPressed: _busy ? null : _dismiss,
             style: TextButton.styleFrom(
               minimumSize: const Size(CueSize.minTarget, CueSize.minTarget),
               foregroundColor: CueColors.textMuted,
@@ -150,7 +169,7 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
             ),
             trailing: CueSecondaryButton(
               label: 'This one',
-              onPressed: () => _pick(r),
+              onPressed: _busy ? null : () => _pick(r),
             ),
           ),
       ],

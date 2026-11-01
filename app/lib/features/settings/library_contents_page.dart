@@ -1,9 +1,10 @@
 part of 'settings_screen.dart';
 
 class _LibraryContentsData {
-  const _LibraryContentsData(this.profile, this.titles);
+  const _LibraryContentsData(this.profile, this.titles, this.review);
   final Profile profile;
   final List<LibraryContentEntry> titles;
+  final List<SourceObservation> review;
 }
 
 final _libraryContentsProvider = FutureProvider.autoDispose
@@ -19,6 +20,7 @@ final _libraryContentsProvider = FutureProvider.autoDispose
       return _LibraryContentsData(
         profile,
         await ref.read(libraryRepositoryProvider).contents(id),
+        await ref.read(importServiceProvider).reviewQueue(id),
       );
     });
 
@@ -185,6 +187,20 @@ class _LibraryContentsPageState extends ConsumerState<LibraryContentsPage> {
                 style: _body,
               ),
               const SizedBox(height: CueSpace.md),
+              if (data.review.isNotEmpty) ...[
+                CueSectionLabel('Needs review (${data.review.length})'),
+                const Text(
+                  'Unmatched imports stay here until you confirm or dismiss them. They may still appear in suggestions. Review changes this library only.',
+                  style: _body,
+                ),
+                for (final observation in data.review)
+                  CueListRow(
+                    title: observation.rawTitle,
+                    subtitle: 'Search and confirm the matching title',
+                    onTap: () => showReviewSheet(context, observation),
+                  ),
+                const SizedBox(height: CueSpace.md),
+              ],
               Wrap(
                 spacing: CueSpace.sm,
                 runSpacing: CueSpace.sm,

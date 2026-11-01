@@ -6,8 +6,10 @@ import 'package:cue/data/backup_service.dart';
 import 'package:cue/data/catalog_gateway.dart';
 import 'package:cue/data/catalog_repository.dart';
 import 'package:cue/data/db/database.dart';
+import 'package:cue/data/franchise_exclusion_repository.dart';
 import 'package:cue/data/library_repository.dart';
 import 'package:cue/data/profile_repository.dart';
+import 'package:cue/data/try_now_repository.dart';
 import 'package:cue/domain/decisions.dart';
 import 'package:cue/domain/models/decision.dart';
 import 'package:cue/domain/models/library.dart';
@@ -363,6 +365,156 @@ void main() {
       await phone.sync.syncNow(phone.id);
       expect((await phone.library.signals(phone.id)).shortlisted, isEmpty);
     });
+
+    test(
+      'Try now priority and its clearing tombstone travel between devices',
+      () async {
+        final title = (await phone.catalog.titleById('anilist:2'))!;
+        await phone.decisions.tryNow(phone.id, title);
+        final code = await phone.sync.enable(phone.id);
+        await laptop.sync.join(laptop.id, code);
+
+        expect(
+          await TryNowRepository(laptop.db).isActive(laptop.id, title.id),
+          isTrue,
+        );
+        expect((await laptop.library.signals(laptop.id)).shortlisted, {
+          title.id,
+        });
+
+        await Future<void>.delayed(const Duration(milliseconds: 1100));
+        await phone.decisions.decide(
+          phone.id,
+          title,
+          Decision.notNow,
+          context: DeckContext.shortlist,
+        );
+        await phone.sync.syncNow(phone.id);
+        await laptop.sync.syncNow(laptop.id);
+
+        expect(
+          await TryNowRepository(laptop.db).isActive(laptop.id, title.id),
+          isFalse,
+        );
+        expect((await laptop.library.signals(laptop.id)).shortlisted, isEmpty);
+        final metadata = await laptop.profiles.rawSetting(
+          laptop.id,
+          TryNowRepository.metadataKey,
+        );
+        expect(metadata, contains('"active":false'));
+      },
+    );
+
+    for (final cleanup in ['entry', 'shortlist', 'reset']) {
+      test(
+        '$cleanup cleanup cannot revive Tonight picks through stale sync',
+        () async {
+          final title = (await phone.catalog.titleById('anilist:1'))!;
+          await phone.decisions.tryNow(phone.id, title);
+          final other = (await phone.profiles.create()).id;
+          await phone.decisions.tryNow(other, title);
+          final code = await phone.sync.enable(phone.id);
+          await laptop.sync.join(laptop.id, code);
+          expect(
+            await TryNowRepository(laptop.db).isActive(laptop.id, title.id),
+            isTrue,
+          );
+          await Future<void>.delayed(const Duration(milliseconds: 1100));
+          switch (cleanup) {
+            case 'entry':
+              await phone.library.removeEntry(phone.id, title.id);
+            case 'shortlist':
+              await phone.library.removeFromShortlist(phone.id, title.id);
+            case 'reset':
+              await phone.library.resetSwipes(phone.id);
+          }
+          await phone.sync.syncNow(phone.id);
+          await laptop.sync.syncNow(laptop.id);
+          await phone.sync.syncNow(phone.id);
+          expect(
+            await TryNowRepository(phone.db).isActive(phone.id, title.id),
+            isFalse,
+          );
+          expect(
+            await TryNowRepository(laptop.db).isActive(laptop.id, title.id),
+            isFalse,
+          );
+          expect(
+            await TryNowRepository(phone.db).isActive(other, title.id),
+            isTrue,
+          );
+          await laptop.decisions.decide(laptop.id, title, Decision.willTry);
+          await laptop.sync.syncNow(laptop.id);
+          await phone.sync.syncNow(phone.id);
+          expect(
+            await TryNowRepository(phone.db).isActive(phone.id, title.id),
+            isFalse,
+          );
+          expect(
+            await TryNowRepository(laptop.db).isActive(laptop.id, title.id),
+            isFalse,
+          );
+        },
+      );
+    }
+
+    test(
+      'verified franchise records sync with tombstones winning timestamp ties',
+      () async {
+        const scope = 'tmdb:c123';
+        final at = DateTime.utc(2026, 11, 1, 10);
+        const key = '${FranchiseExclusionRepository.metadataPrefix}$scope';
+        await phone.profiles.setRawSetting(
+          phone.id,
+          key,
+          jsonEncode(
+            FranchiseExclusionRecord(
+              scope: scope,
+              excluded: true,
+              updatedAt: at,
+            ).toJson(),
+          ),
+        );
+        await phone.profiles.setRawSetting(
+          phone.id,
+          '${FranchiseExclusionRepository.metadataPrefix}anilist:1',
+          jsonEncode({
+            'scope': 'anilist:1',
+            'excluded': true,
+            'updatedAt': at.toIso8601String(),
+          }),
+        );
+        final code = await phone.sync.enable(phone.id);
+        await laptop.sync.join(laptop.id, code);
+
+        final synced = await laptop.profiles.rawSetting(laptop.id, key);
+        expect(synced, contains('"excluded":true'));
+        expect(
+          await laptop.profiles.rawSetting(
+            laptop.id,
+            '${FranchiseExclusionRepository.metadataPrefix}anilist:1',
+          ),
+          isNull,
+        );
+
+        await laptop.profiles.setRawSetting(
+          laptop.id,
+          key,
+          jsonEncode(
+            FranchiseExclusionRecord(
+              scope: scope,
+              excluded: false,
+              updatedAt: at,
+            ).toJson(),
+          ),
+        );
+        await laptop.sync.syncNow(laptop.id);
+        await phone.sync.syncNow(phone.id);
+
+        final restored = await phone.profiles.rawSetting(phone.id, key);
+        expect(restored, contains('"excluded":false'));
+      },
+    );
 
     test('edits in the same second still end up the same', () async {
       final code = await phone.sync.enable(phone.id);

@@ -20,6 +20,8 @@ import '../../data/db/database.dart';
 import '../../data/library_repository.dart';
 import '../deck/decision_style.dart';
 import '../imports/source_names.dart';
+import '../library/review_sheet.dart';
+import 'franchise_exclusions_section.dart';
 
 part 'about_page.dart';
 part 'appearance_page.dart';
@@ -29,6 +31,7 @@ part 'library_settings_page.dart';
 part 'preferences_page.dart';
 part 'privacy_page.dart';
 part 'swipe_settings_page.dart';
+part 'diagnostics_section.dart';
 
 /// Settings: a real page of sections, each with its own detail route.
 class SettingsScreen extends ConsumerWidget {

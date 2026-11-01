@@ -4,8 +4,11 @@ import 'package:drift/drift.dart';
 
 import '../data/backup_service.dart';
 import '../data/db/database.dart';
+import '../data/franchise_exclusion_repository.dart';
 import '../data/library_repository.dart';
 import '../data/profile_repository.dart';
+import '../data/try_now_repository.dart';
+import '../domain/franchise_identity.dart';
 import '../imports/detect.dart';
 import '../imports/import_service.dart';
 import '../imports/records.dart';
@@ -28,9 +31,33 @@ class SyncMerge {
   final ImportService imports;
   final LibraryRepository library;
   final BackupService backup;
+  late final _tryNow = TryNowRepository(db);
 
   Future<int> merge(String profileId, String json) async {
     final doc = jsonDecode(json) as Map<String, dynamic>;
+    final settingsRaw = doc['settings'];
+    if (settingsRaw is Map) {
+      final settings = Map<String, dynamic>.from(settingsRaw);
+      for (final entry in settings.entries.toList()) {
+        final key = entry.key;
+        final value = entry.value;
+        if (key == TryNowRepository.metadataKey) {
+          final sanitized = _sanitizeTryNowMetadata(value);
+          if (sanitized == null) {
+            settings.remove(key);
+          } else {
+            settings[key] = sanitized;
+          }
+          continue;
+        }
+        if (!key.startsWith(FranchiseExclusionRepository.metadataPrefix)) {
+          continue;
+        }
+        if (!_validFranchiseSetting(key, value)) settings.remove(key);
+      }
+      doc['settings'] = settings;
+      json = jsonEncode(doc);
+    }
     final sync = doc['sync'];
     final rawRemovals = sync is Map ? sync['removed_titles'] : null;
     if (rawRemovals != null) {
@@ -186,6 +213,20 @@ class SyncMerge {
       'not_now': sorted(
         de.map((d) => '${d.titleId}@${d.eligibleAfter.toIso8601String()}'),
       ),
+      'try_now':
+          (await _tryNow
+                  .all(profileId)
+                  .then(
+                    (records) =>
+                        records.values
+                            .map(
+                              (r) =>
+                                  '${r.titleId}:${r.active}:${r.updatedAt.toIso8601String()}',
+                            )
+                            .toList()
+                          ..sort(),
+                  ))
+              .join('|'),
       'settings': settings.join('|'),
     };
   }
@@ -233,7 +274,7 @@ class SyncMerge {
           e.key: e.value.toUtc().toIso8601String(),
       },
       'at': {
-        for (final s in [..._lists, 'settings'])
+        for (final s in [..._lists, 'try_now', 'settings'])
           s: (await _sectionAt(profileId, s)).toIso8601String(),
         if (mood != null) 'mood': mood.updatedAt.toUtc().toIso8601String(),
       },
@@ -241,6 +282,10 @@ class SyncMerge {
         for (final k in librarySettings)
           k: await profiles.rawSetting(profileId, k),
       },
+      'try_now': TryNowRepository.encodeSync(await _tryNow.all(profileId)),
+      'franchise_exclusions': [
+        for (final e in await _franchiseExclusionRecords(profileId)) e.toJson(),
+      ],
       if (mood != null)
         'mood': {'modes': mood.modesJson, 'words': mood.wordsJson},
     };
@@ -336,6 +381,25 @@ class SyncMerge {
       await _setSectionAt(profileId, section, theirs);
     }
 
+    final remoteTryNowAt = remoteAt('try_now');
+    final remoteTryNow = TryNowRepository.decodeSync(sync['try_now']);
+    if (remoteTryNowAt != null) {
+      if (_firstRound ||
+          remoteTryNowAt.isAfter(await _sectionAt(profileId, 'try_now'))) {
+        await db.transaction(
+          () => _tryNow.mergeInTransaction(profileId, remoteTryNow),
+        );
+        await _setSectionAt(
+          profileId,
+          'try_now',
+          _firstRound ? DateTime.now().toUtc() : remoteTryNowAt,
+        );
+      } else {
+        await _restoreList(profileId, 'try_now');
+      }
+    }
+    await _mergeFranchiseExclusions(profileId, sync['franchise_exclusions']);
+
     final settingsAt = remoteAt('settings');
     final remoteSettings = sync['library_settings'];
     if (settingsAt != null &&
@@ -382,6 +446,106 @@ class SyncMerge {
     for (final t in await db.select(db.catalogTitles).get()) t.id,
   };
 
+  Future<List<FranchiseExclusionRecord>> _franchiseExclusionRecords(
+    String profileId,
+  ) async {
+    final rows = await (db.select(
+      db.profileSettings,
+    )..where((s) => s.profileId.equals(profileId))).get();
+    return [
+      for (final row in rows)
+        if (row.key.startsWith(FranchiseExclusionRepository.metadataPrefix))
+          if (_decodeFranchiseRecord(row.value) case final record?)
+            if (row.key ==
+                '${FranchiseExclusionRepository.metadataPrefix}${record.scope}')
+              record,
+    ];
+  }
+
+  Future<void> _mergeFranchiseExclusions(
+    String profileId,
+    Object? rawRecords,
+  ) async {
+    if (rawRecords is! List) return;
+    final incoming = <String, FranchiseExclusionRecord>{};
+    for (final raw in rawRecords) {
+      if (raw is! Map<String, dynamic>) continue;
+      final record = FranchiseExclusionRecord.fromJson(raw);
+      if (record == null ||
+          !isReliableFranchiseScope(record.scope) ||
+          incoming.containsKey(record.scope)) {
+        continue;
+      }
+      incoming[record.scope] = record;
+    }
+    if (incoming.isEmpty) return;
+
+    await db.transaction(() async {
+      for (final record in incoming.values) {
+        final key =
+            '${FranchiseExclusionRepository.metadataPrefix}${record.scope}';
+        final localRaw =
+            (await (db.select(db.profileSettings)..where(
+                      (s) => s.profileId.equals(profileId) & s.key.equals(key),
+                    ))
+                    .getSingleOrNull())
+                ?.value;
+        final local = _decodeFranchiseRecord(localRaw);
+        final remoteWins =
+            local == null ||
+            record.updatedAt.isAfter(local.updatedAt) ||
+            (record.updatedAt.isAtSameMomentAs(local.updatedAt) &&
+                !record.excluded &&
+                local.excluded);
+        if (!remoteWins) continue;
+        await db
+            .into(db.profileSettings)
+            .insertOnConflictUpdate(
+              ProfileSettingsCompanion.insert(
+                profileId: profileId,
+                key: key,
+                value: jsonEncode(record.toJson()),
+              ),
+            );
+      }
+    });
+  }
+
+  FranchiseExclusionRecord? _decodeFranchiseRecord(String? raw) {
+    if (raw == null) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return null;
+      return FranchiseExclusionRecord.fromJson(decoded);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  bool _validFranchiseSetting(String key, Object? value) {
+    if (value is! String ||
+        !key.startsWith(FranchiseExclusionRepository.metadataPrefix)) {
+      return false;
+    }
+    final record = _decodeFranchiseRecord(value);
+    return record != null &&
+        key == '${FranchiseExclusionRepository.metadataPrefix}${record.scope}';
+  }
+
+  String? _sanitizeTryNowMetadata(Object? value) {
+    if (value is! String) return null;
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is! Map) return null;
+      final valid = TryNowRepository.decodeSync(decoded);
+      return valid.isEmpty && decoded.isNotEmpty
+          ? null
+          : jsonEncode(TryNowRepository.encodeSync(valid));
+    } on FormatException {
+      return null;
+    }
+  }
+
   // The list rows as they were before the import merge unioned them.
   final _listSnapshot = <String, List<Object>>{};
 
@@ -396,6 +560,7 @@ class SyncMerge {
       ..['not_now'] = await (db.select(
         db.deferrals,
       )..where((d) => d.profileId.equals(profileId))).get();
+    _listSnapshot['try_now'] = (await _tryNow.all(profileId)).values.toList();
   }
 
   /// This device's list won: undo what the import merge added to it.
@@ -425,6 +590,11 @@ class SyncMerge {
           for (final r in rows.cast<Deferral>()) {
             await db.into(db.deferrals).insertOnConflictUpdate(r);
           }
+        case 'try_now':
+          await _tryNow.replaceInTransaction(
+            profileId,
+            rows.cast<TryNowIntent>(),
+          );
       }
     });
   }

@@ -23,7 +23,8 @@ import '../imports/source_names.dart';
 import 'entry_sheet.dart';
 import 'add_title_sheet.dart';
 import 'review_sheet.dart';
-import '../../domain/ranker.dart';
+import 'rating_cards.dart';
+import '../../data/library_rating_service.dart';
 
 /// Everything the Library route shows, loaded in one go.
 class LibraryData {
@@ -79,6 +80,31 @@ class LibraryScreen extends ConsumerStatefulWidget {
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   String _filter = '';
 
+  Future<void> _openRatings({bool followUp = false}) async {
+    final id = await ref.read(profileIdProvider.future);
+    if (!mounted) return;
+    final service = LibraryRatingService(
+      ref.read(databaseProvider),
+      ref.read(libraryRepositoryProvider),
+      ref.read(recommendationRepositoryProvider),
+      clock: ref.read(clockProvider),
+    );
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => LibraryRatingCards(
+        service: service,
+        profileId: id,
+        followUp: followUp,
+        onChanged: () {
+          if (!mounted) return;
+          ref.read(libraryVersionProvider.notifier).bump();
+          ref.read(decisionVersionProvider.notifier).bump();
+        },
+      ),
+    );
+  }
+
   void _dealRevisit() {
     ref.read(deckFiltersProvider.notifier).setMood(QuickMood.revisit);
     context.go(CueRoutes.forYou);
@@ -95,6 +121,21 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         error: (_, _) => const [Text('Your library could not be read.')],
         data: (d) => [
           const AddTitleButton(),
+          const SizedBox(height: CueSpace.sm),
+          Wrap(
+            spacing: CueSpace.md,
+            runSpacing: CueSpace.sm,
+            children: [
+              CueSecondaryButton(
+                label: 'Rate your library',
+                onPressed: () => _openRatings(),
+              ),
+              CueSecondaryButton(
+                label: 'Review shortlist picks',
+                onPressed: () => _openRatings(followUp: true),
+              ),
+            ],
+          ),
           const SizedBox(height: CueSpace.md),
           ...(d.isEmpty ? _empty(context) : _full(context, d)),
         ],
@@ -194,6 +235,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final planned = d.entries
         .where((e) => e.$1.state == LibraryState.planned && match(e.$2))
         .toList();
+    final noStatus = d.entries
+        .where((e) => e.$1.state == LibraryState.none && match(e.$2))
+        .toList();
     final imported = d.batches.where((b) => b.state == 'completed').toList();
 
     return [
@@ -213,7 +257,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       _TasteMeter(rated: d.entries.where((e) => e.$1.rating != null).length),
       const SizedBox(height: 4),
       const Text(
-        'To remove a saved title, open Will try and tap Remove.',
+        'Sources combine in this library; separate libraries stay separate. Browse or remove titles in Settings > This library.',
         style: TextStyle(fontSize: 12, color: CueColors.textMuted),
       ),
       const SizedBox(height: CueSpace.sm),
@@ -240,7 +284,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       if (d.review.isNotEmpty)
         _Section(
           label: 'Needs review (${d.review.length})',
-          note: 'Imported entries Cue could not match for sure. They do not affect recommendations.',
+          note: 'Saved on this device until you review or dismiss them. These titles are not yet recognised as history and may still appear in suggestions. Tap one to search and confirm its match.',
           children: [
             for (final o in d.review.where(
               (o) =>
@@ -292,6 +336,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         _Section(
           label: 'Planned',
           children: [for (final e in planned) _entryRow(context, e)],
+        ),
+      if (noStatus.isNotEmpty)
+        _Section(
+          label: 'No status',
+          note: 'A rating does not set a watching or reading status. Your saved ratings remain here.',
+          children: [for (final e in noStatus) _entryRow(context, e)],
         ),
       if (d.hidden.isNotEmpty)
         _Section(
@@ -491,35 +541,22 @@ int? newChapters(LibraryEntry e, Title t) {
   return n > 0 ? n : null;
 }
 
-/// How much Cue knows of your taste: rated titles against the point where
-/// the ranker stops treating you as new.
+/// Distinguishes explicit preferences from weak imported-history evidence.
 class _TasteMeter extends StatelessWidget {
   const _TasteMeter({required this.rated});
   final int rated;
 
   @override
   Widget build(BuildContext context) {
-    const target = Ranker.coldStartBelow;
-    final ready = rated >= target;
     return Semantics(
-      label: ready
-          ? 'Taste: $rated ratings. Picks follow your taste.'
-          : 'Taste: $rated of $target ratings.',
+      label: 'Taste: $rated explicit ratings. Preferences grow gradually.',
       excludeSemantics: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            ready
-                ? 'Taste: $rated ratings. Picks follow your taste.'
-                : 'Taste: $rated of $target ratings. Rate a few more for sharper picks.',
+            'Taste: $rated explicit ratings. Unrated imported watching, reading and completed titles are weak signals, not confirmed likes. Preferences grow gradually; ratings give clearer evidence.',
             style: const TextStyle(fontSize: 13, color: CueColors.textMuted),
-          ),
-          const SizedBox(height: 4),
-          LinearProgressIndicator(
-            value: (rated / target).clamp(0, 1).toDouble(),
-            color: CueColors.accent,
-            backgroundColor: CueColors.line,
           ),
         ],
       ),

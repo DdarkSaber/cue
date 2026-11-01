@@ -6,7 +6,7 @@ import 'vec.dart';
 double signalFor(Decision d) => switch (d) {
   Decision.willTry => 1.0,
   Decision.watched => 0.8,
-  Decision.notNow => -0.3,
+  Decision.notNow => 0,
   Decision.notInterested => -1.0,
 };
 
@@ -60,7 +60,10 @@ List<MoodSession> splitSessions(List<MoodEvent> events) {
   final undone = {for (final e in events) ?e.reverses};
   final kept = [
     for (final e in events)
-      if (e.reverses == null && !undone.contains(e.id)) e,
+      if (e.reverses == null &&
+          !undone.contains(e.id) &&
+          e.decision != Decision.notNow)
+        e,
   ]..sort((a, b) => a.at.compareTo(b.at));
   final out = <MoodSession>[];
   for (final e in kept) {

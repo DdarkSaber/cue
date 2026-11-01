@@ -2,11 +2,13 @@ import 'package:cue/data/catalog_gateway.dart';
 import 'package:cue/data/db/database.dart';
 import 'package:cue/domain/models/title.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
-import 'package:drift/native.dart';
+
+import 'test_database_native.dart'
+    if (dart.library.js_interop) 'test_database_web.dart';
 
 CueDatabase memoryDb() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
-  return CueDatabase(NativeDatabase.memory());
+  return openTestDatabase();
 }
 
 /// Synthetic catalog item in the Worker's shape. Never real personal data.

@@ -5,6 +5,9 @@
  */
 export const MAX_SYNC_BYTES = 2 * 1024 * 1024;
 
+/** Encrypted copies untouched this long are abandoned. */
+export const SYNC_MAX_AGE_MS = 180 * 24 * 60 * 60 * 1000;
+
 export interface SyncBlob {
   version: number;
   data: string;
@@ -30,7 +33,7 @@ export async function sha256Hex(s: string): Promise<string> {
 }
 
 /** Constant-time comparison of two hex digests of equal length. */
-function same(a: string, b: string) {
+export function same(a: string, b: string) {
   if (a.length !== b.length) return false;
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);

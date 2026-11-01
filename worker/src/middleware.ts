@@ -6,6 +6,7 @@ import { secureHeaders } from "hono/secure-headers";
 import type { AppEnv } from "./env";
 import { fail } from "./errors";
 import { MAX_SYNC_BYTES } from "./sync/store";
+import { MAX_DIAGNOSTICS_BYTES } from "./diagnostics/schemas";
 
 export const MAX_BODY_BYTES = 8 * 1024;
 
@@ -61,10 +62,25 @@ const syncBodyLimit = bodyLimit({
   maxSize: MAX_SYNC_BYTES,
   onError: (c) => fail(c, 413, "payload_too_large"),
 });
+const boundedDiagnosticsBody = bodyLimit({
+  maxSize: MAX_DIAGNOSTICS_BYTES,
+  onError: (c) => fail(c, 413, "payload_too_large"),
+});
+const diagnosticsBodyLimit: MiddlewareHandler<AppEnv> = (c, next) => {
+  // Count actual bytes even if a client supplies an incorrect Content-Length.
+  if (c.req.raw.body && c.req.header("Content-Length") !== undefined) {
+    const headers = new Headers(c.req.raw.headers);
+    headers.delete("Content-Length");
+    c.req.raw = new Request(c.req.raw, { headers });
+  }
+  return boundedDiagnosticsBody(c, next);
+};
 
-/** 8 KB everywhere, except encrypted sync uploads (2 MB). */
+/** Diagnostics are additionally capped at 6 KB; sync uploads allow 2 MB. */
 export const bodyCap: MiddlewareHandler<AppEnv> = (c, next) =>
-  c.req.path.startsWith("/sync/") ? syncBodyLimit(c, next) : smallBody(c, next);
+  c.req.path.startsWith("/sync/") ? syncBodyLimit(c, next)
+    : c.req.path.startsWith("/diagnostics/") ? diagnosticsBodyLimit(c, next)
+      : smallBody(c, next);
 
 /** Per-IP limit through the Workers rate-limiting binding. Fails closed. */
 export const rateLimit: MiddlewareHandler<AppEnv> = async (c, next) => {

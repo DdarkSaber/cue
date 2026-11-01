@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:cue/app/providers.dart';
+import 'package:cue/diagnostics/technical_diagnostics.dart';
 import 'package:cue/imports/token_store.dart';
 import 'package:cue/app/router.dart';
 import 'package:cue/data/db/database.dart';
@@ -67,6 +68,7 @@ Future<void> pumpCue(
         // No platform keystore in tests; sync stays local.
         codeStoreProvider.overrideWithValue(MemoryCodeStore()),
         tokenStoreProvider.overrideWithValue(MemoryTokenStore()),
+        diagnosticConsentStoreProvider.overrideWithValue(_OffConsentStore()),
         swipeTutorialEnabledProvider.overrideWithValue(tutorial),
         // Seeded so decks (and goldens) are the same every run.
         rankerProvider.overrideWithValue(Ranker(random: Random(7))),
@@ -78,9 +80,18 @@ Future<void> pumpCue(
   await tester.pumpAndSettle();
 }
 
+class _OffConsentStore implements DiagnosticConsentStore {
+  @override
+  Future<String?> read() async => null;
+  @override
+  Future<void> write(String value) async {}
+}
+
 /// A small synthetic catalog: anime and manhwa, two pages each.
 FakeGateway sampleGateway() => FakeGateway(
   pages: {
+    for (final kind in MediaKind.discoverable)
+      if (kind != MediaKind.anime && kind != MediaKind.manhwa) kind: const [[]],
     MediaKind.anime: [
       [
         for (var i = 1; i <= 12; i++)

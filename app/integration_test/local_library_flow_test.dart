@@ -22,6 +22,16 @@ import 'package:integration_test/integration_test.dart';
 import '../test/features/library_browser_test.dart' as browser;
 import '../test/features/library_settings_test.dart' as settings;
 import '../test/features/recommendation_history_test.dart' as recommendations;
+import '../test/features/followup_flow_test.dart' as followup;
+import '../test/features/deck_test.dart' as deck;
+import '../test/features/deck_polish_test.dart' as polish;
+import '../test/features/daily_session_flow_test.dart' as daily;
+import '../test/features/library_rating_flow_test.dart' as ratings;
+import '../test/features/recommendation_controls_test.dart' as controls;
+import '../test/features/try_now_gesture_test.dart' as gestures;
+import '../test/features/try_now_flow_test.dart' as saved;
+import '../test/features/details_actions_test.dart' as details;
+import '../test/features/franchise_exclusions_section_test.dart' as franchises;
 import '../test/helpers.dart';
 import '../test/imports/xlsx_test.dart' show buildXlsx;
 import '../test/support/fakes.dart';
@@ -76,6 +86,19 @@ void main() {
   group('library browsing and removal on device', browser.main);
   group('library names and settings on device', settings.main);
   group('merged history and filters on device', recommendations.main);
+  group(
+    'follow-up review, diversity, AI consent and diagnostics on device',
+    followup.main,
+  );
+  group('swipe and undo on device', deck.main);
+  group('onboarding and input discovery on device', polish.main);
+  group('daily controls and immediate intent on device', daily.main);
+  group('optional library rating and follow-up on device', ratings.main);
+  group('temporary direction privacy on device', controls.main);
+  group('four swipes and double-tap arbitration on device', gestures.main);
+  group('saved picker, factual compare and tonight on device', saved.main);
+  group('disclosed traits and correction on device', details.main);
+  group('reversible verified franchise preference on device', franchises.main);
 
   testWidgets(
     'Excel match survives navigation and database reopening without auto-import',

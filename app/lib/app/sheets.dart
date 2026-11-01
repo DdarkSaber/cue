@@ -182,7 +182,7 @@ class CueChoiceChip extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
               ],
-              Text(label),
+              Flexible(child: Text(label)),
             ],
           ),
         ),
@@ -274,6 +274,56 @@ class CueSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scrollTogether = MediaQuery.textScalerOf(context).scale(16) >= 24;
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(22, 18, 12, 6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: CueRouteHeader(kicker: kicker, title: title),
+              ),
+              CueRoundButton(
+                icon: CueIcons.close,
+                tooltip: 'Close',
+                visualSize: 40,
+                iconSize: 18,
+                onPressed: () => Navigator.of(context).maybePop(),
+              ),
+            ],
+          ),
+        ),
+        if (scrollTogether)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 10, 22, 18),
+            child: body,
+          )
+        else
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(22, 10, 22, 18),
+              child: body,
+            ),
+          ),
+        if (footer != null)
+          DecoratedBox(
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: CueColors.line)),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(22, 12, 22, 14),
+                child: footer,
+              ),
+            ),
+          ),
+      ],
+    );
     return Material(
       color: CueColors.surface,
       shape: RoundedRectangleBorder(
@@ -281,49 +331,7 @@ class CueSheet extends StatelessWidget {
         side: const BorderSide(color: Color(0x1AFFFFFF)),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(22, 18, 12, 6),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: CueRouteHeader(kicker: kicker, title: title),
-                ),
-                CueRoundButton(
-                  icon: CueIcons.close,
-                  tooltip: 'Close',
-                  visualSize: 40,
-                  iconSize: 18,
-                  onPressed: () => Navigator.of(context).maybePop(),
-                ),
-              ],
-            ),
-          ),
-          Flexible(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(22, 10, 22, 18),
-              child: body,
-            ),
-          ),
-          if (footer != null)
-            DecoratedBox(
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: CueColors.line)),
-              ),
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(22, 12, 22, 14),
-                  child: footer,
-                ),
-              ),
-            ),
-        ],
-      ),
+      child: scrollTogether ? SingleChildScrollView(child: content) : content,
     );
   }
 }

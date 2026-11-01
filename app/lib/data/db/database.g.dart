@@ -7971,6 +7971,227 @@ class MoodSessionsCompanion extends UpdateCompanion<MoodSessionRow> {
   }
 }
 
+class $RecommendationStatesTable extends RecommendationStates
+    with TableInfo<$RecommendationStatesTable, RecommendationState> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RecommendationStatesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _profileIdMeta = const VerificationMeta(
+    'profileId',
+  );
+  @override
+  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
+    'profile_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES profiles (id)',
+    ),
+  );
+  static const VerificationMeta _jsonMeta = const VerificationMeta('json');
+  @override
+  late final GeneratedColumn<String> json = GeneratedColumn<String>(
+    'json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [profileId, json];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'recommendation_states';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RecommendationState> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('profile_id')) {
+      context.handle(
+        _profileIdMeta,
+        profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_profileIdMeta);
+    }
+    if (data.containsKey('json')) {
+      context.handle(
+        _jsonMeta,
+        json.isAcceptableOrUnknown(data['json']!, _jsonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_jsonMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {profileId};
+  @override
+  RecommendationState map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RecommendationState(
+      profileId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}profile_id'],
+      )!,
+      json: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}json'],
+      )!,
+    );
+  }
+
+  @override
+  $RecommendationStatesTable createAlias(String alias) {
+    return $RecommendationStatesTable(attachedDatabase, alias);
+  }
+}
+
+class RecommendationState extends DataClass
+    implements Insertable<RecommendationState> {
+  final String profileId;
+  final String json;
+  const RecommendationState({required this.profileId, required this.json});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['profile_id'] = Variable<String>(profileId);
+    map['json'] = Variable<String>(json);
+    return map;
+  }
+
+  RecommendationStatesCompanion toCompanion(bool nullToAbsent) {
+    return RecommendationStatesCompanion(
+      profileId: Value(profileId),
+      json: Value(json),
+    );
+  }
+
+  factory RecommendationState.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RecommendationState(
+      profileId: serializer.fromJson<String>(json['profileId']),
+      json: serializer.fromJson<String>(json['json']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'profileId': serializer.toJson<String>(profileId),
+      'json': serializer.toJson<String>(json),
+    };
+  }
+
+  RecommendationState copyWith({String? profileId, String? json}) =>
+      RecommendationState(
+        profileId: profileId ?? this.profileId,
+        json: json ?? this.json,
+      );
+  RecommendationState copyWithCompanion(RecommendationStatesCompanion data) {
+    return RecommendationState(
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
+      json: data.json.present ? data.json.value : this.json,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RecommendationState(')
+          ..write('profileId: $profileId, ')
+          ..write('json: $json')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(profileId, json);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RecommendationState &&
+          other.profileId == this.profileId &&
+          other.json == this.json);
+}
+
+class RecommendationStatesCompanion
+    extends UpdateCompanion<RecommendationState> {
+  final Value<String> profileId;
+  final Value<String> json;
+  final Value<int> rowid;
+  const RecommendationStatesCompanion({
+    this.profileId = const Value.absent(),
+    this.json = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  RecommendationStatesCompanion.insert({
+    required String profileId,
+    required String json,
+    this.rowid = const Value.absent(),
+  }) : profileId = Value(profileId),
+       json = Value(json);
+  static Insertable<RecommendationState> custom({
+    Expression<String>? profileId,
+    Expression<String>? json,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (profileId != null) 'profile_id': profileId,
+      if (json != null) 'json': json,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  RecommendationStatesCompanion copyWith({
+    Value<String>? profileId,
+    Value<String>? json,
+    Value<int>? rowid,
+  }) {
+    return RecommendationStatesCompanion(
+      profileId: profileId ?? this.profileId,
+      json: json ?? this.json,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (profileId.present) {
+      map['profile_id'] = Variable<String>(profileId.value);
+    }
+    if (json.present) {
+      map['json'] = Variable<String>(json.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RecommendationStatesCompanion(')
+          ..write('profileId: $profileId, ')
+          ..write('json: $json, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$CueDatabase extends GeneratedDatabase {
   _$CueDatabase(QueryExecutor e) : super(e);
   $CueDatabaseManager get managers => $CueDatabaseManager(this);
@@ -7995,6 +8216,8 @@ abstract class _$CueDatabase extends GeneratedDatabase {
   late final $ImportChangesTable importChanges = $ImportChangesTable(this);
   late final $MoodStatesTable moodStates = $MoodStatesTable(this);
   late final $MoodSessionsTable moodSessions = $MoodSessionsTable(this);
+  late final $RecommendationStatesTable recommendationStates =
+      $RecommendationStatesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -8017,6 +8240,7 @@ abstract class _$CueDatabase extends GeneratedDatabase {
     importChanges,
     moodStates,
     moodSessions,
+    recommendationStates,
   ];
 }
 
@@ -9792,6 +10016,31 @@ final class $$ProfilesTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<
+    $RecommendationStatesTable,
+    List<RecommendationState>
+  >
+  _recommendationStatesRefsTable(_$CueDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.recommendationStates,
+        aliasName: 'profiles__id__recommendation_states__profile_id',
+      );
+
+  $$RecommendationStatesTableProcessedTableManager
+  get recommendationStatesRefs {
+    final manager = $$RecommendationStatesTableTableManager(
+      $_db,
+      $_db.recommendationStates,
+    ).filter((f) => f.profileId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _recommendationStatesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$ProfilesTableFilterComposer
@@ -10069,6 +10318,31 @@ class $$ProfilesTableFilterComposer
           }) => $$MoodSessionsTableFilterComposer(
             $db: $db,
             $table: $db.moodSessions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> recommendationStatesRefs(
+    Expression<bool> Function($$RecommendationStatesTableFilterComposer f) f,
+  ) {
+    final $$RecommendationStatesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.recommendationStates,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RecommendationStatesTableFilterComposer(
+            $db: $db,
+            $table: $db.recommendationStates,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -10389,6 +10663,32 @@ class $$ProfilesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> recommendationStatesRefs<T extends Object>(
+    Expression<T> Function($$RecommendationStatesTableAnnotationComposer a) f,
+  ) {
+    final $$RecommendationStatesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.recommendationStates,
+          getReferencedColumn: (t) => t.profileId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$RecommendationStatesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.recommendationStates,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$ProfilesTableTableManager
@@ -10415,6 +10715,7 @@ class $$ProfilesTableTableManager
             bool importBatchesRefs,
             bool moodStatesRefs,
             bool moodSessionsRefs,
+            bool recommendationStatesRefs,
           })
         > {
   $$ProfilesTableTableManager(_$CueDatabase db, $ProfilesTable table)
@@ -10480,6 +10781,7 @@ class $$ProfilesTableTableManager
                 importBatchesRefs = false,
                 moodStatesRefs = false,
                 moodSessionsRefs = false,
+                recommendationStatesRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -10494,6 +10796,7 @@ class $$ProfilesTableTableManager
                     if (importBatchesRefs) db.importBatches,
                     if (moodStatesRefs) db.moodStates,
                     if (moodSessionsRefs) db.moodSessions,
+                    if (recommendationStatesRefs) db.recommendationStates,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -10698,6 +11001,26 @@ class $$ProfilesTableTableManager
                           referencedColumn: 'profile_id',
                           typedResults: items,
                         ),
+                      if (recommendationStatesRefs)
+                        await $_getPrefetchedDataByColumns<
+                          Profile,
+                          $ProfilesTable,
+                          RecommendationState,
+                          $RecommendationStatesTable
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ProfilesTableReferences
+                              ._recommendationStatesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ProfilesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).recommendationStatesRefs,
+                          currentColumn: 'id',
+                          referencedColumn: 'profile_id',
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -10729,6 +11052,7 @@ typedef $$ProfilesTableProcessedTableManager =
         bool importBatchesRefs,
         bool moodStatesRefs,
         bool moodSessionsRefs,
+        bool recommendationStatesRefs,
       })
     >;
 typedef $$ProfileSettingsTableCreateCompanionBuilder =
@@ -15111,6 +15435,283 @@ typedef $$MoodSessionsTableProcessedTableManager =
       MoodSessionRow,
       PrefetchHooks Function({bool profileId})
     >;
+typedef $$RecommendationStatesTableCreateCompanionBuilder =
+    RecommendationStatesCompanion Function({
+      required String profileId,
+      required String json,
+      Value<int> rowid,
+    });
+typedef $$RecommendationStatesTableUpdateCompanionBuilder =
+    RecommendationStatesCompanion Function({
+      Value<String> profileId,
+      Value<String> json,
+      Value<int> rowid,
+    });
+
+final class $$RecommendationStatesTableReferences
+    extends
+        BaseReferences<
+          _$CueDatabase,
+          $RecommendationStatesTable,
+          RecommendationState
+        > {
+  $$RecommendationStatesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ProfilesTable _profileIdTable(_$CueDatabase db) => db.profiles
+      .createAlias('recommendation_states__profile_id__profiles__id');
+
+  $$ProfilesTableProcessedTableManager get profileId {
+    final $_column = $_itemColumn<String>('profile_id')!;
+
+    final manager = $$ProfilesTableTableManager(
+      $_db,
+      $_db.profiles,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_profileIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$RecommendationStatesTableFilterComposer
+    extends Composer<_$CueDatabase, $RecommendationStatesTable> {
+  $$RecommendationStatesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get json => $composableBuilder(
+    column: $table.json,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ProfilesTableFilterComposer get profileId {
+    final $$ProfilesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableFilterComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RecommendationStatesTableOrderingComposer
+    extends Composer<_$CueDatabase, $RecommendationStatesTable> {
+  $$RecommendationStatesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get json => $composableBuilder(
+    column: $table.json,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ProfilesTableOrderingComposer get profileId {
+    final $$ProfilesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableOrderingComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RecommendationStatesTableAnnotationComposer
+    extends Composer<_$CueDatabase, $RecommendationStatesTable> {
+  $$RecommendationStatesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get json =>
+      $composableBuilder(column: $table.json, builder: (column) => column);
+
+  $$ProfilesTableAnnotationComposer get profileId {
+    final $$ProfilesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RecommendationStatesTableTableManager
+    extends
+        RootTableManager<
+          _$CueDatabase,
+          $RecommendationStatesTable,
+          RecommendationState,
+          $$RecommendationStatesTableFilterComposer,
+          $$RecommendationStatesTableOrderingComposer,
+          $$RecommendationStatesTableAnnotationComposer,
+          $$RecommendationStatesTableCreateCompanionBuilder,
+          $$RecommendationStatesTableUpdateCompanionBuilder,
+          (RecommendationState, $$RecommendationStatesTableReferences),
+          RecommendationState,
+          PrefetchHooks Function({bool profileId})
+        > {
+  $$RecommendationStatesTableTableManager(
+    _$CueDatabase db,
+    $RecommendationStatesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RecommendationStatesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RecommendationStatesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$RecommendationStatesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> profileId = const Value.absent(),
+                Value<String> json = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => RecommendationStatesCompanion(
+                profileId: profileId,
+                json: json,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String profileId,
+                required String json,
+                Value<int> rowid = const Value.absent(),
+              }) => RecommendationStatesCompanion.insert(
+                profileId: profileId,
+                json: json,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$RecommendationStatesTable, RecommendationState>(
+                    table,
+                  ),
+                  $$RecommendationStatesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({profileId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (profileId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.profileId,
+                        referencedTable: $$RecommendationStatesTableReferences
+                            ._profileIdTable(db),
+                        referencedColumn: $$RecommendationStatesTableReferences
+                            ._profileIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$RecommendationStatesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$CueDatabase,
+      $RecommendationStatesTable,
+      RecommendationState,
+      $$RecommendationStatesTableFilterComposer,
+      $$RecommendationStatesTableOrderingComposer,
+      $$RecommendationStatesTableAnnotationComposer,
+      $$RecommendationStatesTableCreateCompanionBuilder,
+      $$RecommendationStatesTableUpdateCompanionBuilder,
+      (RecommendationState, $$RecommendationStatesTableReferences),
+      RecommendationState,
+      PrefetchHooks Function({bool profileId})
+    >;
 
 class $CueDatabaseManager {
   final _$CueDatabase _db;
@@ -15149,4 +15750,6 @@ class $CueDatabaseManager {
       $$MoodStatesTableTableManager(_db, _db.moodStates);
   $$MoodSessionsTableTableManager get moodSessions =>
       $$MoodSessionsTableTableManager(_db, _db.moodSessions);
+  $$RecommendationStatesTableTableManager get recommendationStates =>
+      $$RecommendationStatesTableTableManager(_db, _db.recommendationStates);
 }

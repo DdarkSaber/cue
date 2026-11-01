@@ -95,6 +95,15 @@ class ProfileSettings extends Table {
   Set<Column> get primaryKey => {profileId, key};
 }
 
+/// Device-only recommendation measures, exposure caps and dismissed prompts.
+/// Deliberately absent from backups and encrypted sync.
+class RecommendationStates extends Table {
+  TextColumn get profileId => text().references(Profiles, #id)();
+  TextColumn get json => text()();
+  @override
+  Set<Column> get primaryKey => {profileId};
+}
+
 class UserTitles extends Table {
   TextColumn get profileId => text().references(Profiles, #id)();
   TextColumn get titleId => text()();

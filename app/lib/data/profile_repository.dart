@@ -141,6 +141,9 @@ class ProfileRepository {
   /// Deletes a library and everything derived from it, in one transaction.
   /// Shared catalog rows stay.
   Future<void> deleteProfile(String profileId) => db.transaction(() async {
+    await (db.delete(
+      db.recommendationStates,
+    )..where((s) => s.profileId.equals(profileId))).go();
     final batches = await (db.select(
       db.importBatches,
     )..where((b) => b.profileId.equals(profileId))).get();

@@ -76,15 +76,19 @@ class SyncController extends AsyncNotifier<SyncStatus> {
       life.dispose();
     });
     final profileId = await ref.watch(profileIdProvider.future);
+    if (!ref.mounted) return const SyncStatus();
     final service = ref.watch(syncServiceProvider);
     final code = await service.code(profileId);
+    if (!ref.mounted) return const SyncStatus();
+    final lastSynced = await service.lastSynced(profileId);
+    if (!ref.mounted) return const SyncStatus();
     // Library changes from anywhere schedule a quiet sync.
     ref.listen(decisionVersionProvider, (_, _) => schedule());
     ref.listen(libraryVersionProvider, (_, _) => schedule());
     return SyncStatus(
       enabled: code != null,
       code: code == null ? null : displayCode(code),
-      lastSynced: await service.lastSynced(profileId),
+      lastSynced: lastSynced,
     );
   }
 

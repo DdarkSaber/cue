@@ -172,7 +172,11 @@ class ImportService {
   }
 
   Future<ImportSummary> commit(String profileId, StagedImport s) =>
-      db.transaction(() => _commit(profileId, s));
+      db.transaction(() async {
+        final result = await _commit(profileId, s);
+        await LibraryRepository(db, clock: _now).recomputeWeights(profileId);
+        return result;
+      });
 
   Future<ImportSummary> _commit(String profileId, StagedImport s) async {
     if (s.draftId != null) {
@@ -643,6 +647,16 @@ class ImportService {
         const SourceObservationsCompanion(matchClass: Value('dismissed')),
       );
 
+  Future<String> observationProfile(SourceObservation o) async {
+    final batch = await (db.select(
+      db.importBatches,
+    )..where((b) => b.id.equals(o.batchId))).getSingleOrNull();
+    if (batch == null || batch.state != 'completed') {
+      throw StateError('This import is no longer available for review');
+    }
+    return batch.profileId;
+  }
+
   /// Resolves a queued observation to a catalog title the person picked.
   Future<void> resolve(
     String profileId,
@@ -650,6 +664,18 @@ class ImportService {
     String titleId,
   ) async {
     await db.transaction(() async {
+      if (await observationProfile(o) != profileId) {
+        throw StateError('This entry belongs to another library');
+      }
+      final current = await (db.select(
+        db.sourceObservations,
+      )..where((x) => x.id.equals(o.id))).getSingleOrNull();
+      if (current == null ||
+          current.titleId != null ||
+          current.matchClass == 'dismissed' ||
+          current.matchClass == 'adult_hidden') {
+        throw StateError('This entry is no longer waiting for review');
+      }
       await (db.update(
         db.sourceObservations,
       )..where((x) => x.id.equals(o.id))).write(
@@ -676,6 +702,7 @@ class ImportService {
         o.batchId,
         _now(),
       );
+      await LibraryRepository(db, clock: _now).recomputeWeights(profileId);
     });
   }
 }

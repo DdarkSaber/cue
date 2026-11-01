@@ -4,6 +4,8 @@ import '../domain/models/library.dart';
 import '../domain/models/title.dart';
 import '../domain/ranker.dart';
 import 'db/database.dart';
+import 'franchise_exclusion_repository.dart';
+import 'try_now_repository.dart';
 
 /// A decision as Library lists it.
 class DecisionRow {
@@ -49,6 +51,12 @@ class LibraryRepository {
   );
 
   Future<ProfileSignals> signals(String profileId) async {
+    final version =
+        await (db.select(db.tagWeights)..where(
+              (w) => w.profileId.equals(profileId) & w.tag.equals(_evidenceTag),
+            ))
+            .getSingleOrNull();
+    if (version == null) await recomputeWeights(profileId);
     final now = _now();
     final ex =
         await (db.select(db.exclusions)..where(
@@ -72,6 +80,11 @@ class LibraryRepository {
       db.tagWeights,
     )..where((x) => x.profileId.equals(profileId))).get();
     final evidence = await _evidenceCount(profileId);
+    final evidenceRow =
+        await (db.select(db.tagWeights)..where(
+              (w) => w.profileId.equals(profileId) & w.tag.equals(_evidenceTag),
+            ))
+            .getSingleOrNull();
 
     final kindRatings = <MediaKind, int>{};
     final rated = ut.where((u) => u.rating != null).map((u) => u.titleId);
@@ -89,14 +102,28 @@ class LibraryRepository {
 
     return ProfileSignals(
       excluded: {for (final x in ex) x.titleId},
+      excludedFranchises: await FranchiseExclusionRepository(db)
+          .activeScopes(profileId),
       deferred: {for (final x in de) x.titleId},
       shortlisted: {for (final x in sl) x.titleId},
       library: {for (final u in ut) u.titleId: _entry(u)},
       weights: {
         for (final w in tw)
-          if (w.tag != _evidenceTag) w.tag: w.weight,
+          if (w.tag != _evidenceTag && w.tag != '_evidence') w.tag: w.weight,
       },
       evidenceTitles: evidence,
+      evidenceStrength: evidenceRow?.weight ?? 0,
+      weakHistoryIds: {
+        for (final u in ut)
+          if (u.rating == null &&
+              u.source.startsWith('import:') &&
+              {
+                LibraryState.watching,
+                LibraryState.reading,
+                LibraryState.completed,
+              }.contains(LibraryState.parse(u.state)))
+            u.titleId,
+      },
       kindRatings: kindRatings,
     );
   }
@@ -112,7 +139,7 @@ class LibraryRepository {
     return row?.evidenceCount ?? 0;
   }
 
-  static const _evidenceTag = '_evidence';
+  static const _evidenceTag = '_evidence_v2';
 
   /// Recomputes tag weights from distinct evidence: ratings, Will try and
   /// Not interested. Re-importing the same records cannot double them.
@@ -134,18 +161,33 @@ class LibraryRepository {
       final r = Rating.parse(u.rating);
       if (r != null) {
         evidence[u.titleId] = (evidence[u.titleId] ?? 0) + r.weight;
+      } else if (u.source.startsWith('import:')) {
+        final weak = switch (LibraryState.parse(u.state)) {
+          LibraryState.watching || LibraryState.reading => 0.2,
+          LibraryState.completed => 0.15,
+          _ => 0.0,
+        };
+        if (weak > 0) evidence[u.titleId] = weak;
       }
     }
+    final ratedIds = {
+      for (final u in ut)
+        if (u.rating != null) u.titleId,
+    };
     for (final s in sl) {
-      evidence[s.titleId] = (evidence[s.titleId] ?? 0) + 1;
+      if (ratedIds.contains(s.titleId)) continue;
+      evidence[s.titleId] = 1;
     }
     for (final x in ex) {
       evidence[x.titleId] = (evidence[x.titleId] ?? 0) - 0.3;
     }
 
-    final titles = await (db.select(
+    final rows = await (db.select(
       db.catalogTitles,
     )..where((t) => t.id.isIn(evidence.keys.toList()))).get();
+    final titles = rows
+        .where((r) => Title.fromRow(r).features.isNotEmpty)
+        .toList();
     final weights = <String, double>{};
     final counts = <String, int>{};
     for (final row in titles) {
@@ -174,7 +216,10 @@ class LibraryRepository {
           TagWeightsCompanion.insert(
             profileId: profileId,
             tag: _evidenceTag,
-            weight: 0,
+            weight: titles.fold<double>(
+              0,
+              (sum, row) => sum + evidence[row.id]!.abs().clamp(0, 1),
+            ),
             evidenceCount: titles.length,
             updatedAt: now,
           ),
@@ -209,6 +254,7 @@ class LibraryRepository {
   /// (Will try, Not interested, Not now, learned tag weights) but keeps the
   /// titles that came from imports or were rated in Library.
   Future<void> resetSwipes(String profileId) => db.transaction(() async {
+    await TryNowRepository(db, clock: _now).clearAll(profileId);
     // Titles that exist only because of a Watched swipe (no import behind
     // them, no rating) go too; everything imported or rated stays.
     final watched = {
@@ -262,10 +308,13 @@ class LibraryRepository {
   });
 
   Future<void> removeFromShortlist(String profileId, String titleId) =>
-      (db.delete(db.shortlist)..where(
-            (x) => x.profileId.equals(profileId) & x.titleId.equals(titleId),
-          ))
-          .go();
+      db.transaction(() async {
+        await TryNowRepository(db, clock: _now).clearTitle(profileId, titleId);
+        await (db.delete(db.shortlist)..where(
+              (x) => x.profileId.equals(profileId) & x.titleId.equals(titleId),
+            ))
+            .go();
+      });
 
   Future<Map<String, Title>> _titles(Iterable<String> ids) async {
     final list = ids.toSet().toList();
@@ -379,6 +428,7 @@ class LibraryRepository {
   /// A tombstone prevents an older synced copy from restoring a removal.
   Future<void> removeEntry(String profileId, String titleId) =>
       db.transaction(() async {
+        await TryNowRepository(db, clock: _now).clearTitle(profileId, titleId);
         await recordRemoval(profileId, titleId, _now());
         await (db.delete(db.userTitles)..where(
               (x) => x.profileId.equals(profileId) & x.titleId.equals(titleId),
