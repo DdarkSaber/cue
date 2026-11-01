@@ -211,6 +211,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       ),
       const SizedBox(height: CueSpace.sm),
       _TasteMeter(rated: d.entries.where((e) => e.$1.rating != null).length),
+      const SizedBox(height: 4),
+      const Text(
+        'To remove a saved title, open Will try and tap Remove.',
+        style: TextStyle(fontSize: 12, color: CueColors.textMuted),
+      ),
       const SizedBox(height: CueSpace.sm),
       Wrap(
         spacing: CueSpace.md,

@@ -165,26 +165,57 @@ class DeckController extends Notifier<DeckState> {
     return _engine = e;
   }
 
-  /// Opt-in AI hints for typed text; any failure just means no hints.
+  /// Genre words understood without AI ("fast" leans to action).
+  static const _genreWords = [
+    'comedy',
+    'romance',
+    'action',
+    'horror',
+    'mystery',
+    'drama',
+    'fantasy',
+    'sci-fi',
+    'slice of life',
+    'sports',
+    'thriller',
+    'adventure',
+    'isekai',
+    'psychological',
+    'supernatural',
+    'shounen',
+    'school',
+  ];
+
+  /// Hints for typed text: plain genre words always, plus AI suggestions
+  /// when Smarter mood text is on. Any AI failure just means fewer hints.
   Future<(List<String>, List<String>)?> _hints(
     MoodEngine e,
     String text,
     List<Title> pool,
   ) async {
-    if (text.trim().isEmpty ||
-        !ref.read(currentSettingsProvider).smartMoodText) {
-      return null;
+    final lower = text.toLowerCase();
+    if (lower.trim().isEmpty) return null;
+    final local = <String>{
+      for (final g in _genreWords)
+        if (lower.contains(g)) g,
+      if (lower.contains('fast')) 'action',
+    };
+    var ai = (<String>[], <String>[]);
+    if (ref.read(currentSettingsProvider).smartMoodText) {
+      try {
+        ai = await ref
+            .read(catalogGatewayProvider)
+            .moodHints(
+              text,
+              e.allowedFeatures({for (final t in pool) ...moodFeatures(t)}),
+            );
+      } on Object {
+        // Local words still apply.
+      }
     }
-    try {
-      return await ref
-          .read(catalogGatewayProvider)
-          .moodHints(
-            text,
-            e.allowedFeatures({for (final t in pool) ...moodFeatures(t)}),
-          );
-    } on Object {
-      return null;
-    }
+    final features = {...local, ...ai.$1}.toList();
+    if (features.isEmpty && ai.$2.isEmpty) return null;
+    return (features, ai.$2);
   }
 
   Future<void> _dealOnce({required bool keepTop}) async {
