@@ -23,6 +23,21 @@ class SyncPage extends ConsumerStatefulWidget {
 
 class _SyncPageState extends ConsumerState<SyncPage> {
   final _code = TextEditingController();
+  bool _copied = false;
+
+  Future<void> _copy(String code) async {
+    await Clipboard.setData(ClipboardData(text: code));
+    if (!mounted) return;
+    setState(() => _copied = true);
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (mounted) setState(() => _copied = false);
+  }
+
+  Future<void> _paste() async {
+    final d = await Clipboard.getData(Clipboard.kTextPlain);
+    final t = d?.text?.trim();
+    if (t != null && t.isNotEmpty) _code.text = t;
+  }
 
   @override
   void dispose() {
@@ -46,7 +61,7 @@ class _SyncPageState extends ConsumerState<SyncPage> {
         ),
         const SizedBox(height: CueSpace.sm),
         const Text(
-          'Lose every device and the code, and the copy cannot be recovered: nobody else holds the key. Additions and changes sync; removing a title on one device does not remove it on the others yet.',
+          'Lose every device and the code, and the copy cannot be recovered: nobody else holds the key. Additions, changes and removals sync, and so do your library settings and mood learning.',
           style: _body,
         ),
         const SizedBox(height: CueSpace.lg),
@@ -76,6 +91,10 @@ class _SyncPageState extends ConsumerState<SyncPage> {
                     hintText: 'XXXX-XXXX-XXXX-XXXX-…',
                   ),
                 ),
+              ),
+              CueSecondaryButton(
+                label: 'Paste',
+                onPressed: s.busy ? null : _paste,
               ),
               CueSecondaryButton(
                 label: 'Join',
@@ -112,10 +131,8 @@ class _SyncPageState extends ConsumerState<SyncPage> {
             runSpacing: CueSpace.sm,
             children: [
               CueSecondaryButton(
-                label: 'Copy code',
-                onPressed: s.code == null
-                    ? null
-                    : () => Clipboard.setData(ClipboardData(text: s.code!)),
+                label: _copied ? 'Copied' : 'Copy code',
+                onPressed: s.code == null ? null : () => _copy(s.code!),
               ),
               CuePrimaryButton(
                 label: 'Sync now',
