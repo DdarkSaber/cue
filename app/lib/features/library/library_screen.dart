@@ -19,7 +19,7 @@ import '../../domain/models/library.dart';
 import '../../domain/models/quick_mood.dart';
 import '../../domain/models/title.dart';
 import '../deck/deck_controller.dart';
-import '../imports/import_screen.dart' show importSourceName;
+import '../imports/source_names.dart';
 import 'entry_sheet.dart';
 import 'add_title_sheet.dart';
 import 'review_sheet.dart';

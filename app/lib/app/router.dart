@@ -1,12 +1,21 @@
 import 'package:go_router/go_router.dart';
 
 import '../features/deck/deck_screen.dart';
-import '../features/imports/import_screen.dart';
+import '../features/imports/import_screen.dart' deferred as importer;
 import '../features/library/library_screen.dart';
-import '../features/settings/settings_screen.dart';
+import '../features/settings/settings_screen.dart' deferred as settings;
 import '../features/shortlist/shortlist_screen.dart';
-import '../features/sync/sync_page.dart';
+import '../features/sync/sync_page.dart' deferred as sync;
+import 'deferred_page.dart';
 import 'shell.dart';
+
+/// Loads the screens that the web build splits off. Called once at start on
+/// Android, where deferred loading saves nothing.
+Future<void> preloadDeferred() => Future.wait([
+  importer.loadLibrary(),
+  settings.loadLibrary(),
+  sync.loadLibrary(),
+]);
 
 abstract final class CueRoutes {
   static const forYou = '/';
@@ -46,7 +55,10 @@ GoRouter buildRouter({String initialLocation = CueRoutes.forYou}) => GoRouter(
               routes: [
                 GoRoute(
                   path: 'import',
-                  builder: (_, _) => const ImportScreen(),
+                  builder: (_, _) => DeferredPage(
+                    importer.loadLibrary,
+                    () => importer.ImportScreen(),
+                  ),
                 ),
               ],
             ),
@@ -56,30 +68,58 @@ GoRouter buildRouter({String initialLocation = CueRoutes.forYou}) => GoRouter(
           routes: [
             GoRoute(
               path: CueRoutes.settings,
-              builder: (_, _) => const SettingsScreen(),
+              builder: (_, _) => DeferredPage(
+                settings.loadLibrary,
+                () => settings.SettingsScreen(),
+              ),
               routes: [
                 GoRoute(
                   path: 'library',
-                  builder: (_, _) => const LibrarySettingsPage(),
+                  builder: (_, _) => DeferredPage(
+                    settings.loadLibrary,
+                    () => settings.LibrarySettingsPage(),
+                  ),
                 ),
                 GoRoute(
                   path: 'preferences',
-                  builder: (_, _) => const PreferencesPage(),
+                  builder: (_, _) => DeferredPage(
+                    settings.loadLibrary,
+                    () => settings.PreferencesPage(),
+                  ),
                 ),
                 GoRoute(
                   path: 'swipes',
-                  builder: (_, _) => const SwipeSettingsPage(),
+                  builder: (_, _) => DeferredPage(
+                    settings.loadLibrary,
+                    () => settings.SwipeSettingsPage(),
+                  ),
                 ),
                 GoRoute(
                   path: 'appearance',
-                  builder: (_, _) => const AppearancePage(),
+                  builder: (_, _) => DeferredPage(
+                    settings.loadLibrary,
+                    () => settings.AppearancePage(),
+                  ),
                 ),
-                GoRoute(path: 'sync', builder: (_, _) => const SyncPage()),
+                GoRoute(
+                  path: 'sync',
+                  builder: (_, _) =>
+                      DeferredPage(sync.loadLibrary, () => sync.SyncPage()),
+                ),
                 GoRoute(
                   path: 'privacy',
-                  builder: (_, _) => const PrivacyPage(),
+                  builder: (_, _) => DeferredPage(
+                    settings.loadLibrary,
+                    () => settings.PrivacyPage(),
+                  ),
                 ),
-                GoRoute(path: 'about', builder: (_, _) => const AboutPage()),
+                GoRoute(
+                  path: 'about',
+                  builder: (_, _) => DeferredPage(
+                    settings.loadLibrary,
+                    () => settings.AboutPage(),
+                  ),
+                ),
               ],
             ),
           ],

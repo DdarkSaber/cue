@@ -19,6 +19,7 @@ import '../../imports/import_service.dart';
 import '../../imports/matcher.dart';
 import '../../imports/records.dart';
 import 'sign_in_import.dart';
+import 'source_names.dart';
 
 enum _Step { choose, mapColumns, matching, preview, committing, summary }
 
@@ -1019,16 +1020,3 @@ class _PastImportsState extends ConsumerState<_PastImports> {
     );
   }
 }
-
-String importSourceName(String type) => switch (type) {
-  'mal_xml' => 'MyAnimeList file',
-  'netflix_csv' => 'Netflix activity',
-  'cue_backup' => 'Cue backup',
-  'xlsx' => 'Spreadsheet',
-  'generic_csv' => 'CSV file',
-  'mihon_backup' => 'Mihon backup',
-  'mal_api' => 'MyAnimeList sign-in',
-  'anilist_api' => 'AniList list',
-  'sync' => 'sync',
-  _ => 'Import',
-};

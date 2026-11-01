@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
@@ -10,11 +13,12 @@ import 'app/theme.dart';
 import 'app/tokens.dart';
 import 'data/db/database.dart';
 
-void main() {
+Future<void> main() async {
   // Real paths (/settings) instead of /#/settings, so links and refreshes work.
   usePathUrlStrategy();
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  if (!kIsWeb) await preloadDeferred();
+  unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
   final db = CueDatabase.open();
   runApp(
     ProviderScope(

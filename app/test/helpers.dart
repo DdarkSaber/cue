@@ -57,6 +57,8 @@ Future<void> pumpCue(
   addTearDown(tester.view.reset);
   addTearDown(tester.platformDispatcher.clearAllTestValues);
 
+  // The app preloads its deferred screens at start (see main.dart).
+  await tester.runAsync(preloadDeferred);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
