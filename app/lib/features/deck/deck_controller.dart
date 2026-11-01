@@ -10,6 +10,7 @@ import '../../domain/models/decision.dart';
 import '../../domain/models/quick_mood.dart';
 import '../../domain/models/title.dart';
 import '../../domain/mood/mood_engine.dart';
+import '../../domain/mood/mood_features.dart';
 import '../../domain/mood/sessions.dart' show sessionGap;
 import '../../domain/ranker.dart';
 import '../../domain/reasons.dart';
@@ -145,7 +146,7 @@ class DeckController extends Notifier<DeckState> {
 
   /// The mood learner, with a session open. A new session starts after a
   /// 45-minute gap or when the typed "Tell me" text changes.
-  Future<MoodEngine?> _mood(DeckFilters f) async {
+  Future<MoodEngine?> _mood(DeckFilters f, List<Title> pool) async {
     final MoodEngine e;
     try {
       e = await ref.read(moodEngineProvider.future);
@@ -158,10 +159,32 @@ class DeckController extends Notifier<DeckState> {
     final stale = last != null && now.difference(last) > sessionGap;
     if (!e.inSession || stale || text != _typed) {
       await e.endSession();
-      e.startSession(now: now, text: text);
+      e.startSession(now: now, text: text, hints: await _hints(e, text, pool));
       _typed = text;
     }
     return _engine = e;
+  }
+
+  /// Opt-in AI hints for typed text; any failure just means no hints.
+  Future<(List<String>, List<String>)?> _hints(
+    MoodEngine e,
+    String text,
+    List<Title> pool,
+  ) async {
+    if (text.trim().isEmpty ||
+        !ref.read(currentSettingsProvider).smartMoodText) {
+      return null;
+    }
+    try {
+      return await ref
+          .read(catalogGatewayProvider)
+          .moodHints(
+            text,
+            e.allowedFeatures({for (final t in pool) ...moodFeatures(t)}),
+          );
+    } on Object {
+      return null;
+    }
   }
 
   Future<void> _dealOnce({required bool keepTop}) async {
@@ -207,7 +230,7 @@ class DeckController extends Notifier<DeckState> {
       byId[t.id] = t;
     }
 
-    final mood = await _mood(filters);
+    final mood = await _mood(filters, pool);
     final target = filters.mood == QuickMood.forYou ? mood?.target : null;
     ref.read(moodReadProvider.notifier).set(target ?? MoodTarget.none);
 
@@ -338,7 +361,12 @@ class DeckController extends Notifier<DeckState> {
         Decision.notNow => -0.2,
         Decision.watched => 0.1,
       });
-      _engine?.onSwipe(card.title, d);
+      // The session may have closed while the app was hidden.
+      final engine = _engine;
+      if (engine != null && !engine.inSession) {
+        engine.startSession(now: DateTime.now(), text: _typed);
+      }
+      engine?.onSwipe(card.title, d);
       final count = state.sessionDecisions + 1;
       state = state.copyWith(
         canUndo: true,
@@ -378,6 +406,7 @@ class DeckController extends Notifier<DeckState> {
       return null;
     }
     final titleId = undone.titleId;
+    _engine?.undo(titleId);
     final title = await ref.read(catalogRepositoryProvider).titleById(titleId);
     final canUndo = await ref.read(decisionServiceProvider).canUndo(profileId);
     if (title == null) {

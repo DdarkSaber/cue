@@ -39,6 +39,7 @@ class MoodEngine {
   MoodSession? _session;
   List<String> _tokens = const [];
   String _typed = '';
+  Vec _hintVec = const {};
   final _features = <String, Set<String>>{};
 
   List<Mode> get modes => model.modes;
@@ -70,15 +71,51 @@ class MoodEngine {
     await store.save(profileId, model.modes, words);
   }
 
-  void startSession({required DateTime now, String text = ''}) {
+  /// [hints] are optional AI suggestions for the typed text (features to
+  /// lean toward, features to avoid).
+  void startSession({
+    required DateTime now,
+    String text = '',
+    (List<String>, List<String>)? hints,
+  }) {
     _typed = text.trim();
     _tokens = tokenize(_typed);
+    _hintVec = hints == null
+        ? const {}
+        : normalize(
+            addScaled(
+              featureVec(hints.$1.toSet()),
+              featureVec(hints.$2.toSet()),
+              -0.7,
+            ),
+          );
     _session = MoodSession(now);
-    _tracker = ModeTracker(
-      model.modes,
-      now: now,
-      textVec: words.vectorFor(_tokens),
-    );
+    _tracker = ModeTracker(model.modes, now: now, textVec: _textVec);
+  }
+
+  Vec get _textVec =>
+      normalize(addScaled(words.vectorFor(_tokens), _hintVec, 1));
+
+  /// Feature names the AI may answer with: everything the modes know, plus
+  /// [extra] (for example the deck's genres), capped at 200.
+  List<String> allowedFeatures(Iterable<String> extra) => {
+    for (final m in model.modes) ...m.centroid.keys,
+    ...extra,
+  }.take(200).toList();
+
+  /// An undone swipe: forget it and replay the rest of the session.
+  void undo(String titleId) {
+    final s = _session;
+    if (s == null) return;
+    final i = s.picks.lastIndexWhere((p) => p.$1 == titleId);
+    if (i < 0) return;
+    s.picks.removeAt(i);
+    final t = ModeTracker(model.modes, now: s.start, textVec: _textVec);
+    for (final (id, signal) in s.picks) {
+      final f = _features[id];
+      if (f != null) t.observe(f, signal);
+    }
+    _tracker = t;
   }
 
   bool get inSession => _session != null;
@@ -97,8 +134,23 @@ class MoodEngine {
 
   void correct(String modeId) => _tracker?.force(modeId);
 
+  /// Drops everything in memory without saving (used by "Clear mood
+  /// learning", so a later [endSession] cannot write the old modes back).
+  void forget() {
+    model = ModeModel();
+    words = WordModel();
+    _session = null;
+    _tracker = null;
+    _tokens = const [];
+    _hintVec = const {};
+    _forgotten = true;
+  }
+
+  bool _forgotten = false;
+
   /// A name the person chose; never replaced by automatic labels.
   Future<void> rename(String modeId, String label) async {
+    if (_forgotten) return;
     for (final m in model.modes) {
       if (m.id == modeId) {
         m
@@ -111,7 +163,7 @@ class MoodEngine {
 
   MoodTarget get target {
     final t = _tracker;
-    final textVec = words.vectorFor(_tokens);
+    final textVec = _textVec;
     if (t == null || model.modes.isEmpty) {
       return textVec.isEmpty ? MoodTarget.none : MoodTarget(textVec, 0.5);
     }
@@ -125,7 +177,7 @@ class MoodEngine {
   /// Learns from the finished session and saves.
   Future<void> endSession() async {
     final s = _session;
-    if (s == null) return;
+    if (s == null || _forgotten) return;
     final modeId = _tracker?.top?.id;
     _session = null;
     _tracker = null;

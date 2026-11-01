@@ -13,6 +13,7 @@ class AppSettings {
     this.defaultKinds = const {...MediaKind.discoverable},
     this.includeRewatches = false,
     this.inviteDismissed = false,
+    this.smartMoodText = false,
     this.displayName,
   });
 
@@ -25,6 +26,9 @@ class AppSettings {
   final Set<MediaKind> defaultKinds;
   final bool includeRewatches;
   final bool inviteDismissed;
+
+  /// Opt-in: send the typed mood sentence to an AI service for hints.
+  final bool smartMoodText;
   final String? displayName;
 
   AppSettings copyWith({
@@ -36,6 +40,7 @@ class AppSettings {
     Set<MediaKind>? defaultKinds,
     bool? includeRewatches,
     bool? inviteDismissed,
+    bool? smartMoodText,
     String? displayName,
   }) => AppSettings(
     reduceMotion: reduceMotion ?? this.reduceMotion,
@@ -46,6 +51,7 @@ class AppSettings {
     defaultKinds: defaultKinds ?? this.defaultKinds,
     includeRewatches: includeRewatches ?? this.includeRewatches,
     inviteDismissed: inviteDismissed ?? this.inviteDismissed,
+    smartMoodText: smartMoodText ?? this.smartMoodText,
     displayName: displayName ?? this.displayName,
   );
 
@@ -58,6 +64,7 @@ class AppSettings {
     'defaultKinds': defaultKinds.map((k) => k.name).join(','),
     'includeRewatches': '$includeRewatches',
     'inviteDismissed': '$inviteDismissed',
+    'smartMoodText': '$smartMoodText',
   };
 
   static AppSettings fromEntries(
@@ -82,6 +89,7 @@ class AppSettings {
             },
       includeRewatches: b('includeRewatches', false),
       inviteDismissed: b('inviteDismissed', false),
+      smartMoodText: b('smartMoodText', false),
       displayName: displayName,
     );
   }

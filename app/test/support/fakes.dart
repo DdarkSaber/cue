@@ -191,6 +191,17 @@ class FakeGateway implements CatalogGateway {
 
   OAuthConfigDto config = const OAuthConfigDto();
   final names = <String, String>{};
+  final moodHintCalls = <String>[];
+  (List<String>, List<String>) hints = (const [], const []);
+
+  @override
+  Future<(List<String>, List<String>)> moodHints(
+    String text,
+    List<String> allowed,
+  ) async {
+    moodHintCalls.add(text);
+    return hints;
+  }
 
   @override
   Future<String?> signedInName(String provider, String token) async =>

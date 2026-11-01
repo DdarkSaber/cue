@@ -283,6 +283,13 @@ class PreferencesPage extends ConsumerWidget {
           value: s.includeRewatches,
           onChanged: (v) => change((x) => x.copyWith(includeRewatches: v)),
         ),
+        const CueSectionLabel('Live mood'),
+        _toggle(
+          title: 'Smarter mood text',
+          subtitle: 'Off by default. When on, the sentence you type in Tell me is sent to an AI service (Groq or Google Gemini) to suggest genres. Nothing else is sent. Mood learning itself always stays on this device.',
+          value: s.smartMoodText,
+          onChanged: (v) => change((x) => x.copyWith(smartMoodText: v)),
+        ),
         const CueSectionLabel('Content safety'),
         _toggle(
           title: 'Show adult-tagged titles',
@@ -482,6 +489,11 @@ class _PrivacyPageState extends ConsumerState<PrivacyPage> {
 
   Future<void> _clearMood() async {
     final id = await ref.read(profileIdProvider.future);
+    try {
+      (await ref.read(moodEngineProvider.future)).forget();
+    } on Object {
+      // No engine yet: nothing in memory to drop.
+    }
     await ref.read(moodRepositoryProvider).clear(id);
     ref.invalidate(moodEngineProvider);
     if (mounted) setState(() => _message = 'Mood learning cleared.');

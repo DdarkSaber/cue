@@ -196,6 +196,13 @@ abstract class CatalogGateway {
   /// The account name behind a sign-in token, or null when unknown.
   Future<String?> signedInName(String provider, String token);
 
+  /// Opt-in AI hints for a typed mood sentence: features to lean toward and
+  /// to avoid, limited to [allowed].
+  Future<(List<String>, List<String>)> moodHints(
+    String text,
+    List<String> allowed,
+  );
+
   /// Batch match for imports: up to 15 titles and 50 MAL ids per type.
   Future<MatchResponse> match(
     List<MatchQuery> items, {
@@ -352,6 +359,26 @@ class HttpCatalogGateway implements CatalogGateway {
     final req = http.Request('POST', Uri.parse('$base/import/$provider/list'))
       ..headers['Authorization'] = 'Bearer $token';
     return _entries(await _send(req));
+  }
+
+  @override
+  Future<(List<String>, List<String>)> moodHints(
+    String text,
+    List<String> allowed,
+  ) async {
+    final req = http.Request('POST', Uri.parse('$base/ai/mood'))
+      ..headers['Content-Type'] = 'application/json'
+      ..body = jsonEncode({
+        'text': text.length > 200 ? text.substring(0, 200) : text,
+        'allowed': allowed.take(200).toList(),
+      });
+    final b = await _send(req);
+    List<String> list(Object? v) => [
+      for (final x in (v as List?) ?? const []) '$x',
+    ];
+    return b is Map
+        ? (list(b['features']), list(b['avoid']))
+        : (<String>[], <String>[]);
   }
 
   @override
@@ -615,6 +642,12 @@ class HybridCatalogGateway implements CatalogGateway {
   ) => provider == 'anilist'
       ? anilist.lists(token: token)
       : worker.listSignedIn(provider, token);
+
+  @override
+  Future<(List<String>, List<String>)> moodHints(
+    String text,
+    List<String> allowed,
+  ) => worker.moodHints(text, allowed);
 
   @override
   Future<String?> signedInName(String provider, String token) =>

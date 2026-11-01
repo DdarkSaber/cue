@@ -75,6 +75,8 @@ class DeckFilters {
       other.era == era &&
       other.status == status &&
       other.includeRewatches == includeRewatches &&
+      // The typed text feeds the mood learner, so a new sentence re-deals.
+      other.tellMe == tellMe &&
       other.kinds.length == kinds.length &&
       other.kinds.containsAll(kinds) &&
       other.countries.length == countries.length &&
@@ -87,6 +89,7 @@ class DeckFilters {
     era,
     status,
     includeRewatches,
+    tellMe,
     Object.hashAllUnordered(kinds),
     Object.hashAllUnordered(countries),
   );

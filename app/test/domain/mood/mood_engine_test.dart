@@ -126,4 +126,37 @@ void main() {
     expect(out, hasLength(cards.length));
     expect(diversify(cards, null), same(cards));
   });
+
+  test('AI hints steer the target and an undo is forgotten', () async {
+    final engine = MoodEngine(MemoryStore(), 'p', byIds);
+    await engine.load();
+    engine.startSession(
+      now: DateTime(2026, 10, 20, 20),
+      text: 'cosy',
+      hints: (const ['romance'], const ['horror']),
+    );
+    expect(engine.target.vec['romance'], greaterThan(0));
+    expect(engine.target.vec['horror'], lessThan(0));
+
+    engine.onSwipe(romcom(1), Decision.willTry);
+    engine.undo('r1');
+    await engine.endSession();
+    // Nothing left to learn from after the undo.
+    expect(engine.modes, isEmpty);
+  });
+
+  test('after forget, ending the session writes nothing back', () async {
+    final store = MemoryStore();
+    final engine = MoodEngine(store, 'p', byIds);
+    await engine.load();
+    engine.startSession(now: DateTime(2026, 10, 20, 20));
+    for (var k = 0; k < 3; k++) {
+      engine.onSwipe(romcom(k), Decision.willTry);
+    }
+    store.saved = null;
+    engine.forget();
+    await engine.endSession();
+    expect(store.saved, isNull);
+    expect(engine.modes, isEmpty);
+  });
 }
