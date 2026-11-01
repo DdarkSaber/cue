@@ -155,6 +155,23 @@ class MatchResponse {
 }
 
 /// Which sign-in sources the Worker has client ids for.
+/// Tokens from a sign-in or a renewal. Only ever kept on the device.
+class OAuthTokens {
+  const OAuthTokens(this.access, {this.refresh, this.expiresAt});
+  final String access;
+  final String? refresh;
+  final DateTime? expiresAt;
+
+  factory OAuthTokens.fromJson(Map<dynamic, dynamic> b) {
+    final s = (b['expiresIn'] as num?)?.toInt();
+    return OAuthTokens(
+      b['accessToken'] as String,
+      refresh: b['refreshToken'] as String?,
+      expiresAt: s == null ? null : DateTime.now().add(Duration(seconds: s)),
+    );
+  }
+}
+
 class OAuthConfigDto {
   const OAuthConfigDto({this.mal});
   final String? mal;
@@ -176,13 +193,16 @@ abstract class CatalogGateway {
 
   Future<OAuthConfigDto> oauthConfig();
 
-  /// Exchanges an authorization code; returns the access token.
-  Future<String> exchangeCode(
+  /// Exchanges an authorization code for tokens.
+  Future<OAuthTokens> exchangeCode(
     String provider, {
     required String code,
     required String redirectUri,
     String? codeVerifier,
   });
+
+  /// Renews tokens with a refresh token.
+  Future<OAuthTokens> refreshTokens(String provider, String refreshToken);
 
   /// A public list by username (AniList: no key; MAL: client id).
   Future<List<Map<String, dynamic>>> listByUser(String provider, String name);
@@ -321,7 +341,7 @@ class HttpCatalogGateway implements CatalogGateway {
   }
 
   @override
-  Future<String> exchangeCode(
+  Future<OAuthTokens> exchangeCode(
     String provider, {
     required String code,
     required String redirectUri,
@@ -334,8 +354,18 @@ class HttpCatalogGateway implements CatalogGateway {
         'redirectUri': redirectUri,
         'codeVerifier': ?codeVerifier,
       });
-    final b = await _send(req) as Map;
-    return b['accessToken'] as String;
+    return OAuthTokens.fromJson(await _send(req) as Map);
+  }
+
+  @override
+  Future<OAuthTokens> refreshTokens(
+    String provider,
+    String refreshToken,
+  ) async {
+    final req = http.Request('POST', Uri.parse('$base/oauth/$provider/refresh'))
+      ..headers['Content-Type'] = 'application/json'
+      ..body = jsonEncode({'refreshToken': refreshToken});
+    return OAuthTokens.fromJson(await _send(req) as Map);
   }
 
   List<Map<String, dynamic>> _entries(Object? body) => [
@@ -617,7 +647,11 @@ class HybridCatalogGateway implements CatalogGateway {
   Future<OAuthConfigDto> oauthConfig() => worker.oauthConfig();
 
   @override
-  Future<String> exchangeCode(
+  Future<OAuthTokens> refreshTokens(String provider, String refreshToken) =>
+      worker.refreshTokens(provider, refreshToken);
+
+  @override
+  Future<OAuthTokens> exchangeCode(
     String provider, {
     required String code,
     required String redirectUri,

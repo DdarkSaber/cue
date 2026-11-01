@@ -86,7 +86,18 @@ describe("list imports", () => {
     expect(await res.json()).toEqual({ mal: "123" });
   });
 
-  it("token exchange returns the access token only", async () => {
+  it("refresh renews tokens with the client secret and keeps nothing", async () => {
+    const calls = mockUpstream(vi, () => Response.json({ access_token: "new", refresh_token: "r2", expires_in: 3600 }));
+    const env = fakeEnv({ MAL_CLIENT_ID: "cid", MAL_CLIENT_SECRET: "sec" });
+    expect((await postJson("/oauth/mal/refresh", {}, env)).status).toBe(400);
+    const res = await postJson("/oauth/mal/refresh", { refreshToken: "old-refresh-token" }, env);
+    expect(await res.json()).toEqual({ accessToken: "new", refreshToken: "r2", expiresIn: 3600 });
+    const sent = String(calls[0]!.init!.body);
+    expect(sent).toContain("grant_type=refresh_token");
+    expect(sent).toContain("client_secret=sec");
+  });
+
+  it("token exchange returns the tokens and their lifetime", async () => {
     mockUpstream(vi, () => Response.json({ access_token: "tok", refresh_token: "r", expires_in: 1 }));
     const env = fakeEnv({ MAL_CLIENT_ID: "cid" });
     const res = await postJson(
@@ -94,6 +105,6 @@ describe("list imports", () => {
       { code: "c", codeVerifier: "v".repeat(64), redirectUri: "cue://oauth/mal" },
       env,
     );
-    expect(await res.json()).toEqual({ accessToken: "tok" });
+    expect(await res.json()).toEqual({ accessToken: "tok", refreshToken: "r", expiresIn: 1 });
   });
 });

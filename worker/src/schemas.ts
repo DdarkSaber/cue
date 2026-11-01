@@ -78,6 +78,7 @@ export const imageQuery = z.object({
 });
 
 export const oauthParams = z.object({ provider: oauthProvider });
+export const refreshBody = z.object({ refreshToken: z.string().min(8).max(4000) });
 export const oauthBody = z.object({
   code: z.string().min(1).max(2048),
   codeVerifier: z.string().min(43).max(128).optional(),

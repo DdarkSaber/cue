@@ -213,12 +213,30 @@ class FakeGateway implements CatalogGateway {
   Future<OAuthConfigDto> oauthConfig() async => config;
 
   @override
-  Future<String> exchangeCode(
+  Future<OAuthTokens> exchangeCode(
     String provider, {
     required String code,
     required String redirectUri,
     String? codeVerifier,
-  }) async => 'token';
+  }) async => const OAuthTokens('token', refresh: 'refresh');
+
+  /// Set to make a renewal fail.
+  bool refreshFails = false;
+  final refreshCalls = <String>[];
+
+  @override
+  Future<OAuthTokens> refreshTokens(
+    String provider,
+    String refreshToken,
+  ) async {
+    refreshCalls.add(refreshToken);
+    if (refreshFails) throw const CatalogUnavailable('upstream_error');
+    return OAuthTokens(
+      'renewed',
+      refresh: 'refresh2',
+      expiresAt: DateTime.now().add(const Duration(days: 30)),
+    );
+  }
 
   @override
   Future<List<Map<String, dynamic>>> listByUser(
@@ -233,5 +251,15 @@ class FakeGateway implements CatalogGateway {
   Future<List<Map<String, dynamic>>> listSignedIn(
     String provider,
     String token,
-  ) async => const [];
+  ) async {
+    signedInCalls.add(token);
+    if (rejectedTokens.contains(token)) {
+      throw const CatalogUnavailable('upstream_error');
+    }
+    return const [];
+  }
+
+  /// Tokens the provider no longer accepts.
+  final rejectedTokens = <String>{};
+  final signedInCalls = <String>[];
 }

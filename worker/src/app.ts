@@ -27,6 +27,7 @@ import {
   moodBody,
   oauthBody,
   oauthParams,
+  refreshBody,
   providersParams,
   providersQuery,
   searchQuery,
@@ -133,6 +134,14 @@ export function createApp() {
     if (!okRedirect) return fail(c, 400, "invalid_request", { fields: ["redirectUri"] });
     const t = await lists.exchange(c.env, p.data.provider, b.data.code, redirect, b.data.codeVerifier);
     return c.json(t);
+  });
+
+  app.post("/oauth/:provider/refresh", async (c) => {
+    const p = check(c, oauthParams, c.req.param());
+    if (!p.ok) return p.res;
+    const b = check(c, refreshBody, await jsonBody(c));
+    if (!b.ok) return b.res;
+    return c.json(await lists.refresh(c.env, p.data.provider, b.data.refreshToken));
   });
 
   // List imports. Tokens are used for this request only; nothing is kept.

@@ -108,38 +108,55 @@ export function oauthConfig(env: Env): OAuthConfig {
   };
 }
 
-/** Exchanges an authorization code. Returns the access token only. */
-export async function exchange(
+export interface Tokens {
+  accessToken: string;
+  /** Longer-lived; lets the app renew without a new sign-in. */
+  refreshToken: string | null;
+  /** Seconds until the access token expires. */
+  expiresIn: number | null;
+}
+
+async function malToken(env: Env, params: Record<string, string | undefined>): Promise<Tokens> {
+  if (!env.MAL_CLIENT_ID) throw new NotConfiguredError("mal");
+  const body = new URLSearchParams();
+  for (const [k, v] of Object.entries({
+    client_id: env.MAL_CLIENT_ID,
+    client_secret: env.MAL_CLIENT_SECRET,
+    ...params,
+  })) {
+    if (v) body.set(k, v);
+  }
+  const res = (await fetchJson("https://myanimelist.net/v1/oauth2/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  })) as Row | null;
+  const token = res?.access_token;
+  if (typeof token !== "string" || token.length === 0) throw new UpstreamError("token");
+  return {
+    accessToken: token,
+    refreshToken: typeof res?.refresh_token === "string" ? res.refresh_token : null,
+    expiresIn: typeof res?.expires_in === "number" ? res.expires_in : null,
+  };
+}
+
+/** Exchanges an authorization code. Tokens pass through; none are kept. */
+export function exchange(
   env: Env,
-  provider: "mal",
+  _provider: "mal",
   code: string,
   redirectUri: string,
   codeVerifier?: string,
-): Promise<{ accessToken: string }> {
-  const form = (o: Record<string, string | undefined>) => {
-    const p = new URLSearchParams();
-    for (const [k, v] of Object.entries(o)) if (v) p.set(k, v);
-    return p;
-  };
-  let res: Row | null;
-  switch (provider) {
-    case "mal":
-      if (!env.MAL_CLIENT_ID) throw new NotConfiguredError("mal");
-      res = (await fetchJson("https://myanimelist.net/v1/oauth2/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: form({
-          client_id: env.MAL_CLIENT_ID,
-          client_secret: env.MAL_CLIENT_SECRET,
-          grant_type: "authorization_code",
-          code,
-          redirect_uri: redirectUri,
-          code_verifier: codeVerifier,
-        }),
-      })) as Row | null;
-      break;
-  }
-  const token = res?.access_token;
-  if (typeof token !== "string" || token.length === 0) throw new UpstreamError("token");
-  return { accessToken: token };
+): Promise<Tokens> {
+  return malToken(env, {
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: redirectUri,
+    code_verifier: codeVerifier,
+  });
+}
+
+/** Renews tokens with a refresh token. Nothing is kept. */
+export function refresh(env: Env, _provider: "mal", refreshToken: string): Promise<Tokens> {
+  return malToken(env, { grant_type: "refresh_token", refresh_token: refreshToken });
 }

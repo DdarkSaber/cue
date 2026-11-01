@@ -139,14 +139,14 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
       final result = await authorize(url, widget.provider.id, state: state);
       if (result == null) throw const CatalogUnavailable('cancelled');
       final gateway = ref.read(catalogGatewayProvider);
-      final token = await gateway.exchangeCode(
+      final tokens = await gateway.exchangeCode(
         widget.provider.id,
         code: result,
         redirectUri: redirect,
         codeVerifier: verifier,
       );
-      await ref.read(tokenStoreProvider).write(widget.provider.id, token);
-      if (mounted) setState(() => _token = token);
+      final token = tokens.access;
+      await _keep(tokens);
       final name = await _lookUpName(token);
       if (mounted && name != null) setState(() => _account = name);
       return gateway.listSignedIn(widget.provider.id, token);
@@ -155,16 +155,58 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
 
   /// Reads the list again with the token kept on this device. A token the
   /// provider no longer accepts is dropped so the person can sign in again.
+  Future<void> _keep(OAuthTokens t) async {
+    final store = ref.read(tokenStoreProvider);
+    final id = widget.provider.id;
+    await store.write(id, t.access);
+    // Keep the old refresh token if the provider did not send a new one.
+    if (t.refresh != null) await store.writeRefresh(id, t.refresh);
+    await store.writeExpiry(id, t.expiresAt);
+    if (mounted) setState(() => _token = t.access);
+  }
+
+  /// Renews the access token with the kept refresh token; null when that is
+  /// not possible (no refresh token, or the provider refused it).
+  Future<String?> _renew() async {
+    final id = widget.provider.id;
+    final rt = await ref.read(tokenStoreProvider).readRefresh(id);
+    if (rt == null) return null;
+    try {
+      final t = await ref.read(catalogGatewayProvider).refreshTokens(id, rt);
+      await _keep(t);
+      return t.access;
+    } on CatalogUnavailable catch (e) {
+      if (e.code == 'offline') rethrow;
+      return null;
+    }
+  }
+
+  /// Reads the list again with the kept sign-in, renewing it first when it
+  /// has expired (or is about to) and once more if the provider refuses it.
+  /// Only when renewing fails is the person asked to sign in again.
   Future<void> _importAgain() async {
-    final token = _token;
+    var token = _token;
     if (token == null) return;
     await _run(() async {
+      final gateway = ref.read(catalogGatewayProvider);
+      final id = widget.provider.id;
+      final expiry = await ref.read(tokenStoreProvider).readExpiry(id);
+      final soon = DateTime.now().add(const Duration(hours: 1));
+      if (expiry != null && expiry.isBefore(soon)) {
+        token = await _renew() ?? token;
+      }
       try {
-        return await ref
-            .read(catalogGatewayProvider)
-            .listSignedIn(widget.provider.id, token);
+        return await gateway.listSignedIn(id, token!);
       } on CatalogUnavailable catch (e) {
         if (e.code == 'offline') rethrow;
+        final renewed = await _renew();
+        if (renewed != null) {
+          try {
+            return await gateway.listSignedIn(id, renewed);
+          } on CatalogUnavailable catch (e2) {
+            if (e2.code == 'offline') rethrow;
+          }
+        }
         await _signOut();
         throw const CatalogUnavailable('expired');
       }

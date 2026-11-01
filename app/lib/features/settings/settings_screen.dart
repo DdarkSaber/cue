@@ -557,7 +557,7 @@ class _PrivacyPageState extends ConsumerState<PrivacyPage> {
         ),
         const SizedBox(height: CueSpace.sm),
         const Text(
-          'Imports read files on this device. Matching sends title names. Sign-in imports open the service\'s own page, keep a read-only sign-in on this device (Sign out removes it). If you turn on sync, only an encrypted blob leaves the device.',
+          'Imports read files on this device. Matching sends title names. Sign-in imports open the service\'s own page, keep a read-only sign-in on this device and renew it when it expires (Sign out removes it). On the web the sign-in sits in this browser\'s storage and the renewal token only lasts until the tab closes, so use Sign out on shared computers. If you turn on sync, only an encrypted blob leaves the device.',
           style: _body,
         ),
         const SizedBox(height: CueSpace.sm),

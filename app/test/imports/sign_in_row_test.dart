@@ -9,10 +9,19 @@ import 'package:flutter_test/flutter_test.dart';
 import '../support/fakes.dart';
 
 void main() {
-  Future<MemoryTokenStore> pump(WidgetTester tester, {String? token}) async {
+  late FakeGateway gateway;
+
+  Future<MemoryTokenStore> pump(
+    WidgetTester tester, {
+    String? token,
+    String? refresh,
+    DateTime? expiry,
+  }) async {
     final store = MemoryTokenStore();
     if (token != null) await store.write('mal', token);
-    final gateway = FakeGateway()..config = const OAuthConfigDto(mal: 'id');
+    if (refresh != null) await store.writeRefresh('mal', refresh);
+    if (expiry != null) await store.writeExpiry('mal', expiry);
+    gateway = FakeGateway()..config = const OAuthConfigDto(mal: 'id');
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -57,5 +66,36 @@ void main() {
     await tester.pumpAndSettle();
     expect(await store.read('mal'), isNull);
     expect(find.text('Sign in with MyAnimeList'), findsOneWidget);
+  });
+
+  testWidgets('an expired sign-in is renewed before Import again', (
+    tester,
+  ) async {
+    final store = await pump(
+      tester,
+      token: 'old',
+      refresh: 'rt',
+      expiry: DateTime.now().subtract(const Duration(days: 1)),
+    );
+    await tester.tap(find.text('Import again'));
+    await tester.pumpAndSettle();
+    expect(gateway.refreshCalls, ['rt']);
+    expect(gateway.signedInCalls, ['renewed']);
+    expect(await store.read('mal'), 'renewed');
+    expect(await store.readRefresh('mal'), 'refresh2');
+  });
+
+  testWidgets('a refused token is renewed once, then sign-in is asked for', (
+    tester,
+  ) async {
+    final store = await pump(tester, token: 'old', refresh: 'rt');
+    gateway
+      ..rejectedTokens.add('old')
+      ..refreshFails = true;
+    await tester.tap(find.text('Import again'));
+    await tester.pumpAndSettle();
+    expect(gateway.refreshCalls, ['rt']);
+    expect(await store.read('mal'), isNull);
+    expect(find.textContaining('sign-in expired'), findsOneWidget);
   });
 }
