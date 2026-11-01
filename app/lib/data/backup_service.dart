@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 
 import '../domain/models/title.dart';
 import 'db/database.dart';
+import 'library_repository.dart';
 
 /// Writes the active library as a Cue backup (schema v1). Tokens, raw
 /// import files and anything not personal are never included.
@@ -21,7 +22,9 @@ class BackupService {
     final settings =
         await (db.select(db.profileSettings)..where(
               (s) =>
-                  s.profileId.equals(profileId) & s.key.isNotValue('_active'),
+                  s.profileId.equals(profileId) &
+                  s.key.isNotValue('_active') &
+                  s.key.like('${LibraryRepository.removalPrefix}%').not(),
             ))
             .get();
     final ut = await (db.select(

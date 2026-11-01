@@ -7,6 +7,7 @@ import '../data/catalog_gateway.dart' show CatalogItemDto;
 import '../data/catalog_repository.dart';
 import '../data/db/database.dart';
 import '../data/profile_repository.dart';
+import '../data/library_repository.dart';
 import '../domain/models/library.dart';
 import 'matcher.dart';
 import 'records.dart';
@@ -283,7 +284,14 @@ class ImportService {
               mode: InsertMode.insertOrReplace,
             );
         if (!m.included || tid == null) continue;
-        final result = await _merge(profileId, tid, r, batchId, now);
+        final result = await _merge(
+          profileId,
+          tid,
+          r,
+          batchId,
+          now,
+          syncing: s.parsed.sourceType == 'sync',
+        );
         if (seenTitles.add(tid)) {
           switch (result) {
             case _Merge.added:
@@ -329,8 +337,9 @@ class ImportService {
     String titleId,
     NormalizedRecord r,
     String batchId,
-    DateTime now,
-  ) async {
+    DateTime now, {
+    bool syncing = false,
+  }) async {
     final existing =
         await (db.select(db.userTitles)..where(
               (u) => u.profileId.equals(profileId) & u.titleId.equals(titleId),
@@ -338,6 +347,13 @@ class ImportService {
             .getSingleOrNull();
     // A manual correction in Cue always wins over imported evidence.
     if (existing != null && existing.source == 'user') return _Merge.unchanged;
+    final library = LibraryRepository(db);
+    final removed = await library.removedAt(profileId, titleId);
+    if (syncing &&
+        removed != null &&
+        (existing == null || !existing.updatedAt.isAfter(removed))) {
+      return _Merge.unchanged;
+    }
 
     final oldState = LibraryState.parse(existing?.state);
     final state = _rank(r.state) > _rank(oldState) ? r.state : oldState;
@@ -356,7 +372,12 @@ class ImportService {
       updatedAt: existing?.updatedAt ?? now,
     );
     if (existing != null && _same(existing, merged)) return _Merge.unchanged;
-    final written = merged.copyWith(updatedAt: now);
+    final written = merged.copyWith(
+      updatedAt: syncing
+          ? now
+          : LibraryRepository.editAfterRemoval(now, removed),
+    );
+    if (!syncing) await library.clearRemoval(profileId, titleId);
     await db.into(db.userTitles).insertOnConflictUpdate(written);
     await db
         .into(db.importChanges)
@@ -519,17 +540,21 @@ class ImportService {
           kept++;
           continue;
         }
-        await (db.delete(db.userTitles)..where(
-              (u) => u.profileId.equals(profileId) & u.titleId.equals(c.rowKey),
-            ))
-            .go();
-        if (c.beforeJson != null) {
+        final library = LibraryRepository(db, clock: _now);
+        if (c.beforeJson == null) {
+          await library.removeEntry(profileId, c.rowKey);
+        } else {
+          final at = LibraryRepository.editAfterRemoval(
+            _now(),
+            await library.removedAt(profileId, c.rowKey),
+          );
+          await library.clearRemoval(profileId, c.rowKey);
           await db
               .into(db.userTitles)
-              .insert(
+              .insertOnConflictUpdate(
                 UserTitle.fromJson(
                   jsonDecode(c.beforeJson!) as Map<String, dynamic>,
-                ),
+                ).copyWith(updatedAt: at),
               );
         }
         reverted++;

@@ -21,7 +21,7 @@ class _Summary extends StatelessWidget {
           if (s.review > 0) ...[
             const SizedBox(height: CueSpace.sm),
             const Text(
-              'Titles that need review wait in Library. They never change recommendations until you match them.',
+              'Titles that need review are not yet recognised as history, so they may still appear in suggestions. Match them in Library to avoid repeats.',
               style: _muted,
             ),
           ],

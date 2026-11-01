@@ -38,37 +38,36 @@ class CatalogRepository {
         ids.add(id);
         final j = dto.json;
         final existing = existingById[id];
-        if (existing != null && existing.detailed && !detailed) {
-          continue;
+        if (existing == null || !existing.detailed || detailed) {
+          await db
+              .into(db.catalogTitles)
+              .insertOnConflictUpdate(
+                CatalogTitlesCompanion.insert(
+                  id: id,
+                  mediaKind: dto.kind.name,
+                  titleEn: Value(j['titleEn'] as String?),
+                  titleRomaji: Value(j['titleRomaji'] as String?),
+                  titleNative: Value(j['titleNative'] as String?),
+                  year: Value((j['year'] as num?)?.toInt()),
+                  country: Value(j['country'] as String?),
+                  format: Value(j['format'] as String?),
+                  status: Value((j['status'] as String?) ?? 'unknown'),
+                  episodes: Value((j['episodes'] as num?)?.toInt()),
+                  chapters: Value((j['chapters'] as num?)?.toInt()),
+                  seasonsJson: Value(jsonEncode(j['seasons'] ?? const [])),
+                  genresJson: Value(jsonEncode(j['genres'] ?? const [])),
+                  tagsJson: Value(jsonEncode(j['tags'] ?? const [])),
+                  score: Value((j['score'] as num?)?.toInt()),
+                  posterUrl: Value(j['posterUrl'] as String?),
+                  backdropUrl: Value(j['backdropUrl'] as String?),
+                  synopsis: Value(j['synopsis'] as String?),
+                  franchiseId: Value(j['franchiseKey'] as String?),
+                  adult: Value(j['adult'] == true),
+                  detailed: Value(detailed || (existing?.detailed ?? false)),
+                  updatedAt: now,
+                ),
+              );
         }
-        await db
-            .into(db.catalogTitles)
-            .insertOnConflictUpdate(
-              CatalogTitlesCompanion.insert(
-                id: id,
-                mediaKind: dto.kind.name,
-                titleEn: Value(j['titleEn'] as String?),
-                titleRomaji: Value(j['titleRomaji'] as String?),
-                titleNative: Value(j['titleNative'] as String?),
-                year: Value((j['year'] as num?)?.toInt()),
-                country: Value(j['country'] as String?),
-                format: Value(j['format'] as String?),
-                status: Value((j['status'] as String?) ?? 'unknown'),
-                episodes: Value((j['episodes'] as num?)?.toInt()),
-                chapters: Value((j['chapters'] as num?)?.toInt()),
-                seasonsJson: Value(jsonEncode(j['seasons'] ?? const [])),
-                genresJson: Value(jsonEncode(j['genres'] ?? const [])),
-                tagsJson: Value(jsonEncode(j['tags'] ?? const [])),
-                score: Value((j['score'] as num?)?.toInt()),
-                posterUrl: Value(j['posterUrl'] as String?),
-                backdropUrl: Value(j['backdropUrl'] as String?),
-                synopsis: Value(j['synopsis'] as String?),
-                franchiseId: Value(j['franchiseKey'] as String?),
-                adult: Value(j['adult'] == true),
-                detailed: Value(detailed || (existing?.detailed ?? false)),
-                updatedAt: now,
-              ),
-            );
         await _identity(id, dto.provider, dto.providerId, dto.providerKind);
         if (dto.idMal != null) {
           await _identity(
@@ -103,19 +102,26 @@ class CatalogRepository {
       for (final i in known)
         key(i.provider, i.providerId, i.providerKind): i.titleId,
     };
-    return {
-      for (final d in items)
-        d:
-            byKey[key(d.provider, d.providerId, d.providerKind ?? '')] ??
-            (d.idMal == null
-                ? null
-                : byKey[key(
-                    'mal',
-                    '${d.idMal}',
-                    d.kind.isReading ? 'manga' : 'anime',
-                  )]) ??
-            d.titleId,
-    };
+    final resolved = <CatalogItemDto, String>{};
+    for (final d in items) {
+      final id =
+          byKey[key(d.provider, d.providerId, d.providerKind ?? '')] ??
+          (d.idMal == null
+              ? null
+              : byKey[key(
+                  'mal',
+                  '${d.idMal}',
+                  d.kind.isReading ? 'manga' : 'anime',
+                )]) ??
+          d.titleId;
+      resolved[d] = id;
+      byKey[key(d.provider, d.providerId, d.providerKind ?? '')] = id;
+      if (d.idMal != null) {
+        byKey[key('mal', '${d.idMal}', d.kind.isReading ? 'manga' : 'anime')] =
+            id;
+      }
+    }
+    return resolved;
   }
 
   /// A title already known under another identity keeps its id (e.g. an

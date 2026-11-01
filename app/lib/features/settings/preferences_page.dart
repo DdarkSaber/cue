@@ -35,11 +35,9 @@ class PreferencesPage extends ConsumerWidget {
           style: TextStyle(fontSize: 13, color: CueColors.textMuted),
         ),
         const SizedBox(height: CueSpace.md),
-        _toggle(
-          title: 'Include rewatches by default',
-          subtitle: 'Titles you rated Rewatched or Would rewatch, and ones watched 3+ years ago',
-          value: s.includeRewatches,
-          onChanged: (v) => change((x) => x.copyWith(includeRewatches: v)),
+        const Text(
+          'New suggestions exclude every title in this library, including planned titles. Choose Revisit on the deck for titles marked to rewatch, or watched 3+ years ago.',
+          style: TextStyle(fontSize: 13, color: CueColors.textMuted),
         ),
         const CueSectionLabel('Live mood'),
         _toggle(

@@ -165,7 +165,7 @@ class DeckController extends Notifier<DeckState> {
     return _engine = e;
   }
 
-  /// Genre words understood without AI ("fast" leans to action).
+  /// Genre words understood without AI. Pace is not a genre.
   static const _genreWords = [
     'comedy',
     'romance',
@@ -198,7 +198,6 @@ class DeckController extends Notifier<DeckState> {
     final local = <String>{
       for (final g in _genreWords)
         if (lower.contains(g)) g,
-      if (lower.contains('fast')) 'action',
     };
     var ai = (<String>[], <String>[]);
     if (ref.read(currentSettingsProvider).smartMoodText) {

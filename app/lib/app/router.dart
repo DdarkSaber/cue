@@ -23,6 +23,8 @@ abstract final class CueRoutes {
   static const library = '/library';
   static const settings = '/settings';
   static const importer = '/library/import';
+  static String libraryContents(String profileId) =>
+      '/settings/library/${Uri.encodeComponent(profileId)}';
 }
 
 GoRouter buildRouter({String initialLocation = CueRoutes.forYou}) => GoRouter(
@@ -79,6 +81,17 @@ GoRouter buildRouter({String initialLocation = CueRoutes.forYou}) => GoRouter(
                     settings.loadLibrary,
                     () => settings.LibrarySettingsPage(),
                   ),
+                  routes: [
+                    GoRoute(
+                      path: ':profileId',
+                      builder: (_, state) => DeferredPage(
+                        settings.loadLibrary,
+                        () => settings.LibraryContentsPage(
+                          profileId: state.pathParameters['profileId']!,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 GoRoute(
                   path: 'preferences',

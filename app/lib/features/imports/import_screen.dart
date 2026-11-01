@@ -37,10 +37,10 @@ class ImportScreen extends ConsumerStatefulWidget {
   const ImportScreen({super.key});
 
   @override
-  ConsumerState<ImportScreen> createState() => _ImportScreenState();
+  ImportScreenState createState() => ImportScreenState();
 }
 
-class _ImportScreenState extends ConsumerState<ImportScreen> {
+class ImportScreenState extends ConsumerState<ImportScreen> {
   _Step _step = _Step.choose;
   String? _error;
   Uint8List? _raw;

@@ -115,13 +115,17 @@ class Ranker {
     final rewatchable = (entry?.rating?.isRewatch ?? false) || longAgo;
     if (f.isRevisit) {
       if (!rewatchable) return false;
-    } else if (entry != null && entry.state.isSeen) {
-      final rewatches = f.includeRewatches || includeRewatchesDefault;
-      if (!(rewatches && rewatchable)) return false;
+    } else if (entry != null) {
+      return false;
     }
 
     final kinds = f.kinds.isEmpty ? enabledKinds : f.kinds;
-    if (!f.isRevisit && !kinds.contains(t.kind)) return false;
+    if (!kinds.contains(t.kind)) return false;
+    if (!f.genres.every(
+      (g) => t.genres.any((actual) => actual.toLowerCase() == g),
+    )) {
+      return false;
+    }
     if (f.shortOnly && !_isShort(t)) return false;
     if (f.era == EraFilter.newArt && (t.year == null || t.year! < 2023)) {
       return false;
@@ -333,6 +337,7 @@ class Ranker {
       'the art era filter': f.copyWith(era: EraFilter.any),
       'the status filter': f.copyWith(status: StatusFilter.any),
       'the country filter': f.copyWith(countries: {}),
+      'the genre filter': f.copyWith(genres: {}),
     };
     for (final e in checks.entries) {
       if (e.value == f) continue;
@@ -346,6 +351,8 @@ class Ranker {
               enabledKinds: enabledKinds,
             ),
           )
+          .map((t) => t.franchiseKey)
+          .toSet()
           .length;
       if (n > 0) {
         return EmptyReason(

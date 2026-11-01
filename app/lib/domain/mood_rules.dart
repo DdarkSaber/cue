@@ -6,6 +6,7 @@ import 'models/title.dart';
 class MoodParse {
   const MoodParse({
     this.kinds = const {},
+    this.genres = const {},
     this.mood,
     this.shortOnly = false,
     this.era = EraFilter.any,
@@ -14,6 +15,7 @@ class MoodParse {
   });
 
   final Set<MediaKind> kinds;
+  final Set<String> genres;
   final QuickMood? mood;
   final bool shortOnly;
   final EraFilter era;
@@ -26,13 +28,24 @@ class MoodParse {
 
   DeckFilters applyTo(DeckFilters f, String text) => f.copyWith(
     kinds: kinds.isEmpty ? f.kinds : kinds,
-    mood: mood ?? f.mood,
+    genres: genres.isEmpty ? f.genres : genres,
+    mood: rewatches ? QuickMood.revisit : (mood ?? f.mood),
     shortOnly: shortOnly || f.shortOnly,
     era: era == EraFilter.any ? f.era : era,
-    includeRewatches: rewatches || f.includeRewatches,
     tellMe: text,
   );
 }
+
+const moodGenres = <String, String>{
+  'action': 'Action',
+  'comedy': 'Comedy',
+  'romance': 'Romance',
+  'mystery': 'Mystery',
+  'thriller': 'Thriller',
+  'horror': 'Horror',
+  'fantasy': 'Fantasy',
+  'sports': 'Sports',
+};
 
 const _kindWords = <String, Set<MediaKind>>{
   'anime': {MediaKind.anime},
@@ -82,6 +95,7 @@ const _moodWords = <QuickMood, List<String>>{
     'relax',
     'light',
     'funny',
+    'comedy',
     'laugh',
     'tired',
     'wholesome',
@@ -143,6 +157,19 @@ MoodParse parseMood(String input) {
     );
   }
 
+  final genres = <String>{
+    for (final g in moodGenres.keys)
+      if (RegExp('\\b${RegExp.escape(g)}\\b').hasMatch(text)) g,
+    if (RegExp(r'\b(funny|laugh|humour|humor)\b').hasMatch(text)) 'comedy',
+    if (RegExp(r'\b(romcom|rom-com|rom com)\b').hasMatch(text)) ...{
+      'romance',
+      'comedy',
+    },
+  };
+  if (genres.isNotEmpty) {
+    understood.addAll(genres.map((g) => moodGenres[g]!));
+  }
+
   QuickMood? mood;
   var bestHits = 0;
   for (final e in _moodWords.entries) {
@@ -172,10 +199,11 @@ MoodParse parseMood(String input) {
 
   final rewatches = RegExp(r'\b(rewatch|again|re-watch|reread|re-read)\b')
       .hasMatch(text);
-  if (rewatches) understood.add('Include rewatches');
+  if (rewatches) understood.add('Revisit');
 
   return MoodParse(
     kinds: kinds,
+    genres: genres,
     mood: mood,
     shortOnly: shortOnly,
     era: era,

@@ -1,4 +1,5 @@
 import 'package:cue/app/router.dart';
+import 'package:cue/app/providers.dart';
 import 'package:cue/data/catalog_gateway.dart';
 import 'package:cue/data/catalog_repository.dart';
 import 'package:cue/data/library_repository.dart';
@@ -6,8 +7,10 @@ import 'package:cue/data/profile_repository.dart';
 import 'package:cue/domain/decisions.dart';
 import 'package:cue/domain/models/decision.dart';
 import 'package:cue/domain/models/library.dart';
+import 'package:cue/domain/models/settings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../helpers.dart';
 import '../support/fakes.dart';
@@ -19,7 +22,121 @@ Future<void> settle(WidgetTester t) async {
   await t.pumpAndSettle();
 }
 
+class _FailingProfileRepository extends ProfileRepository {
+  _FailingProfileRepository(super.db);
+  bool failSave = false;
+
+  @override
+  Future<void> saveSettings(String profileId, AppSettings settings) {
+    if (failSave) throw StateError('Synthetic save failure');
+    return super.saveSettings(profileId, settings);
+  }
+}
+
 void main() {
+  testWidgets('name save failure is visible and does not report success', (
+    t,
+  ) async {
+    final db = memoryDb();
+    addTearDown(db.close);
+    final repo = _FailingProfileRepository(db);
+    late String id;
+    await t.runAsync(() async {
+      id = (await repo.ensureActive()).id;
+      await repo.saveSettings(
+        id,
+        (await repo.loadSettings(id)).copyWith(displayName: 'Original'),
+      );
+      repo.failSave = true;
+    });
+    await pumpCue(
+      t,
+      db: db,
+      location: '/settings/library',
+      overrides: [profileRepositoryProvider.overrideWithValue(repo)],
+    );
+    await t.enterText(find.byType(TextField), 'Not persisted');
+    await t.tap(find.widgetWithText(OutlinedButton, 'Save'));
+    await settle(t);
+    expect(
+      find.text('Could not save the library name. Try again.'),
+      findsOneWidget,
+    );
+    expect(find.text('Library name saved.'), findsNothing);
+    expect((await repo.loadSettings(id)).displayName, 'Original');
+  });
+
+  testWidgets('library name loads, saves, clears and survives reopening', (
+    t,
+  ) async {
+    final db = memoryDb();
+    addTearDown(db.close);
+    final repo = ProfileRepository(db);
+    late String id;
+    await t.runAsync(() async {
+      id = (await repo.ensureActive()).id;
+      await repo.saveSettings(
+        id,
+        (await repo.loadSettings(id)).copyWith(displayName: 'Original'),
+      );
+    });
+    await pumpCue(t, db: db, location: '/settings/library');
+    await settle(t);
+    expect(
+      t.widget<TextField>(find.byType(TextField)).controller!.text,
+      'Original',
+    );
+    await t.enterText(find.byType(TextField), '  Renamed  ');
+    await t.tap(find.widgetWithText(OutlinedButton, 'Save'));
+    await settle(t);
+    expect(find.text('Library name saved.'), findsOneWidget);
+    expect(await t.runAsync(() => repo.loadSettings(id)), isNotNull);
+    expect((await repo.loadSettings(id)).displayName, 'Renamed');
+    expect(find.text('Renamed'), findsWidgets);
+
+    await t.pumpWidget(const SizedBox.shrink());
+    await settle(t);
+    await pumpCue(t, db: db, location: '/settings/library');
+    await settle(t);
+    expect(
+      t.widget<TextField>(find.byType(TextField)).controller!.text,
+      'Renamed',
+    );
+    await t.enterText(find.byType(TextField), '');
+    await t.tap(find.widgetWithText(OutlinedButton, 'Save'));
+    await settle(t);
+    expect((await repo.loadSettings(id)).displayName, isNull);
+    expect(find.text('Renamed'), findsNothing);
+  });
+
+  test('queued preference edits keep the correct library', () async {
+    final db = memoryDb();
+    addTearDown(db.close);
+    final repo = ProfileRepository(db);
+    final first = (await repo.ensureActive()).id;
+    final second = (await repo.create()).id;
+    await repo.activate(first);
+    final c = ProviderContainer(
+      overrides: [databaseProvider.overrideWithValue(db)],
+    );
+    addTearDown(c.dispose);
+    await c.read(settingsProvider.future);
+    final save = c
+        .read(settingsProvider.notifier)
+        .change((s) => s.copyWith(displayName: 'First only'));
+    final toggle = c
+        .read(settingsProvider.notifier)
+        .change((s) => s.copyWith(haptics: false));
+    await repo.activate(second);
+    c.invalidate(profileIdProvider);
+    await Future.wait([save, toggle]);
+    await c.read(settingsProvider.future);
+    expect((await repo.loadSettings(first)).displayName, 'First only');
+    expect((await repo.loadSettings(first)).haptics, isFalse);
+    expect((await repo.loadSettings(second)).displayName, isNull);
+    expect(c.read(currentSettingsProvider).displayName, isNull);
+  });
+
   testWidgets('empty Library says why and offers import', (t) async {
     await pumpCue(t, location: CueRoutes.library);
     await settle(t);

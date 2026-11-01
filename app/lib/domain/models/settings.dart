@@ -24,6 +24,8 @@ class AppSettings {
   final bool showAdult;
   final String region;
   final Set<MediaKind> defaultKinds;
+
+  /// Retained for older backups; saved titles now require explicit Revisit.
   final bool includeRewatches;
   final bool inviteDismissed;
 
@@ -42,6 +44,7 @@ class AppSettings {
     bool? inviteDismissed,
     bool? smartMoodText,
     String? displayName,
+    bool clearDisplayName = false,
   }) => AppSettings(
     reduceMotion: reduceMotion ?? this.reduceMotion,
     haptics: haptics ?? this.haptics,
@@ -52,7 +55,7 @@ class AppSettings {
     includeRewatches: includeRewatches ?? this.includeRewatches,
     inviteDismissed: inviteDismissed ?? this.inviteDismissed,
     smartMoodText: smartMoodText ?? this.smartMoodText,
-    displayName: displayName ?? this.displayName,
+    displayName: clearDisplayName ? null : (displayName ?? this.displayName),
   );
 
   /// Key/value form stored in profile_settings (showAdult, region and name

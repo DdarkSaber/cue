@@ -171,6 +171,12 @@ class ProfileRepository {
       db.tagWeights,
     )..where((t) => t.profileId.equals(profileId))).go();
     await (db.delete(
+      db.moodSessions,
+    )..where((m) => m.profileId.equals(profileId))).go();
+    await (db.delete(
+      db.moodStates,
+    )..where((m) => m.profileId.equals(profileId))).go();
+    await (db.delete(
       db.profileSettings,
     )..where((t) => t.profileId.equals(profileId))).go();
     await (db.delete(db.profiles)..where((p) => p.id.equals(profileId))).go();

@@ -12,6 +12,7 @@ import 'package:cue/domain/decisions.dart';
 import 'package:cue/domain/models/decision.dart';
 import 'package:cue/domain/models/library.dart';
 import 'package:cue/imports/import_service.dart';
+import 'package:cue/imports/records.dart';
 import 'package:cue/sync/sync_crypto.dart';
 import 'package:cue/sync/sync_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -173,6 +174,153 @@ void main() {
         LibraryState.dropped,
       );
     });
+
+    test(
+      'title removals travel and an explicit same-second re-add wins',
+      () async {
+        await phone.library.saveEntry(
+          phone.id,
+          'anilist:1',
+          state: LibraryState.completed,
+          rating: Rating.favourite,
+        );
+        final at =
+            (await phone.db.select(phone.db.userTitles).getSingle()).updatedAt;
+        final code = await phone.sync.enable(phone.id);
+        await laptop.sync.join(laptop.id, code);
+        await LibraryRepository(
+          phone.db,
+          clock: () => at,
+        ).removeEntry(phone.id, 'anilist:1');
+        await phone.sync.syncNow(phone.id);
+        await laptop.sync.syncNow(laptop.id);
+        expect(await laptop.library.entry(laptop.id, 'anilist:1'), isNull);
+        expect(await phone.library.entry(phone.id, 'anilist:1'), isNull);
+
+        await LibraryRepository(laptop.db, clock: () => at).saveEntry(
+          laptop.id,
+          'anilist:1',
+          state: LibraryState.reading,
+          rating: Rating.okay,
+        );
+        await laptop.sync.syncNow(laptop.id);
+        await phone.sync.syncNow(phone.id);
+        expect(
+          (await phone.library.entry(phone.id, 'anilist:1'))!.state,
+          LibraryState.reading,
+        );
+        expect(
+          (await laptop.library.entry(laptop.id, 'anilist:1'))!.rating,
+          Rating.okay,
+        );
+        final exported =
+            jsonDecode(await BackupService(phone.db).export(phone.id)) as Map;
+        expect(
+          (exported['settings'] as Map).keys.where(
+            (k) => '$k'.startsWith(LibraryRepository.removalPrefix),
+          ),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
+      'undo-import removals sync, preserve edits and allow explicit reimport',
+      () async {
+        final imports = ImportService(phone.db, phone.catalog);
+        final parsed = ParsedImport(
+          sourceType: 'mal',
+          adapterVersion: 'synthetic',
+          records: [
+            for (var i = 1; i <= 2; i++)
+              NormalizedRecord(
+                sourceEntryKey: '$i',
+                title: 'Synthetic $i',
+                cueId: 'anilist:$i',
+                state: LibraryState.completed,
+              ),
+          ],
+        );
+        final first = await imports.commit(
+          phone.id,
+          await imports.stage(phone.id, parsed, offlineOnly: true),
+        );
+        final code = await phone.sync.enable(phone.id);
+        await laptop.sync.join(laptop.id, code);
+        await phone.library.saveEntry(
+          phone.id,
+          'anilist:2',
+          state: LibraryState.dropped,
+          rating: Rating.dropped,
+        );
+        final undo = await imports.undo(phone.id, first.batchId!);
+        expect(undo.reverted, 1);
+        expect(undo.kept, 1);
+        await phone.sync.syncNow(phone.id);
+        await laptop.sync.syncNow(laptop.id);
+        expect(await laptop.library.entry(laptop.id, 'anilist:1'), isNull);
+        expect(
+          (await laptop.library.entry(laptop.id, 'anilist:2'))!.state,
+          LibraryState.dropped,
+        );
+        await imports.commit(
+          phone.id,
+          await imports.stage(phone.id, parsed, offlineOnly: true),
+        );
+        await phone.sync.syncNow(phone.id);
+        await laptop.sync.syncNow(laptop.id);
+        expect(await laptop.library.entry(laptop.id, 'anilist:1'), isNotNull);
+        expect(
+          (await laptop.library.entry(laptop.id, 'anilist:2'))!.rating,
+          Rating.dropped,
+        );
+      },
+    );
+
+    test(
+      'reset swipes propagates history removal but keeps imports and ratings',
+      () async {
+        await phone.decisions.decide(
+          phone.id,
+          (await phone.catalog.titleById('anilist:1'))!,
+          Decision.watched,
+        );
+        await phone.library.saveEntry(
+          phone.id,
+          'anilist:2',
+          state: LibraryState.completed,
+          rating: Rating.rewatched,
+        );
+        final imports = ImportService(phone.db, phone.catalog);
+        const parsed = ParsedImport(
+          sourceType: 'mal',
+          adapterVersion: 'synthetic',
+          records: [
+            NormalizedRecord(
+              sourceEntryKey: '3',
+              title: 'Synthetic 3',
+              cueId: 'anilist:3',
+              state: LibraryState.completed,
+            ),
+          ],
+        );
+        await imports.commit(
+          phone.id,
+          await imports.stage(phone.id, parsed, offlineOnly: true),
+        );
+        final code = await phone.sync.enable(phone.id);
+        await laptop.sync.join(laptop.id, code);
+        await phone.library.resetSwipes(phone.id);
+        await phone.sync.syncNow(phone.id);
+        await laptop.sync.syncNow(laptop.id);
+        expect(await laptop.library.entry(laptop.id, 'anilist:1'), isNull);
+        expect(
+          (await laptop.library.entry(laptop.id, 'anilist:2'))!.rating,
+          Rating.rewatched,
+        );
+        expect(await laptop.library.entry(laptop.id, 'anilist:3'), isNotNull);
+      },
+    );
 
     test('removals, library settings and mood learning travel', () async {
       await phone.decisions.decide(

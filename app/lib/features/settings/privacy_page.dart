@@ -44,21 +44,23 @@ class _PrivacyPageState extends ConsumerState<PrivacyPage> {
   }
 
   Future<void> _delete() async {
-    final ok = await confirmAction(
-      context,
-      title: 'Delete this library?',
-      body: 'This removes your history, decisions, imports, Will try list and taste data from this device. It cannot be undone. Export first if you may want it back.',
-      confirmLabel: 'Delete library',
-    );
-    if (!ok) return;
     final repo = ref.read(profileRepositoryProvider);
     final id = await ref.read(profileIdProvider.future);
-    await repo.deleteProfile(id);
-    await repo.ensureActive();
-    resetLibraryState(ref);
+    final profiles = await repo.all();
+    if (!mounted) return;
+    final deleted = await _deleteLocalLibrary(
+      context,
+      ref,
+      profiles.firstWhere((p) => p.id == id),
+      confirmationTitle: 'Delete this library?',
+      returnToLibraries: false,
+    );
+    if (!deleted) return;
     if (mounted) {
       setState(
-        () => _message = 'Library deleted. A fresh, empty one is ready.',
+        () => _message = profiles.length == 1
+            ? 'Library deleted. A fresh, empty one is ready.'
+            : 'Library deleted. Your remaining library is now in use.',
       );
     }
   }

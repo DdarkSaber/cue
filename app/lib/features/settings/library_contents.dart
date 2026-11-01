@@ -7,7 +7,7 @@ class _SourceCount {
   final String label;
   final int titles;
 
-  /// Null for deck swipes, which are removed with Reset swipes instead.
+  /// Null for local/deck records without an undoable import source.
   final String? sourceType;
 }
 
@@ -27,28 +27,58 @@ final _contentsProvider = FutureProvider.autoDispose<List<_SourceCount>>((
           ))
           .get();
   final byType = <String, Set<String>>{};
+  final held = await ref.read(libraryRepositoryProvider).contents(id);
+  final historyIds = {
+    for (final r in held)
+      if (r.entry != null) r.title.id,
+  };
   for (final b in batches) {
-    final obs = await (db.select(
-      db.sourceObservations,
-    )..where((o) => o.batchId.equals(b.id) & o.titleId.isNotNull())).get();
+    final obs =
+        await (db.select(db.sourceObservations)..where(
+              (o) =>
+                  o.batchId.equals(b.id) &
+                  o.titleId.isNotNull() &
+                  o.included.equals(true),
+            ))
+            .get();
     byType
         .putIfAbsent(b.sourceType, () => {})
-        .addAll(obs.map((o) => o.titleId!));
+        .addAll(obs.map((o) => o.titleId!).where(historyIds.contains));
   }
   final decided = await (db.select(
     db.decisionEvents,
-  )..where((e) => e.profileId.equals(id) & e.reversesEventId.isNull())).get();
+  )..where((e) => e.profileId.equals(id))).get();
+  final reversed = {for (final e in decided) ?e.reversesEventId};
+  final active = <String>{};
+  final byId = {for (final row in held) row.title.id: row};
+  for (final e in decided.where(
+    (e) => e.reversesEventId == null && !reversed.contains(e.id),
+  )) {
+    final row = byId[e.titleId];
+    if (row == null) continue;
+    final applies = switch (e.action) {
+      'will_try' => row.shortlisted,
+      'not_interested' => row.excluded,
+      'not_now' => row.deferred,
+      'watched' || 'read' => row.entry?.state.isSeen ?? false,
+      _ => false,
+    };
+    if (applies) active.add(e.titleId);
+  }
+  final local = historyIds
+      .difference(byType.values.expand((ids) => ids).toSet())
+      .difference(active);
   return [
     for (final e in byType.entries)
       _SourceCount(importSourceName(e.key), e.value.length, sourceType: e.key),
-    if (decided.isNotEmpty)
-      _SourceCount('Deck swipes', decided.map((d) => d.titleId).toSet().length),
+    if (active.isNotEmpty) _SourceCount('Deck swipes', active.length),
+    if (local.isNotEmpty) _SourceCount('Added in Cue', local.length),
   ];
 });
 
 /// "What is in this library": titles per source, each import source with
-/// an x that undoes all of its imports. Single titles are removed from
-/// their own sheet in Library.
+/// an x that undoes all of its imports. Titles can also be removed from
+/// the selected library's contents page.
 class _LibraryContents extends ConsumerWidget {
   const _LibraryContents();
 
@@ -85,12 +115,22 @@ class _LibraryContents extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final list = ref.watch(_contentsProvider).value ?? const [];
+    final contents = ref.watch(_contentsProvider);
+    final list = contents.isLoading || contents.hasError
+        ? const <_SourceCount>[]
+        : contents.value ?? const [];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const CueSectionLabel('What is in this library'),
-        if (list.isEmpty)
+        if (contents.isLoading)
+          const LinearProgressIndicator(color: CueColors.accent),
+        if (contents.hasError)
+          const Text(
+            'Source counts could not be read. Try reopening this page.',
+            style: _body,
+          ),
+        if (!contents.isLoading && !contents.hasError && list.isEmpty)
           const Text(
             'Nothing yet: import a list or start swiping.',
             style: _body,

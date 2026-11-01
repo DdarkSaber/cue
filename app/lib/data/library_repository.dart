@@ -12,6 +12,23 @@ class DecisionRow {
   final Title? title;
 }
 
+class LibraryContentEntry {
+  const LibraryContentEntry({
+    required this.title,
+    this.entry,
+    this.shortlisted = false,
+    this.excluded = false,
+    this.deferred = false,
+    this.metadataAvailable = true,
+  });
+  final Title title;
+  final LibraryEntry? entry;
+  final bool shortlisted;
+  final bool excluded;
+  final bool deferred;
+  final bool metadataAvailable;
+}
+
 /// Profile-scoped reads and edits of the personal library.
 class LibraryRepository {
   LibraryRepository(this.db, {DateTime Function()? clock})
@@ -215,13 +232,17 @@ class LibraryRepository {
     };
     final swipeOnly = watched.difference(imported);
     if (swipeOnly.isNotEmpty) {
-      await (db.delete(db.userTitles)..where(
-            (x) =>
-                x.profileId.equals(profileId) &
-                x.titleId.isIn(swipeOnly) &
-                x.rating.isNull(),
-          ))
-          .go();
+      final rows =
+          await (db.select(db.userTitles)..where(
+                (x) =>
+                    x.profileId.equals(profileId) &
+                    x.titleId.isIn(swipeOnly) &
+                    x.rating.isNull(),
+              ))
+              .get();
+      for (final row in rows) {
+        await removeEntry(profileId, row.titleId);
+      }
     }
     await (db.delete(
       db.decisionEvents,
@@ -255,6 +276,47 @@ class LibraryRepository {
     return {for (final r in rows) r.id: Title.fromRow(r)};
   }
 
+  /// All currently held titles, not historical or reversed decision events.
+  /// Missing catalog metadata is shown explicitly rather than hiding a row.
+  Future<List<LibraryContentEntry>> contents(String profileId) =>
+      db.transaction(() async {
+        final s = await signals(profileId);
+        final ids = {
+          ...s.library.keys,
+          ...s.shortlisted,
+          ...s.excluded,
+          ...s.deferred,
+        };
+        final titles = await _titles(ids);
+        return [
+          for (final id in ids)
+            LibraryContentEntry(
+              title:
+                  titles[id] ??
+                  Title(id: id, kind: MediaKind.unknown, titleEn: id),
+              entry: s.library[id],
+              shortlisted: s.shortlisted.contains(id),
+              excluded: s.excluded.contains(id),
+              deferred: s.deferred.contains(id),
+              metadataAvailable: titles.containsKey(id),
+            ),
+        ];
+      });
+
+  Future<void> removeTitle(String profileId, String titleId) =>
+      db.transaction(() async {
+        await removeEntry(profileId, titleId);
+        await removeFromShortlist(profileId, titleId);
+        await (db.delete(db.exclusions)..where(
+              (x) => x.profileId.equals(profileId) & x.titleId.equals(titleId),
+            ))
+            .go();
+        await (db.delete(db.deferrals)..where(
+              (x) => x.profileId.equals(profileId) & x.titleId.equals(titleId),
+            ))
+            .go();
+      });
+
   /// Entries with their titles, for Library sections.
   Future<List<(LibraryEntry, Title)>> entries(String profileId) async {
     final ut =
@@ -286,12 +348,14 @@ class LibraryRepository {
     Rating? rating,
     RewatchMood? rewatchMood,
     DateTime? actualWatchedAt,
-  }) async {
+  }) => db.transaction(() async {
     final existing =
         await (db.select(db.userTitles)..where(
               (x) => x.profileId.equals(profileId) & x.titleId.equals(titleId),
             ))
             .getSingleOrNull();
+    final removed = await removedAt(profileId, titleId);
+    await clearRemoval(profileId, titleId);
     await db
         .into(db.userTitles)
         .insertOnConflictUpdate(
@@ -307,16 +371,103 @@ class LibraryRepository {
             latestKnown: Value(existing?.latestKnown),
             note: Value(existing?.note),
             source: const Value('user'),
-            updatedAt: _now(),
+            updatedAt: editAfterRemoval(_now(), removed),
+          ),
+        );
+  });
+
+  /// A tombstone prevents an older synced copy from restoring a removal.
+  Future<void> removeEntry(String profileId, String titleId) =>
+      db.transaction(() async {
+        await recordRemoval(profileId, titleId, _now());
+        await (db.delete(db.userTitles)..where(
+              (x) => x.profileId.equals(profileId) & x.titleId.equals(titleId),
+            ))
+            .go();
+      });
+
+  static const removalPrefix = 'libraryRemoved:';
+
+  Future<DateTime?> removedAt(String profileId, String titleId) async {
+    final row =
+        await (db.select(db.profileSettings)..where(
+              (s) =>
+                  s.profileId.equals(profileId) &
+                  s.key.equals('$removalPrefix$titleId'),
+            ))
+            .getSingleOrNull();
+    return row == null ? null : DateTime.parse(row.value);
+  }
+
+  Future<Map<String, DateTime>> removals(String profileId) async => {
+    for (final row
+        in await (db.select(db.profileSettings)..where(
+              (s) =>
+                  s.profileId.equals(profileId) & s.key.like('$removalPrefix%'),
+            ))
+            .get())
+      row.key.substring(removalPrefix.length): DateTime.parse(row.value),
+  };
+
+  Future<void> recordRemoval(
+    String profileId,
+    String titleId,
+    DateTime when,
+  ) async {
+    final at = DateTime.fromMillisecondsSinceEpoch(
+      when.millisecondsSinceEpoch ~/ 1000 * 1000,
+      isUtc: true,
+    );
+    final prior = await removedAt(profileId, titleId);
+    if (prior != null && !at.isAfter(prior)) return;
+    await db
+        .into(db.profileSettings)
+        .insertOnConflictUpdate(
+          ProfileSettingsCompanion.insert(
+            profileId: profileId,
+            key: '$removalPrefix$titleId',
+            value: at.toIso8601String(),
           ),
         );
   }
 
-  Future<void> removeEntry(String profileId, String titleId) =>
-      (db.delete(db.userTitles)..where(
-            (x) => x.profileId.equals(profileId) & x.titleId.equals(titleId),
-          ))
-          .go();
+  Future<void> clearRemoval(String profileId, String titleId) async {
+    await (db.delete(db.profileSettings)..where(
+          (s) =>
+              s.profileId.equals(profileId) &
+              s.key.equals('$removalPrefix$titleId'),
+        ))
+        .go();
+  }
+
+  /// Drift stores row timestamps to the second. An explicit re-add must be
+  /// later even if it happens in the same second as the removal.
+  static DateTime editAfterRemoval(DateTime now, DateTime? removed) {
+    final second = DateTime.fromMillisecondsSinceEpoch(
+      now.millisecondsSinceEpoch ~/ 1000 * 1000,
+      isUtc: true,
+    );
+    return removed != null && !second.isAfter(removed)
+        ? removed.add(const Duration(seconds: 1))
+        : now;
+  }
+
+  Future<void> applyRemovals(String profileId) async {
+    final deleted = await removals(profileId);
+    final rows = await (db.select(
+      db.userTitles,
+    )..where((u) => u.profileId.equals(profileId))).get();
+    for (final row in rows) {
+      final at = deleted[row.titleId];
+      if (at != null && !row.updatedAt.isAfter(at)) {
+        await (db.delete(db.userTitles)..where(
+              (u) =>
+                  u.profileId.equals(profileId) & u.titleId.equals(row.titleId),
+            ))
+            .go();
+      }
+    }
+  }
 
   /// Titles hidden by Not interested (active) or Not now (still deferred).
   Future<List<(Title, bool excluded, DateTime? until)>> hidden(

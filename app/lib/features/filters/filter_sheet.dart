@@ -132,10 +132,17 @@ class _FilterBodyState extends State<FilterBody> {
           const Padding(
             padding: EdgeInsets.only(top: 8),
             child: Text(
-              'Saved. Cue learns what these words mean from what you pick next. For instant understanding, turn on Smarter mood text in Settings.',
+              'Saved as a mood preference. Use Format and Genre below for strict filters. Cue learns other words from your next picks.',
               style: TextStyle(fontSize: 13, color: CueColors.textMuted),
             ),
           ),
+        const Padding(
+          padding: EdgeInsets.only(top: 8),
+          child: Text(
+            'Format and genre are strict. Pace and mood are preferences, not guarantees.',
+            style: TextStyle(fontSize: 13, color: CueColors.textMuted),
+          ),
+        ),
         const CueSectionLabel('Format'),
         Wrap(
           spacing: 8,
@@ -149,6 +156,25 @@ class _FilterBodyState extends State<FilterBody> {
                   final next = {...f.kinds};
                   next.contains(k) ? next.remove(k) : next.add(k);
                   _f = f.copyWith(kinds: next);
+                },
+              ),
+          ],
+        ),
+        const CueSectionLabel('Genre (required)'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            for (final genre in moodGenres.entries)
+              CueChoiceChip(
+                label: genre.value,
+                selected: f.genres.contains(genre.key),
+                onTap: () {
+                  final next = {...f.genres};
+                  next.contains(genre.key)
+                      ? next.remove(genre.key)
+                      : next.add(genre.key);
+                  _f = f.copyWith(genres: next);
                 },
               ),
           ],
@@ -188,10 +214,11 @@ class _FilterBodyState extends State<FilterBody> {
             onChanged: (v) => _f = f.copyWith(shortOnly: v),
           ),
           _Toggle(
-            label: 'Include rewatches',
-            hint: 'Titles you rated Rewatched or Would rewatch',
-            value: f.includeRewatches,
-            onChanged: (v) => _f = f.copyWith(includeRewatches: v),
+            label: 'Revisit saved titles',
+            hint: 'Titles you rated to rewatch, or watched 3+ years ago',
+            value: f.isRevisit,
+            onChanged: (v) =>
+                _f = f.copyWith(mood: v ? QuickMood.revisit : QuickMood.forYou),
           ),
           const CueSectionLabel('Art era'),
           Wrap(

@@ -15,6 +15,7 @@ class DeckFilters {
     this.era = EraFilter.any,
     this.status = StatusFilter.any,
     this.countries = const {},
+    this.genres = const {},
     this.includeRewatches = false,
     this.tellMe,
   });
@@ -30,6 +31,11 @@ class DeckFilters {
 
   /// ISO country codes; empty means any.
   final Set<String> countries;
+
+  /// Lower-cased explicit genres; every selected genre must match.
+  final Set<String> genres;
+
+  /// Legacy flag. Only Revisit can include saved titles in the deck.
   final bool includeRewatches;
 
   /// The sentence the person typed, kept for the summary only.
@@ -44,7 +50,7 @@ class DeckFilters {
       (era == EraFilter.any ? 0 : 1) +
       (status == StatusFilter.any ? 0 : 1) +
       (countries.isEmpty ? 0 : 1) +
-      (includeRewatches ? 1 : 0);
+      (genres.isEmpty ? 0 : 1);
 
   DeckFilters copyWith({
     Set<MediaKind>? kinds,
@@ -53,6 +59,7 @@ class DeckFilters {
     EraFilter? era,
     StatusFilter? status,
     Set<String>? countries,
+    Set<String>? genres,
     bool? includeRewatches,
     String? tellMe,
     bool clearTellMe = false,
@@ -63,6 +70,7 @@ class DeckFilters {
     era: era ?? this.era,
     status: status ?? this.status,
     countries: countries ?? this.countries,
+    genres: genres ?? this.genres,
     includeRewatches: includeRewatches ?? this.includeRewatches,
     tellMe: clearTellMe ? null : (tellMe ?? this.tellMe),
   );
@@ -80,7 +88,9 @@ class DeckFilters {
       other.kinds.length == kinds.length &&
       other.kinds.containsAll(kinds) &&
       other.countries.length == countries.length &&
-      other.countries.containsAll(countries);
+      other.countries.containsAll(countries) &&
+      other.genres.length == genres.length &&
+      other.genres.containsAll(genres);
 
   @override
   int get hashCode => Object.hash(
@@ -92,5 +102,6 @@ class DeckFilters {
     tellMe,
     Object.hashAllUnordered(kinds),
     Object.hashAllUnordered(countries),
+    Object.hashAllUnordered(genres),
   );
 }

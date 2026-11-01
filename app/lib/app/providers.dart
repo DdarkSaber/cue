@@ -78,18 +78,28 @@ final profileIdProvider = FutureProvider<String>((ref) async {
 });
 
 class SettingsController extends AsyncNotifier<AppSettings> {
+  Future<void> _pending = Future.value();
+
   @override
   Future<AppSettings> build() async {
     final id = await ref.watch(profileIdProvider.future);
     return ref.watch(profileRepositoryProvider).loadSettings(id);
   }
 
-  Future<void> change(AppSettings Function(AppSettings) edit) async {
-    final current = state.value ?? await future;
-    final next = edit(current);
-    state = AsyncData(next);
-    final id = await ref.read(profileIdProvider.future);
-    await ref.read(profileRepositoryProvider).saveSettings(id, next);
+  Future<void> change(AppSettings Function(AppSettings) edit) {
+    final profile = ref.read(profileIdProvider.future);
+    final repo = ref.read(profileRepositoryProvider);
+    final saved = _pending.then((_) async {
+      final id = await profile;
+      final next = edit(await repo.loadSettings(id));
+      await repo.saveSettings(id, next);
+      if (ref.mounted && ref.read(profileIdProvider).value == id) {
+        state = AsyncData(next);
+      }
+    });
+    // A failed save still reaches its caller, but does not block later edits.
+    _pending = saved.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    return saved;
   }
 }
 

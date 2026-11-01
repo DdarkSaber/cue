@@ -30,6 +30,24 @@ class SyncMerge {
   final BackupService backup;
 
   Future<int> merge(String profileId, String json) async {
+    final doc = jsonDecode(json) as Map<String, dynamic>;
+    final sync = doc['sync'];
+    final rawRemovals = sync is Map ? sync['removed_titles'] : null;
+    if (rawRemovals != null) {
+      if (rawRemovals is! Map) {
+        throw const FormatException('Invalid title removals');
+      }
+      final removals = <String, DateTime>{};
+      for (final e in rawRemovals.entries) {
+        if (e.key is! String || e.value is! String) {
+          throw const FormatException('Invalid title removal');
+        }
+        removals[e.key as String] = DateTime.parse(e.value as String);
+      }
+      for (final e in removals.entries) {
+        await library.recordRemoval(profileId, e.key, e.value);
+      }
+    }
     // The import merge only adds and never lowers a status, so remember
     // this device's rows first and settle each title by its last edit.
     final before = {
@@ -54,7 +72,10 @@ class SyncMerge {
       offlineOnly: true,
     );
     final summary = await imports.commit(profileId, staged);
-    await _lastEditWins(profileId, json, before);
+    await _lastEditWins(profileId, json, before, {
+      for (final matched in staged.included) matched.titleId!,
+    });
+    await library.applyRemovals(profileId);
     await library.recomputeWeights(profileId);
     return summary.added + summary.updated;
   }
@@ -66,15 +87,19 @@ class SyncMerge {
     String profileId,
     String json,
     Map<String, UserTitle> before,
+    Set<String> resolved,
   ) async {
     final items = (jsonDecode(json) as Map)['items'];
     if (items is! List) return;
+    final removals = await library.removals(profileId);
     await db.transaction(() async {
       for (final it in items) {
         if (it is! Map) continue;
         final id = it['cue_id'];
         final at = DateTime.tryParse('${it['updated_at']}');
         if (id is! String || at == null) continue;
+        final removed = removals[id];
+        if (removed != null && !at.isAfter(removed)) continue;
         final local = before[id];
         if (local != null) {
           // Stored times have one-second precision. On a tie both devices
@@ -90,11 +115,18 @@ class SyncMerge {
         }
         final progress = it['progress'] is Map ? it['progress'] as Map : null;
         final watched = DateTime.tryParse('${it['watched_at']}');
-        await (db.update(db.userTitles)..where(
-              (u) => u.profileId.equals(profileId) & u.titleId.equals(id),
-            ))
-            .write(
-              UserTitlesCompanion(
+        final current =
+            await (db.select(db.userTitles)..where(
+                  (u) => u.profileId.equals(profileId) & u.titleId.equals(id),
+                ))
+                .getSingleOrNull();
+        if (current == null && !resolved.contains(id)) continue;
+        await db
+            .into(db.userTitles)
+            .insertOnConflictUpdate(
+              UserTitlesCompanion.insert(
+                profileId: profileId,
+                titleId: id,
                 state: Value('${it['status'] ?? 'none'}'),
                 rating: Value(it['rating'] as String?),
                 rewatchMood: Value(it['rewatch_mood'] as String?),
@@ -107,7 +139,8 @@ class SyncMerge {
                 ),
                 actualWatchedAt: Value(watched),
                 note: Value(it['note'] as String?),
-                updatedAt: Value(at),
+                source: Value(current?.source ?? 'user'),
+                updatedAt: at,
               ),
             );
       }
@@ -195,6 +228,10 @@ class SyncMerge {
       db.moodStates,
     )..where((m) => m.profileId.equals(profileId))).getSingleOrNull();
     doc['sync'] = {
+      'removed_titles': {
+        for (final e in (await library.removals(profileId)).entries)
+          e.key: e.value.toUtc().toIso8601String(),
+      },
       'at': {
         for (final s in [..._lists, 'settings'])
           s: (await _sectionAt(profileId, s)).toIso8601String(),

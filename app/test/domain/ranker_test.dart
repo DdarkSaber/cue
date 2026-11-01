@@ -72,31 +72,33 @@ void main() {
       expect(ok(t('d'), s), isTrue);
     });
 
-    test(
-      'seen titles leave discovery; rewatches come back only when asked',
-      () {
-        const s = ProfileSignals(
-          library: {
-            'a': LibraryEntry(titleId: 'a', state: LibraryState.seen),
-            'b': LibraryEntry(
-              titleId: 'b',
-              state: LibraryState.completed,
-              rating: Rating.rewatched,
-            ),
-          },
-        );
-        expect(ok(t('a'), s), isFalse);
-        expect(ok(t('b'), s), isFalse);
-        expect(
-          ok(t('b'), s, const DeckFilters(includeRewatches: true)),
-          isTrue,
-        );
-        expect(
-          ok(t('a'), s, const DeckFilters(includeRewatches: true)),
-          isFalse,
-        );
-      },
-    );
+    test('saved titles leave discovery even with legacy rewatch defaults', () {
+      const s = ProfileSignals(
+        library: {
+          'a': LibraryEntry(titleId: 'a', state: LibraryState.seen),
+          'b': LibraryEntry(
+            titleId: 'b',
+            state: LibraryState.completed,
+            rating: Rating.rewatched,
+          ),
+        },
+      );
+      expect(ok(t('a'), s), isFalse);
+      expect(ok(t('b'), s), isFalse);
+      expect(ok(t('b'), s, const DeckFilters(includeRewatches: true)), isFalse);
+      expect(ok(t('a'), s, const DeckFilters(includeRewatches: true)), isFalse);
+      expect(
+        ranker.eligible(
+          t('b'),
+          s,
+          const DeckFilters(),
+          showAdult: false,
+          enabledKinds: all,
+          includeRewatchesDefault: true,
+        ),
+        isFalse,
+      );
+    });
 
     test('Revisit deals only rewatched or would-rewatch titles', () {
       const s = ProfileSignals(
@@ -167,6 +169,62 @@ void main() {
           const DeckFilters(countries: {'JP'}),
         ),
         isFalse,
+      );
+    });
+
+    test('every saved state stays out of new recommendations', () {
+      for (final state in LibraryState.values) {
+        final s = ProfileSignals(
+          library: {
+            'saved': LibraryEntry(
+              titleId: 'saved',
+              state: state,
+              rating: Rating.rewatched,
+            ),
+          },
+        );
+        expect(ok(t('saved'), s), isFalse, reason: state.name);
+        expect(
+          ok(t('saved'), s, const DeckFilters(mood: QuickMood.revisit)),
+          isTrue,
+          reason: state.name,
+        );
+      }
+    });
+
+    test('typed comedy K-drama is a hard genre and format constraint', () {
+      final parsed = parseMood('fast paced comedy kdrama');
+      final f = parsed.applyTo(const DeckFilters(), 'fast paced comedy kdrama');
+      expect(f.kinds, {MediaKind.kdrama});
+      expect(f.genres, {'comedy'});
+      expect(parsed.understood, isNot(contains('Action')));
+      expect(
+        ok(t('anime', genres: ['Comedy']), const ProfileSignals(), f),
+        isFalse,
+      );
+      expect(
+        ok(t('action', kind: MediaKind.kdrama), const ProfileSignals(), f),
+        isFalse,
+      );
+      expect(
+        ok(
+          t('comedy', kind: MediaKind.kdrama, genres: ['Comedy']),
+          const ProfileSignals(),
+          f,
+        ),
+        isTrue,
+      );
+      expect(
+        ranker
+            .explainEmpty(
+              [t('action', kind: MediaKind.kdrama)],
+              const ProfileSignals(),
+              f,
+              showAdult: false,
+              enabledKinds: all,
+            )
+            .message,
+        contains('genre filter'),
       );
     });
   });

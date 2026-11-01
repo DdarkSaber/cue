@@ -32,6 +32,9 @@ No accounts, no ads, no analytics, no trackers.
 - **Honest reasons.** Every card says why it is there ("because you rated X highly"). No fake match percentages.
 - **Bring your history.** Upload a MyAnimeList XML, Netflix viewing activity, a Mihon/Tachiyomi backup, any CSV or Excel sheet with a Title column, or a Cue backup. Or sign in to MyAnimeList, or type a public AniList username. Everything is previewed first and every import can be undone.
 - **Imports survive closing the app.** Matching resumes from a local checkpoint for the active library. Ready previews and your inclusion choices stay on this device until you confirm or cancel; they are never automatically imported or synced. Interrupted catalog requests may be repeated, but completed matching chunks are kept.
+- **One combined history per library.** Excel and MAL imports merge into the selected library using matched catalog identities, preserving stronger statuses and your manual edits. Different local libraries stay separate; unmatched or uncertain rows still need review before they become known history.
+- **New means new.** Suggestions exclude all titles already saved in the selected library, including watching, reading and planned titles. The old default-rewatch preference no longer brings history into ordinary suggestions. Choose **Revisit** explicitly for titles rated Rewatched / Would rewatch, or with an actual watch date more than three years ago.
+- **Browse each local library.** In Settings > This library, tap a library to see its titles grouped by media type and sorted by name. Search or filter by anime, movies, dramas and reading types; remove incorrect titles with confirmation. Browsing does not switch libraries: use **Use this library** to switch. You can delete any local library independently; deleting the last one creates a fresh empty library.
 - **One title, many names.** Manhwa and manhua often have 3 or 4 names. Cue checks official, romanised and fan names (AniList, MangaDex, MangaUpdates) and asks you before linking anything it is unsure of.
 - **Sync between phone and web** with a code, end-to-end encrypted. Optional.
 
@@ -40,8 +43,9 @@ No accounts, no ads, no analytics, no trackers.
 Cue works out what you feel like **right now**, on your device:
 
 - It learns your **modes** from what you pick (for example "Isekai · Fantasy" or "Romance · Comedy") and notices within a few swipes when you switch.
-- It learns what **your words** mean ("grind", "slow", "trash") from what you choose after typing them. Nothing is hard-coded.
+- It learns what **your words** mean ("grind", "slow", "trash") from what you choose after typing them. Recognised format and genre keywords work immediately; other word meanings are learned from your picks.
 - A **"Cue read: …"** chip shows its guess. Tap to correct it, long-press to rename a mood.
+- Recognised format and positive genre words set strict filters: "fast paced comedy kdrama" requires K-drama and Comedy, not Action. The filter sheet also exposes required genres. Mood and pacing remain soft preferences because catalog pace metadata is incomplete; no instant pace guarantee or AI subscription is required.
 - Optional **Smarter mood text** (off by default) sends only the sentence you type to an AI service (Groq, falling back to Google Gemini) for genre hints.
 
 Clear everything any time in *Settings > Privacy*.
@@ -53,6 +57,7 @@ Clear everything any time in *Settings > Privacy*.
 - Catalog lookups send title names or catalog ids, never your history.
 - Sign-in uses the provider's own page. Cue never sees a password. Tokens stay on the device.
 - Pending imports keep parsed records (and uploaded bytes for date correction and duplicate detection) only in the local database. Confirming or cancelling removes that temporary payload; backups and sync contain no pending imports.
+- Title removals use encrypted sync tombstones so an older device cannot silently add them back. An explicit later edit or confirmed re-import can restore a title. Deleting an entire local library forgets its local sync code but does not delete the server's encrypted copy or another device's library.
 - No analytics, ads, trackers or remote fonts.
 
 ## How it works
