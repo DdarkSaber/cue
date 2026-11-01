@@ -8,6 +8,8 @@ declare global {
       RATE_LIMITER: RateLimit;
       /** Looser per-IP limit for poster loads on the web app. */
       IMAGE_LIMITER: RateLimit;
+      /** Stricter per-IP limit for /ai/mood, which spends free AI quota. */
+      AI_LIMITER?: RateLimit;
       ALLOWED_ORIGINS: string;
       /** Secret. Without it, TMDB-backed kinds answer 503 not_configured. */
       TMDB_API_KEY?: string;

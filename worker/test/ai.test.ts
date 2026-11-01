@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanHints } from "../src/ai/mood";
-import { fakeEnv, mockUpstream, postJson } from "./helpers";
+import { DAILY_AI_CAP, cleanHints, underDailyCap } from "../src/ai/mood";
+import { fakeEnv, fakeKv, mockUpstream, postJson } from "./helpers";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -18,7 +18,7 @@ describe("mood hints", () => {
         choices: [{ message: { content: '{"features":["romance","aliens"],"avoid":["horror"]}' } }],
       }),
     );
-    const res = await postJson("/ai/mood", { text: "something cosy", allowed }, fakeEnv({ GROQ_API_KEY: "k" }));
+    const res = await postJson("/ai/mood", { text: "something cosy", allowed }, fakeEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: fakeKv() }));
     expect(await res.json()).toEqual({ features: ["romance"], avoid: ["horror"], provider: "groq" });
     expect(calls[0]!.url.hostname).toBe("api.groq.com");
   });
@@ -29,7 +29,15 @@ describe("mood hints", () => {
         ? new Response("busy", { status: 429 })
         : Response.json({ candidates: [{ content: { parts: [{ text: '{"features":["comedy"],"avoid":[]}' }] } }] }),
     );
-    const res = await postJson("/ai/mood", { text: "make me laugh", allowed }, fakeEnv({ GROQ_API_KEY: "k", GEMINI_API_KEY: "g" }));
+    const res = await postJson("/ai/mood", { text: "make me laugh", allowed }, fakeEnv({ GROQ_API_KEY: "k", GEMINI_API_KEY: "g", CATALOG_CACHE: fakeKv() }));
     expect(await res.json()).toEqual({ features: ["comedy"], avoid: [], provider: "gemini" });
+  });
+
+  it("stops at the daily cap", async () => {
+    const kv = fakeKv();
+    const day = new Date("2026-11-01T10:00:00Z");
+    for (let i = 0; i < DAILY_AI_CAP; i++) expect(await underDailyCap(kv, day)).toBe(true);
+    expect(await underDailyCap(kv, day)).toBe(false);
+    expect(await underDailyCap(kv, new Date("2026-11-02T10:00:00Z"))).toBe(true);
   });
 });

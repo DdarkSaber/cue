@@ -69,7 +69,11 @@ export const bodyCap: MiddlewareHandler<AppEnv> = (c, next) =>
 /** Per-IP limit through the Workers rate-limiting binding. Fails closed. */
 export const rateLimit: MiddlewareHandler<AppEnv> = async (c, next) => {
   const limiter =
-    c.req.path === "/catalog/image" ? c.env.IMAGE_LIMITER : c.env.RATE_LIMITER;
+    c.req.path === "/catalog/image"
+      ? c.env.IMAGE_LIMITER
+      : c.req.path === "/ai/mood"
+        ? (c.env.AI_LIMITER ?? c.env.RATE_LIMITER)
+        : c.env.RATE_LIMITER;
   if (!limiter) return fail(c, 503, "unavailable");
   const key = c.req.header("CF-Connecting-IP") ?? "unknown";
   const { success } = await limiter.limit({ key });

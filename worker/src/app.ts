@@ -6,7 +6,7 @@ import { NotConfiguredError, UpstreamError } from "./catalog/types";
 import type { AppEnv } from "./env";
 import * as lists from "./imports/lists";
 import { SyncStore } from "./sync/store";
-import { moodHints } from "./ai/mood";
+import { moodHints, underDailyCap } from "./ai/mood";
 import { fail } from "./errors";
 import {
   allowedOrigins,
@@ -211,6 +211,11 @@ export function createApp() {
   app.post("/ai/mood", async (c) => {
     const b = check(c, moodBody, await jsonBody(c));
     if (!b.ok) return b.res;
+    if (!(c.env.GROQ_API_KEY || c.env.GEMINI_API_KEY)) return fail(c, 503, "not_configured");
+    if (!(await underDailyCap(c.env.CATALOG_CACHE))) {
+      c.header("Retry-After", "3600");
+      return fail(c, 429, "rate_limited");
+    }
     return c.json(await moodHints(c.env, b.data.text, b.data.allowed));
   });
 

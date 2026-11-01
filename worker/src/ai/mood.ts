@@ -96,6 +96,19 @@ async function gemini(key: string, model: string, text: string, allowed: string[
   return parse(body?.candidates?.[0]?.content?.parts?.[0]?.text);
 }
 
+/** Across everyone, per UTC day, so a leaked URL cannot drain the free tier. */
+export const DAILY_AI_CAP = 500;
+
+/** Counts one AI call for today; false once today's cap is reached. */
+export async function underDailyCap(kv: KVNamespace, now = new Date()): Promise<boolean> {
+  const key = `ai:day:${now.toISOString().slice(0, 10)}`;
+  const used = Number((await kv.get(key)) ?? 0);
+  if (used >= DAILY_AI_CAP) return false;
+  // KV is eventually consistent, so the cap is approximate; that is enough here.
+  await kv.put(key, String(used + 1), { expirationTtl: 2 * 24 * 60 * 60 });
+  return true;
+}
+
 export async function moodHints(env: Env, text: string, allowed: string[]): Promise<MoodHints> {
   const tries: ["groq" | "gemini", () => Promise<Row | null>][] = [];
   if (env.GROQ_API_KEY) tries.push(["groq", () => groq(env.GROQ_API_KEY!, env.GROQ_MODEL ?? GROQ_MODEL, text, allowed)]);
