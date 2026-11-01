@@ -18,6 +18,7 @@ import '../../imports/detect.dart';
 import '../../imports/import_service.dart';
 import '../../imports/matcher.dart';
 import '../../imports/records.dart';
+import 'import_job.dart';
 import 'sign_in_import.dart';
 import 'source_names.dart';
 
@@ -52,7 +53,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   CsvMapping? _mapping;
   List<String> _csvHeader = const [];
 
-  void _reset() => setState(() {
+  void _reset() {
+    ref.read(importJobProvider.notifier).clear();
+    setState(_clear);
+  }
+
+  void _clear() {
     _step = _Step.choose;
     _error = null;
     _raw = null;
@@ -60,7 +66,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _staged = null;
     _summary = null;
     _mapping = null;
-  });
+  }
 
   Future<void> _pickFile() async {
     setState(() => _error = null);
@@ -138,27 +144,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       });
       return;
     }
-    setState(() {
-      _step = _Step.matching;
-      _progress = (0, parsed.records.length);
-    });
-    final profileId = await ref.read(profileIdProvider.future);
-    final staged = await ref
-        .read(importServiceProvider)
-        .stage(
-          profileId,
-          parsed,
-          rawBytes: _raw,
-          offlineOnly: _offlineOnly,
-          onProgress: (done, total) {
-            if (mounted) setState(() => _progress = (done, total));
-          },
-        );
-    if (!mounted) return;
-    setState(() {
-      _staged = staged;
-      _step = _Step.preview;
-    });
+    setState(() => _step = _Step.matching);
+    // The job keeps running if this screen is left; build() picks up its
+    // progress and result.
+    await ref
+        .read(importJobProvider.notifier)
+        .start(parsed, rawBytes: _raw, offlineOnly: _offlineOnly);
   }
 
   Future<void> _commit() async {
@@ -170,6 +161,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         .commit(profileId, staged);
     await ref.read(libraryRepositoryProvider).recomputeWeights(profileId);
     ref.read(libraryVersionProvider.notifier).bump();
+    ref.read(importJobProvider.notifier).clear();
     if (!mounted) return;
     setState(() {
       _summary = summary;
@@ -198,6 +190,20 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Matching runs in importJobProvider, so this screen can be left and
+    // reopened: follow its progress, result or error.
+    final job = ref.watch(importJobProvider);
+    if (job.running && _step == _Step.choose) _step = _Step.matching;
+    if (job.staged != null &&
+        (_step == _Step.matching || _step == _Step.choose)) {
+      _staged = job.staged;
+      _step = _Step.preview;
+    }
+    if (job.error != null && _step == _Step.matching) {
+      _error = job.error;
+      _step = _Step.choose;
+    }
+    _progress = (job.done, job.total);
     final desktop = context.cueLayout == CueLayout.desktop;
     final Widget body = switch (_step) {
       _Step.choose => _ChooseSource(
@@ -217,7 +223,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       _Step.matching => _Progress(
         label:
             'Matching ${_progress.$1} of ${_progress.$2} against the catalog…'
-            '${_progress.$2 > 150 ? '\nAnime and comic lookups are limited to about 30 a minute, so a big list takes a couple of minutes. You can leave this screen open.' : ''}',
+            '${_progress.$2 > 150 ? '\nAnime and comic lookups are limited to about 30 a minute, so a big list takes a couple of minutes. You can leave this screen and keep swiping; the deck shows the progress.' : ''}',
         value: _progress.$2 == 0 ? null : _progress.$1 / _progress.$2,
       ),
       _Step.preview => _Preview(
