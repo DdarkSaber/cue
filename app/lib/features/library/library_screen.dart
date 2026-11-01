@@ -20,6 +20,7 @@ import '../imports/import_screen.dart' show importSourceName;
 import 'entry_sheet.dart';
 import 'add_title_sheet.dart';
 import 'review_sheet.dart';
+import '../../domain/ranker.dart';
 
 /// Everything the Library route shows, loaded in one go.
 class LibraryData {
@@ -175,6 +176,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             : 'Your list is in: ${d.entries.length} titles, from ${imported.map((b) => importSourceName(b.sourceType)).toSet().join(', ')}.',
         style: const TextStyle(fontSize: 14, color: CueColors.textMuted),
       ),
+      const SizedBox(height: CueSpace.sm),
+      _TasteMeter(rated: d.entries.where((e) => e.$1.rating != null).length),
       const SizedBox(height: CueSpace.sm),
       Wrap(
         spacing: CueSpace.md,
@@ -431,4 +434,40 @@ int? newChapters(LibraryEntry e, Title t) {
   if (latest == null) return null;
   final n = (latest - e.progressValue!).floor();
   return n > 0 ? n : null;
+}
+
+/// How much Cue knows of your taste: rated titles against the point where
+/// the ranker stops treating you as new.
+class _TasteMeter extends StatelessWidget {
+  const _TasteMeter({required this.rated});
+  final int rated;
+
+  @override
+  Widget build(BuildContext context) {
+    const target = Ranker.coldStartBelow;
+    final ready = rated >= target;
+    return Semantics(
+      label: ready
+          ? 'Taste: $rated ratings. Picks follow your taste.'
+          : 'Taste: $rated of $target ratings.',
+      excludeSemantics: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            ready
+                ? 'Taste: $rated ratings. Picks follow your taste.'
+                : 'Taste: $rated of $target ratings. Rate a few more for sharper picks.',
+            style: const TextStyle(fontSize: 13, color: CueColors.textMuted),
+          ),
+          const SizedBox(height: 4),
+          LinearProgressIndicator(
+            value: (rated / target).clamp(0, 1).toDouble(),
+            color: CueColors.accent,
+            backgroundColor: CueColors.line,
+          ),
+        ],
+      ),
+    );
+  }
 }

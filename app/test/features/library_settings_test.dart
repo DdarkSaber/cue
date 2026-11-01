@@ -62,6 +62,7 @@ void main() {
     await settle(t);
     expect(find.text('Kept 1'), findsOneWidget);
     expect(find.text('1 to rewatch.'), findsOneWidget);
+    expect(find.textContaining('Taste: 1 of 20 ratings'), findsOneWidget);
     expect(find.text('Hidden from your deck'), findsOneWidget);
     // The Add a title button moved the list down; bring Restore on screen.
     await t.ensureVisible(find.widgetWithText(OutlinedButton, 'Restore'));
