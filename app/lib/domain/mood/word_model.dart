@@ -60,6 +60,9 @@ class WordModel {
   static const keep = 60;
   static const minUses = 2;
 
+  /// Keeps storage small: the least used words go first.
+  static const maxWords = 400;
+
   final Map<String, WordEntry> words;
 
   /// Called at the end of a session in which these words were typed.
@@ -76,6 +79,16 @@ class WordModel {
           )
           ..uses += 1;
       }
+    }
+    _prune();
+  }
+
+  void _prune() {
+    if (words.length <= maxWords) return;
+    final byUse = words.entries.toList()
+      ..sort((a, b) => a.value.uses.compareTo(b.value.uses));
+    for (final e in byUse.take(words.length - maxWords)) {
+      words.remove(e.key);
     }
   }
 

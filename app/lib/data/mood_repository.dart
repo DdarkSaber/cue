@@ -58,20 +58,31 @@ class MoodRepository implements MoodStore {
     MoodSession session, {
     String? typed,
     String? modeId,
-  }) => db
-      .into(db.moodSessions)
-      .insert(
-        MoodSessionsCompanion.insert(
-          id: randomId(12),
-          profileId: profileId,
-          startedAt: session.start,
-          endedAt: session.end,
-          typed: Value(typed),
-          modeId: Value(modeId),
-          positives: session.positives,
-          negatives: session.negatives,
-        ),
-      );
+  }) async {
+    await db
+        .into(db.moodSessions)
+        .insert(
+          MoodSessionsCompanion.insert(
+            id: randomId(12),
+            profileId: profileId,
+            startedAt: session.start,
+            endedAt: session.end,
+            typed: Value(typed),
+            modeId: Value(modeId),
+            positives: session.positives,
+            negatives: session.negatives,
+          ),
+        );
+    // Only the latest sessions are kept; the modes already hold the rest.
+    await db.customStatement(
+      'DELETE FROM mood_sessions WHERE profile_id = ? AND id NOT IN '
+      '(SELECT id FROM mood_sessions WHERE profile_id = ? '
+      'ORDER BY ended_at DESC LIMIT $keepSessions)',
+      [profileId, profileId],
+    );
+  }
+
+  static const keepSessions = 300;
 
   /// The swipe history the modes are learned from, oldest first.
   @override

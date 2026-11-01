@@ -958,10 +958,23 @@ class _PastImportsState extends ConsumerState<_PastImports> {
     return FutureBuilder(
       future: _batches,
       builder: (context, snap) {
-        // Sync merges are bookkeeping, not imports the person made.
-        final list = (snap.data ?? const <ImportBatch>[])
-            .where((b) => b.sourceType != 'sync')
-            .toList();
+        // Sync merges are bookkeeping, and undone imports are gone. Repeat
+        // imports from one source (the same MAL account three times) show
+        // as one row: the latest, with how many times it was imported.
+        final kept =
+            (snap.data ?? const <ImportBatch>[])
+                .where((b) => b.sourceType != 'sync' && b.state == 'completed')
+                .toList()
+              ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        final counts = <String, int>{};
+        for (final b in kept) {
+          counts[b.sourceType] = (counts[b.sourceType] ?? 0) + 1;
+        }
+        final seen = <String>{};
+        final list = [
+          for (final b in kept)
+            if (seen.add(b.sourceType)) b,
+        ];
         if (list.isEmpty && _message == null) return const SizedBox.shrink();
         final fmt = DateFormat.yMMMd().add_jm();
         return Column(
@@ -987,18 +1000,18 @@ class _PastImportsState extends ConsumerState<_PastImports> {
                   style: const TextStyle(fontSize: 15),
                 ),
                 subtitle: Text(
-                  '${fmt.format(b.createdAt)} · ${b.state == 'undone' ? 'Undone' : 'Imported'}',
+                  counts[b.sourceType]! > 1
+                      ? 'Last ${fmt.format(b.createdAt)} · imported ${counts[b.sourceType]} times'
+                      : fmt.format(b.createdAt),
                   style: const TextStyle(
                     fontSize: 13,
                     color: CueColors.textMuted,
                   ),
                 ),
-                trailing: b.state == 'completed'
-                    ? CueSecondaryButton(
-                        label: 'Undo',
-                        onPressed: () => _undo(b),
-                      )
-                    : null,
+                trailing: CueSecondaryButton(
+                  label: 'Undo last',
+                  onPressed: () => _undo(b),
+                ),
               ),
           ],
         );

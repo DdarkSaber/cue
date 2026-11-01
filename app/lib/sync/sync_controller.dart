@@ -141,6 +141,16 @@ class SyncController extends AsyncNotifier<SyncStatus> {
 
   Future<void> syncNow({bool quiet = false}) => _run((id) async {
     final r = await _service.syncNow(id);
+    if (r.moodChanged) {
+      // Drop the old learner without saving, then load the merged one.
+      try {
+        (await ref.read(moodEngineProvider.future)).forget();
+      } on Object {
+        // Not loaded yet.
+      }
+      ref.invalidate(moodEngineProvider);
+    }
+    if (r.pulled > 0 || r.moodChanged) ref.invalidate(settingsProvider);
     state = AsyncData(
       (state.value ?? const SyncStatus()).copyWith(
         lastSynced: await _service.lastSynced(id),

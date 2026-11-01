@@ -42,7 +42,7 @@ class SettingsScreen extends ConsumerWidget {
             ),
             CueListRow(
               title: 'Recommendation preferences',
-              subtitle: 'Region ${s.region}, formats, content safety',
+              subtitle: 'Formats, rewatches, content safety',
               onTap: () => open('preferences'),
             ),
             CueListRow(
@@ -217,19 +217,6 @@ class SwipeSettingsPage extends ConsumerWidget {
 class PreferencesPage extends ConsumerWidget {
   const PreferencesPage({super.key});
 
-  static const regions = {
-    'IN': 'India',
-    'US': 'United States',
-    'GB': 'United Kingdom',
-    'CA': 'Canada',
-    'AU': 'Australia',
-    'JP': 'Japan',
-    'KR': 'South Korea',
-    'SG': 'Singapore',
-    'AE': 'United Arab Emirates',
-    'DE': 'Germany',
-  };
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(currentSettingsProvider);
@@ -238,21 +225,6 @@ class PreferencesPage extends ConsumerWidget {
     return _Detail(
       title: 'Recommendation preferences',
       children: [
-        const CueSectionLabel('Region for where to watch'),
-        DropdownButtonFormField<String>(
-          isExpanded: true,
-          initialValue: regions.containsKey(s.region) ? s.region : 'IN',
-          items: [
-            for (final e in regions.entries)
-              DropdownMenuItem(value: e.key, child: Text(e.value)),
-          ],
-          onChanged: (v) => change((x) => x.copyWith(region: v)),
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'You choose this. Cue never asks for your location.',
-          style: TextStyle(fontSize: 13, color: CueColors.textMuted),
-        ),
         const CueSectionLabel('Formats in your deck'),
         Wrap(
           spacing: 8,

@@ -1,3 +1,5 @@
+import 'package:drift/drift.dart' show Value;
+
 import 'dart:convert';
 
 import 'package:cue/data/backup_service.dart';
@@ -170,6 +172,48 @@ void main() {
         (await phone.library.entry(phone.id, 'anilist:1'))!.state,
         LibraryState.dropped,
       );
+    });
+
+    test('removals, library settings and mood learning travel', () async {
+      await phone.decisions.decide(
+        phone.id,
+        (await phone.catalog.titleById('anilist:2'))!,
+        Decision.willTry,
+      );
+      final code = await phone.sync.enable(phone.id);
+      await laptop.sync.join(laptop.id, code);
+      expect((await laptop.library.signals(laptop.id)).shortlisted, {
+        'anilist:2',
+      });
+
+      // The phone removes it from Will try, turns rewatches on, and learns.
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      await phone.library.removeFromShortlist(phone.id, 'anilist:2');
+      await phone.profiles.setRawSetting(phone.id, 'includeRewatches', 'true');
+      await phone.db
+          .into(phone.db.moodStates)
+          .insertOnConflictUpdate(
+            MoodStatesCompanion.insert(
+              profileId: phone.id,
+              modesJson: const Value('[{"id":"m1","label":"Isekai"}]'),
+              updatedAt: DateTime.now(),
+            ),
+          );
+      await phone.sync.syncNow(phone.id);
+      final r = await laptop.sync.syncNow(laptop.id);
+
+      expect((await laptop.library.signals(laptop.id)).shortlisted, isEmpty);
+      expect(
+        await laptop.profiles.rawSetting(laptop.id, 'includeRewatches'),
+        'true',
+      );
+      expect(r.moodChanged, isTrue);
+      final mood = await laptop.db.select(laptop.db.moodStates).getSingle();
+      expect(mood.modesJson, contains('Isekai'));
+
+      // And the removal does not come back from the phone's next pull.
+      await phone.sync.syncNow(phone.id);
+      expect((await phone.library.signals(phone.id)).shortlisted, isEmpty);
     });
 
     test('the Worker only ever sees ciphertext', () async {
