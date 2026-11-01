@@ -31,6 +31,7 @@ No accounts, no ads, no analytics, no trackers.
 - **Swipe deck.** Right = *Will try*, left = *Not interested*, up = *Watched / Read it*, down = *Not now* (hidden for 14 days). Remap any direction in Settings. Buttons, arrow keys and screen readers work too, and Undo always works.
 - **Honest reasons.** Every card says why it is there ("because you rated X highly"). No fake match percentages.
 - **Bring your history.** Upload a MyAnimeList XML, Netflix viewing activity, a Mihon/Tachiyomi backup, any CSV or Excel sheet with a Title column, or a Cue backup. Or sign in to MyAnimeList, or type a public AniList username. Everything is previewed first and every import can be undone.
+- **Imports survive closing the app.** Matching resumes from a local checkpoint for the active library. Ready previews and your inclusion choices stay on this device until you confirm or cancel; they are never automatically imported or synced. Interrupted catalog requests may be repeated, but completed matching chunks are kept.
 - **One title, many names.** Manhwa and manhua often have 3 or 4 names. Cue checks official, romanised and fan names (AniList, MangaDex, MangaUpdates) and asks you before linking anything it is unsure of.
 - **Sync between phone and web** with a code, end-to-end encrypted. Optional.
 
@@ -51,6 +52,7 @@ Clear everything any time in *Settings > Privacy*.
 - Sync encrypts the library on the device (AES-256-GCM, keys derived from your 32-character code). The server stores only ciphertext and cannot read it.
 - Catalog lookups send title names or catalog ids, never your history.
 - Sign-in uses the provider's own page. Cue never sees a password. Tokens stay on the device.
+- Pending imports keep parsed records (and uploaded bytes for date correction and duplicate detection) only in the local database. Confirming or cancelling removes that temporary payload; backups and sync contain no pending imports.
 - No analytics, ads, trackers or remote fonts.
 
 ## How it works

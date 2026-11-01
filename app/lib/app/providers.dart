@@ -15,6 +15,7 @@ import '../domain/decisions.dart';
 import '../domain/models/settings.dart';
 import '../domain/ranker.dart';
 import '../imports/import_service.dart';
+import '../imports/import_draft.dart';
 import '../imports/token_store.dart';
 import '../data/mood_repository.dart';
 import '../domain/mood/mood_engine.dart';
@@ -125,6 +126,10 @@ final importServiceProvider = Provider<ImportService>(
     ref.watch(catalogRepositoryProvider),
     clock: ref.watch(clockProvider),
   ),
+);
+
+final importDraftStoreProvider = Provider<ImportDraftStore>(
+  (ref) => ImportDraftStore(ref.watch(databaseProvider)),
 );
 
 final backupServiceProvider = Provider<BackupService>(

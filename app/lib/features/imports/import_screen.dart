@@ -52,10 +52,14 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   bool _dayFirst = false;
   CsvMapping? _mapping;
   List<String> _csvHeader = const [];
+  String? _jobProfileId;
+  bool _parsing = false;
+  int _parseEpoch = 0;
 
-  void _reset() {
-    ref.read(importJobProvider.notifier).clear();
-    setState(_clear);
+  Future<void> _reset() async {
+    _parseEpoch++;
+    final cleared = await ref.read(importJobProvider.notifier).clear();
+    if (mounted && cleared) setState(_clear);
   }
 
   void _clear() {
@@ -66,6 +70,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _staged = null;
     _summary = null;
     _mapping = null;
+    _parsing = false;
+    _parseEpoch++;
   }
 
   Future<void> _pickFile() async {
@@ -122,14 +128,32 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     final d = _detected!;
     final mapping = _mapping;
     final dayFirst = _dayFirst;
+    final profileId = _jobProfileId;
+    final epoch = ++_parseEpoch;
+    setState(() {
+      _parsing = true;
+      _step = _Step.matching;
+    });
     try {
       // Parse off the UI thread on native; the web build parses inline.
       final parsed = kIsWeb
           ? parseDetected(d, mapping: mapping, dayFirst: dayFirst)
           : await compute(_parseJob, _ParseJob(d, mapping, dayFirst));
+      if (!mounted ||
+          epoch != _parseEpoch ||
+          (profileId != null && _jobProfileId != profileId)) {
+        return;
+      }
+      _parsing = false;
       await _stage(parsed);
     } on ImportRejected catch (e) {
+      if (!mounted ||
+          epoch != _parseEpoch ||
+          (profileId != null && _jobProfileId != profileId)) {
+        return;
+      }
       setState(() {
+        _parsing = false;
         _error = e.message;
         _step = _Step.choose;
       });
@@ -149,20 +173,27 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     // progress and result.
     await ref
         .read(importJobProvider.notifier)
-        .start(parsed, rawBytes: _raw, offlineOnly: _offlineOnly);
+        .start(
+          parsed,
+          rawBytes: _raw,
+          offlineOnly: _offlineOnly,
+          dayFirst: _dayFirst,
+        );
   }
 
   Future<void> _commit() async {
     final staged = _staged!;
+    final profileId = _jobProfileId;
     setState(() => _step = _Step.committing);
-    final profileId = await ref.read(profileIdProvider.future);
-    final summary = await ref
-        .read(importServiceProvider)
-        .commit(profileId, staged);
-    await ref.read(libraryRepositoryProvider).recomputeWeights(profileId);
-    ref.read(libraryVersionProvider.notifier).bump();
-    ref.read(importJobProvider.notifier).clear();
+    final summary = await ref.read(importJobProvider.notifier).commit(staged);
     if (!mounted) return;
+    if (_jobProfileId != profileId || _staged?.draftId != staged.draftId) {
+      return;
+    }
+    if (summary == null) {
+      setState(() => _step = _Step.preview);
+      return;
+    }
     setState(() {
       _summary = summary;
       _step = _Step.summary;
@@ -193,16 +224,29 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     // Matching runs in importJobProvider, so this screen can be left and
     // reopened: follow its progress, result or error.
     final job = ref.watch(importJobProvider);
-    if (job.running && _step == _Step.choose) _step = _Step.matching;
+    if (_jobProfileId != job.profileId) {
+      if (_jobProfileId != null) _clear();
+      _jobProfileId = job.profileId;
+    }
+    if (job.running && _step != _Step.committing && _step != _Step.summary) {
+      _step = _Step.matching;
+      _error = null;
+    }
     if (job.staged != null &&
-        (_step == _Step.matching || _step == _Step.choose)) {
+        !_parsing &&
+        _step != _Step.committing &&
+        _step != _Step.summary) {
       _staged = job.staged;
+      _dayFirst = job.dayFirst;
+      _raw = ref.read(importJobProvider.notifier).rawBytes;
+      _offlineOnly = ref.read(importJobProvider.notifier).offlineOnly;
       _step = _Step.preview;
     }
     if (job.error != null && _step == _Step.matching) {
       _error = job.error;
       _step = _Step.choose;
     }
+    if (job.error != null) _error = job.error;
     _progress = (job.done, job.total);
     final desktop = context.cueLayout == CueLayout.desktop;
     final Widget body = switch (_step) {
@@ -221,9 +265,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         onCancel: _reset,
       ),
       _Step.matching => _Progress(
-        label:
-            'Matching ${_progress.$1} of ${_progress.$2} against the catalog…'
-            '${_progress.$2 > 150 ? '\nAnime and comic lookups are limited to about 30 a minute, so a big list takes a couple of minutes. You can leave this screen and keep swiping; the deck shows the progress.' : ''}',
+        label: _parsing
+            ? 'Reading your file…'
+            : 'Matching ${_progress.$1} of ${_progress.$2} against the catalog…'
+                  '${_progress.$2 > 150 ? '\nAnime and comic lookups are limited to about 30 a minute, so a big list takes a couple of minutes. You can leave this screen and keep swiping; the deck shows the progress.' : ''}',
         value: _progress.$2 == 0 ? null : _progress.$1 / _progress.$2,
       ),
       _Step.preview => _Preview(
@@ -231,9 +276,15 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         dayFirst: _dayFirst,
         onDayFirst: (v) {
           setState(() => _dayFirst = v);
+          if (_detected == null && _raw != null) {
+            _detected = detect(_raw!, 'import.csv');
+          }
           _parseAndStage();
         },
-        onChanged: () => setState(() {}),
+        onChanged: () {
+          setState(() {});
+          ref.read(importJobProvider.notifier).savePreview();
+        },
         onImport: _commit,
         onCancel: _reset,
       ),
@@ -282,6 +333,14 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   body,
+                  if (job.error != null) ...[
+                    if (_step != _Step.choose) Text(job.error!, style: _muted),
+                    CueSecondaryButton(
+                      label: 'Retry saved import',
+                      onPressed: () =>
+                          ref.read(importJobProvider.notifier).retry(),
+                    ),
+                  ],
                   const SizedBox(height: CueSpace.xl),
                   if (_step == _Step.choose) const _PastImports(),
                 ],

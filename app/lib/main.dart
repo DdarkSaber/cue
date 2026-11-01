@@ -12,6 +12,7 @@ import 'app/router.dart';
 import 'app/theme.dart';
 import 'app/tokens.dart';
 import 'data/db/database.dart';
+import 'features/imports/import_job.dart';
 
 Future<void> main() async {
   // Real paths (/settings) instead of /#/settings, so links and refreshes work.
@@ -71,6 +72,8 @@ class _AppMotion extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Restore local matching even when the app opens on a non-deck route.
+    ref.watch(importJobProvider);
     final reduce = ref.watch(
       currentSettingsProvider.select((s) => s.reduceMotion),
     );

@@ -18,11 +18,15 @@ class StagedImport {
     required this.matched,
     required this.fingerprint,
     required this.existing,
+    this.draftId,
   });
 
   final ParsedImport parsed;
   final List<MatchedRecord> matched;
   final String? fingerprint;
+
+  /// Local matching checkpoint, consumed only when this preview is committed.
+  final String? draftId;
 
   /// Title ids already in the library before this import.
   final Set<String> existing;
@@ -127,12 +131,34 @@ class ImportService {
     Uint8List? rawBytes,
     bool offlineOnly = false,
     void Function(int, int)? onProgress,
+    List<MatchedRecord> checkpoint = const [],
+    Future<void> Function(List<MatchedRecord>)? onCheckpoint,
   }) async {
     final snapshot = parsed.extras?.catalog ?? const [];
     if (snapshot.isNotEmpty) await catalog.restoreSnapshot(snapshot);
-    final matched = await ImportMatcher(
-      catalog,
-    ).match(parsed.records, offlineOnly: offlineOnly, onProgress: onProgress);
+    final List<MatchedRecord> matched;
+    if (onCheckpoint == null) {
+      matched = await ImportMatcher(
+        catalog,
+      ).match(parsed.records, offlineOnly: offlineOnly, onProgress: onProgress);
+    } else {
+      matched = [...checkpoint];
+      for (
+        var i = matched.length;
+        i < parsed.records.length;
+        i += ImportMatcher.batchSize
+      ) {
+        final chunk = parsed.records
+            .skip(i)
+            .take(ImportMatcher.batchSize)
+            .toList();
+        matched.addAll(
+          await ImportMatcher(catalog).match(chunk, offlineOnly: offlineOnly),
+        );
+        await onCheckpoint(List.of(matched));
+        onProgress?.call(matched.length, parsed.records.length);
+      }
+    }
     final rows = await (db.select(
       db.userTitles,
     )..where((u) => u.profileId.equals(profileId))).get();
@@ -144,7 +170,32 @@ class ImportService {
     );
   }
 
-  Future<ImportSummary> commit(String profileId, StagedImport s) async {
+  Future<ImportSummary> commit(String profileId, StagedImport s) =>
+      db.transaction(() => _commit(profileId, s));
+
+  Future<ImportSummary> _commit(String profileId, StagedImport s) async {
+    if (s.draftId != null) {
+      final draft =
+          await (db.select(db.importBatches)..where(
+                (b) => b.id.equals(s.draftId!) & b.profileId.equals(profileId),
+              ))
+              .getSingleOrNull();
+      if (draft == null ||
+          (draft.state != 'match_ready' && draft.state != 'completed')) {
+        throw StateError('This import preview is no longer available');
+      }
+      if (draft.state == 'completed') {
+        return ImportSummary(
+          batchId: draft.id,
+          checked: s.matched.length,
+          added: 0,
+          updated: 0,
+          unchanged: s.included.length,
+          review: s.needsReview,
+          alreadyImported: true,
+        );
+      }
+    }
     if (s.fingerprint != null) {
       final prior =
           await (db.select(db.importBatches)..where(
@@ -155,6 +206,12 @@ class ImportService {
               ))
               .get();
       if (prior.isNotEmpty) {
+        if (s.draftId != null) {
+          await (db.delete(db.importBatches)..where(
+                (b) => b.id.equals(s.draftId!) & b.profileId.equals(profileId),
+              ))
+              .go();
+        }
         return ImportSummary(
           batchId: prior.first.id,
           checked: s.matched.length,
@@ -167,23 +224,28 @@ class ImportService {
       }
     }
 
-    final batchId = randomId();
+    final batchId = s.draftId ?? randomId();
     final now = _now();
     var added = 0, updated = 0, unchanged = 0;
     await db.transaction(() async {
-      await db
-          .into(db.importBatches)
-          .insert(
-            ImportBatchesCompanion.insert(
-              id: batchId,
-              profileId: profileId,
-              sourceType: s.parsed.sourceType,
-              adapterVersion: s.parsed.adapterVersion,
-              fileFingerprint: Value(s.fingerprint),
-              state: 'committing',
-              createdAt: now,
-            ),
-          );
+      if (s.draftId == null) {
+        await db
+            .into(db.importBatches)
+            .insert(
+              ImportBatchesCompanion.insert(
+                id: batchId,
+                profileId: profileId,
+                sourceType: s.parsed.sourceType,
+                adapterVersion: s.parsed.adapterVersion,
+                fileFingerprint: Value(s.fingerprint),
+                state: 'committing',
+                createdAt: now,
+              ),
+            );
+      } else {
+        await (db.update(db.importBatches)..where((b) => b.id.equals(batchId)))
+            .write(const ImportBatchesCompanion(state: Value('committing')));
+      }
       // Several records can resolve to one title (e.g. seasons): merge them.
       final seenTitles = <String>{};
       for (final m in s.matched) {
