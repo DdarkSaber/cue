@@ -24,6 +24,9 @@ jobs:
       - run: flutter --disable-analytics
       - run: flutter pub get
       - run: dart format --output=none --set-exit-if-changed lib test
+      # Generated Drift code must match the tables it was built from.
+      - run: dart run build_runner build --delete-conflicting-outputs
+      - run: git diff --exit-code -- lib
       - run: flutter analyze
       - run: flutter test
       - run: flutter build web --release --no-web-resources-cdn
