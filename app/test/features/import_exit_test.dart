@@ -13,7 +13,7 @@ void main() {
     return GoRouter.of(tester.element(find.byType(ImportScreen)));
   }
 
-  testWidgets('leaving to For you straight away parks the importer', (
+  testWidgets('tapping a tab opens its main page, not a parked sub-page', (
     tester,
   ) async {
     final router = await openImporter(tester);
@@ -21,8 +21,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Library').last);
     await tester.pumpAndSettle();
-    // The old behaviour: Library reopens on the importer.
-    expect(find.byType(ImportScreen), findsOneWidget);
+    // Tabs now always open on their main page.
+    expect(find.byType(ImportScreen), findsNothing);
   });
 
   testWidgets('resetting the Library stack first reopens the Library list', (
@@ -37,5 +37,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(ImportScreen), findsNothing);
     expect(find.byType(LibraryScreen), findsOneWidget);
+  });
+
+  testWidgets('Settings reopens on its main page after visiting a sub-page', (
+    tester,
+  ) async {
+    await pumpCue(tester, location: '/settings/privacy');
+    expect(find.text('Clear mood learning'), findsWidgets);
+    await tester.tap(find.text('For you').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Settings').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Privacy and data'), findsOneWidget);
+    expect(find.text('Clear mood learning'), findsNothing);
   });
 }

@@ -29,10 +29,10 @@ class _AppShellState extends ConsumerState<AppShell> {
     );
   }
 
-  void _select(int index) => navigationShell.goBranch(
-    index,
-    initialLocation: index == navigationShell.currentIndex,
-  );
+  /// A tab always opens on its main page (Settings, not the sub-page you
+  /// left it on), which is what people expect from a bottom bar here.
+  void _select(int index) =>
+      navigationShell.goBranch(index, initialLocation: true);
 
   @override
   Widget build(BuildContext context) {
