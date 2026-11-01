@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SCHEMA } from "../src/sync/store";
+import { SCHEMA, SyncStore } from "../src/sync/store";
 import { APP_ORIGIN, call, fakeEnv } from "./helpers";
 
 // Uses the local D1 that the Workers test pool provides from wrangler.toml.
@@ -107,5 +107,18 @@ describe("encrypted sync", () => {
       headers: { Origin: APP_ORIGIN, "Access-Control-Request-Method": "PUT" },
     }, syncEnv());
     expect(res.headers.get("Access-Control-Allow-Methods")).toContain("PUT");
+  });
+
+  it("prunes copies untouched for too long and keeps fresh ones", async () => {
+    const day = 24 * 60 * 60 * 1000;
+    const now = Date.UTC(2026, 10, 1);
+    const insert = env.SYNC_DB.prepare(
+      "INSERT INTO sync_blobs (id, token_hash, version, data, updated_at) VALUES (?, 'h', 1, 'x', ?)",
+    );
+    await insert.bind("old", now - 200 * day).run();
+    await insert.bind("fresh", now - 10 * day).run();
+    expect(await new SyncStore(env.SYNC_DB).prune(now, 180 * day)).toBe(1);
+    const left = await env.SYNC_DB.prepare("SELECT id FROM sync_blobs").all<{ id: string }>();
+    expect(left.results.map((r) => r.id)).toEqual(["fresh"]);
   });
 });

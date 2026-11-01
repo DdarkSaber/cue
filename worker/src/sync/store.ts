@@ -40,6 +40,15 @@ function same(a: string, b: string) {
 export class SyncStore {
   constructor(private readonly db: D1Database) {}
 
+  /** Deletes copies nobody has written for [maxAgeMs]; returns how many. */
+  async prune(now: number, maxAgeMs: number): Promise<number> {
+    const res = await this.db
+      .prepare("DELETE FROM sync_blobs WHERE updated_at < ?")
+      .bind(now - maxAgeMs)
+      .run();
+    return res.meta.changes ?? 0;
+  }
+
   private async row(id: string) {
     return this.db
       .prepare("SELECT token_hash, version, data, updated_at FROM sync_blobs WHERE id = ?")
