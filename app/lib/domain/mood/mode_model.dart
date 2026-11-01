@@ -112,6 +112,21 @@ class ModeModel {
         }
       }
     }
+    _mergePair(a, b);
+  }
+
+  /// The person said two moods are really one: [dropId] folds into [keepId].
+  void merge(String keepId, String dropId) {
+    final a = modes.indexWhere((m) => m.id == keepId);
+    final b = modes.indexWhere((m) => m.id == dropId);
+    if (a < 0 || b < 0 || a == b) return;
+    _mergePair(a, b);
+  }
+
+  /// The person said a mood is wrong: forget it.
+  void remove(String id) => modes.removeWhere((m) => m.id == id);
+
+  void _mergePair(int a, int b) {
     final x = modes[a], y = modes[b];
     final total = x.sessions + y.sessions;
     x

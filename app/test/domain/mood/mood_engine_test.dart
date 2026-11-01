@@ -159,4 +159,21 @@ void main() {
     expect(store.saved, isNull);
     expect(engine.modes, isEmpty);
   });
+
+  test('moods can be merged and deleted', () async {
+    final store = MemoryStore();
+    final engine = MoodEngine(store, 'p', byIds);
+    var n = 0;
+    engine.model = ModeModel(null, () => 'm${n++}')
+      ..absorb({'isekai': 1, 'fantasy': 1}, DateTime(2026, 1, 1, 20))
+      ..absorb({'romance': 1, 'comedy': 1}, DateTime(2026, 1, 1, 20))
+      ..absorb({'horror': 1}, DateTime(2026, 1, 1, 20));
+    final ids = [for (final m in engine.modes) m.id];
+    await engine.mergeModes(ids[0], ids[1]);
+    expect(engine.modes, hasLength(2));
+    expect(engine.modes.first.sessions, 2);
+    await engine.deleteMode(ids[2]);
+    expect(engine.modes, hasLength(1));
+    expect(store.saved!.$1, hasLength(1));
+  });
 }

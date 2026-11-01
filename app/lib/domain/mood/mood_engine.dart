@@ -148,6 +148,33 @@ class MoodEngine {
 
   bool _forgotten = false;
 
+  /// Removes a wrong mood, or folds one mood into another, then saves.
+  Future<void> deleteMode(String modeId) async {
+    if (_forgotten) return;
+    model.remove(modeId);
+    _restartTracker();
+    await store.save(profileId, model.modes, words);
+  }
+
+  Future<void> mergeModes(String keepId, String dropId) async {
+    if (_forgotten) return;
+    model.merge(keepId, dropId);
+    _restartTracker();
+    await store.save(profileId, model.modes, words);
+  }
+
+  /// The mode list changed: rebuild the session's guess from its swipes.
+  void _restartTracker() {
+    final s = _session;
+    if (s == null) return;
+    final t = ModeTracker(model.modes, now: s.start, textVec: _textVec);
+    for (final (id, signal) in s.picks) {
+      final f = _features[id];
+      if (f != null) t.observe(f, signal);
+    }
+    _tracker = t;
+  }
+
   /// A name the person chose; never replaced by automatic labels.
   Future<void> rename(String modeId, String label) async {
     if (_forgotten) return;

@@ -84,7 +84,7 @@ class MoodReadChip extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
-            'Cue learns these from what you pick. Choose one to steer the deck now. Long-press to rename.',
+            'Cue learns these from what you pick. Choose one to steer the deck now. Long-press to rename, merge or delete.',
             style: TextStyle(
               fontSize: 14,
               color: CueColors.textMuted,
@@ -104,11 +104,73 @@ class MoodReadChip extends ConsumerWidget {
                 ref.read(deckControllerProvider.notifier).moodChanged();
                 Navigator.of(ctx).pop();
               },
-              onLongPress: () => _rename(ctx, ref, m),
+              onLongPress: () => _manage(ctx, ref, m, engine.modes),
             ),
         ],
       ),
     );
+  }
+
+  Future<void> _manage(
+    BuildContext context,
+    WidgetRef ref,
+    Mode m,
+    List<Mode> all,
+  ) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: const Text('Rename'),
+              onTap: () => Navigator.of(ctx).pop('rename'),
+            ),
+            if (all.length > 1)
+              ListTile(
+                title: const Text('Merge into another mood'),
+                onTap: () => Navigator.of(ctx).pop('merge'),
+              ),
+            ListTile(
+              title: const Text('Delete this mood'),
+              onTap: () => Navigator.of(ctx).pop('delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (action == null || !context.mounted) return;
+    final engine = await ref.read(moodEngineProvider.future);
+    switch (action) {
+      case 'rename':
+        if (context.mounted) await _rename(context, ref, m);
+        return;
+      case 'merge':
+        if (!context.mounted) return;
+        final target = await showModalBottomSheet<String>(
+          context: context,
+          builder: (ctx) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final o in all)
+                  if (o.id != m.id)
+                    ListTile(
+                      title: Text('Into ${o.label}'),
+                      onTap: () => Navigator.of(ctx).pop(o.id),
+                    ),
+              ],
+            ),
+          ),
+        );
+        if (target == null) return;
+        await engine.mergeModes(target, m.id);
+      case 'delete':
+        await engine.deleteMode(m.id);
+    }
+    ref.read(deckControllerProvider.notifier).moodChanged();
+    if (context.mounted) Navigator.of(context).pop();
   }
 
   Future<void> _rename(BuildContext context, WidgetRef ref, Mode m) async {
