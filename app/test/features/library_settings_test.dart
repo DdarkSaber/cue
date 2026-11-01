@@ -162,4 +162,22 @@ void main() {
     await settle(t);
     expect(find.textContaining('A fresh, empty one is ready'), findsOneWidget);
   });
+
+  testWidgets('This library lists what it holds per source', (t) async {
+    final db = memoryDb();
+    addTearDown(db.close);
+    await t.runAsync(() async {
+      final id = (await ProfileRepository(db).ensureActive()).id;
+      final catalog = CatalogRepository(db, sampleGateway());
+      await catalog.upsert([CatalogItemDto(item(1))]);
+      await DecisionService(
+        db,
+      ).decide(id, (await catalog.titleById('anilist:1'))!, Decision.willTry);
+    });
+    await pumpCue(t, db: db, location: '/settings/library');
+    await settle(t);
+    expect(find.text('What is in this library'), findsOneWidget);
+    expect(find.text('Deck swipes'), findsOneWidget);
+    expect(find.text('1 titles'), findsOneWidget);
+  });
 }

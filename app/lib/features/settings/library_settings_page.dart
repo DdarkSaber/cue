@@ -68,6 +68,7 @@ class _LibrarySettingsPageState extends ConsumerState<LibrarySettingsPage> {
           'Lives only on this device. No account is needed.',
           style: _body,
         ),
+        const _LibraryContents(),
         const CueSectionLabel('Name (optional)'),
         Row(
           spacing: CueSpace.sm,
