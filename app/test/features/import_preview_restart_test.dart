@@ -11,6 +11,7 @@ import 'package:cue/features/imports/import_screen.dart';
 import 'package:cue/imports/detect.dart';
 import 'package:cue/imports/import_draft.dart';
 import 'package:cue/imports/import_service.dart';
+import 'package:cue/imports/records.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,6 +20,68 @@ import '../helpers.dart';
 import '../support/fakes.dart';
 
 void main() {
+  testWidgets(
+    'an all-unresolved preview saves only for explicit Library review',
+    (t) async {
+      final db = memoryDb();
+      addTearDown(db.close);
+      final profile = (await ProfileRepository(db).ensureActive()).id;
+      final gateway = FakeGateway(offline: true);
+      final service = ImportService(db, CatalogRepository(db, gateway));
+      const parsed = ParsedImport(
+        sourceType: 'generic_csv',
+        adapterVersion: '1',
+        records: [
+          NormalizedRecord(
+            sourceEntryKey: 'unresolved',
+            title: 'Invented unresolved review',
+          ),
+        ],
+      );
+      final staged = await service.stage(profile, parsed, offlineOnly: true);
+      final store = ImportDraftStore(db);
+      final draft = await store.create(
+        profile,
+        parsed,
+        offlineOnly: true,
+        dayFirst: false,
+      );
+      draft.matched = staged.matched;
+      draft.existing = staged.existing;
+      draft.ready = true;
+      await store.save(profile, draft);
+      await pumpCue(
+        t,
+        db: db,
+        gateway: gateway,
+        location: CueRoutes.importer,
+        size: desktop,
+      );
+      expect(find.text('Save 1 for review'), findsOneWidget);
+      await t.runAsync(() async {
+        expect(await service.reviewQueue(profile), isEmpty);
+        expect(await db.select(db.userTitles).get(), isEmpty);
+      });
+      await t.ensureVisible(find.text('Save 1 for review'));
+      await t.tap(find.text('Save 1 for review'));
+      await t.pumpAndSettle();
+      expect(
+        find.textContaining('0 added, 0 existing titles updated'),
+        findsOneWidget,
+      );
+      await t.runAsync(() async {
+        final queue = await service.reviewQueue(profile);
+        expect(queue, hasLength(1));
+        expect(queue.single.titleId, isNull);
+        expect(queue.single.recordJson, isNotNull);
+        expect(await db.select(db.userTitles).get(), isEmpty);
+        expect(await store.load(profile), isNull);
+        await service.undo(profile, queue.single.batchId);
+        expect(await service.reviewQueue(profile), isEmpty);
+      });
+    },
+  );
+
   testWidgets(
     'a restored Netflix preview can correct dates and cancel durably',
     (t) async {

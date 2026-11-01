@@ -23,6 +23,7 @@ import '../test/diagnostics/capability_lifecycle_test.dart' as capabilities;
 import '../test/data/catalog_search_test.dart' as catalog_search;
 import '../test/data/hybrid_gateway_test.dart' as gateway_search;
 import '../test/features/review_search_test.dart' as review_search;
+import '../test/features/import_preview_restart_test.dart' as import_preview;
 import '../test/imports/matcher_test.dart' as import_matching;
 import '../test/features/deck_refill_test.dart' as deck_refill;
 import '../test/support/test_database_web.dart';
@@ -58,6 +59,7 @@ void main() {
     group('web cached catalog search', catalog_search.main);
     group('web provider search routes', gateway_search.main);
     group('web explicit unresolved review', review_search.main);
+    group('web explicit import preview confirmation', import_preview.main);
     group('web safe import matching', import_matching.main);
     group('web bounded deck refills and watched exclusions', deck_refill.main);
     return;

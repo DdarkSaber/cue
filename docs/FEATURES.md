@@ -41,6 +41,8 @@ repeated, but completed matching chunks are kept.
 Imports merge by matched catalog identity into the selected library, preserving
 stronger statuses and manual edits. Separate local libraries remain independent.
 Unmatched or uncertain rows require review before becoming known history.
+An entirely unresolved import can be explicitly saved for Library review
+without linking any titles or treating them as watched.
 Library exposes those queues, which survive reopening. Resolving a title changes
 that library, not an active neighbour.
 

@@ -184,7 +184,7 @@ class _Preview extends StatelessWidget {
               style: TextStyle(fontSize: 15),
             ),
             subtitle: const Text(
-              'Untick to import only id matches; the rest wait for review.',
+              'Untick to leave these exact matches out of this import.',
               style: TextStyle(fontSize: 13, color: CueColors.textMuted),
             ),
             activeThumbColor: CueColors.onActionPrimary,
@@ -199,9 +199,13 @@ class _Preview extends StatelessWidget {
             CueSecondaryButton(label: 'Cancel', onPressed: onCancel),
             Expanded(
               child: CuePrimaryButton(
-                label: n == 0 ? 'Nothing to import' : 'Import $n',
+                label: n > 0
+                    ? 'Import $n'
+                    : staged.needsReview > 0
+                    ? 'Save ${staged.needsReview} for review'
+                    : 'Nothing to import',
                 expand: true,
-                onPressed: n == 0 ? null : onImport,
+                onPressed: n == 0 && staged.needsReview == 0 ? null : onImport,
               ),
             ),
           ],

@@ -35,6 +35,7 @@ import '../test/features/franchise_exclusions_section_test.dart' as franchises;
 import '../test/data/catalog_search_test.dart' as catalog_search;
 import '../test/data/hybrid_gateway_test.dart' as gateway_search;
 import '../test/features/review_search_test.dart' as review_search;
+import '../test/features/import_preview_restart_test.dart' as import_preview;
 import '../test/imports/matcher_test.dart' as import_matching;
 import '../test/imports/review_metadata_test.dart' as review_metadata;
 import '../test/features/deck_refill_test.dart' as deck_refill;
@@ -93,6 +94,7 @@ void main() {
     group('device cached catalog search', catalog_search.main);
     group('device provider search routes', gateway_search.main);
     group('device explicit unresolved review', review_search.main);
+    group('device explicit import preview confirmation', import_preview.main);
     group('device safe import matching', import_matching.main);
     group('device review metadata restart and migration', review_metadata.main);
     group(
