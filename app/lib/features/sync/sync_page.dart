@@ -1,14 +1,17 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../app/route_scaffold.dart';
 import '../../app/router.dart';
 import '../../app/tokens.dart';
 import '../../app/widgets.dart';
 import '../../sync/sync_controller.dart';
+import 'scan_code_page.dart';
 
 const _body = TextStyle(fontSize: 14, height: 1.55, color: CueColors.textMuted);
 
@@ -76,22 +79,36 @@ class _SyncPageState extends ConsumerState<SyncPage> {
             ),
           ),
           const CueSectionLabel('Already synced on another device?'),
-          Row(
+          TextField(
+            controller: _code,
+            autocorrect: false,
+            enableSuggestions: false,
+            textCapitalization: TextCapitalization.characters,
+            maxLength: 48,
+            decoration: const InputDecoration(
+              counterText: '',
+              hintText: 'XXXX-XXXX-XXXX-XXXX-…',
+            ),
+          ),
+          const SizedBox(height: CueSpace.sm),
+          Wrap(
             spacing: CueSpace.sm,
+            runSpacing: CueSpace.sm,
             children: [
-              Expanded(
-                child: TextField(
-                  controller: _code,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  textCapitalization: TextCapitalization.characters,
-                  maxLength: 48,
-                  decoration: const InputDecoration(
-                    counterText: '',
-                    hintText: 'XXXX-XXXX-XXXX-XXXX-…',
-                  ),
+              if (!kIsWeb)
+                CueSecondaryButton(
+                  label: 'Scan',
+                  onPressed: s.busy
+                      ? null
+                      : () async {
+                          final code = await Navigator.of(context).push<String>(
+                            MaterialPageRoute(
+                              builder: (_) => const ScanCodePage(),
+                            ),
+                          );
+                          if (code != null) _code.text = code;
+                        },
                 ),
-              ),
               CueSecondaryButton(
                 label: 'Paste',
                 onPressed: s.busy ? null : _paste,
@@ -120,6 +137,21 @@ class _SyncPageState extends ConsumerState<SyncPage> {
               ),
             ),
           ),
+          if (s.code != null) ...[
+            const SizedBox(height: CueSpace.md),
+            Center(
+              child: Container(
+                color: Colors.white,
+                padding: const EdgeInsets.all(8),
+                child: QrImageView(
+                  data: s.code!,
+                  size: 180,
+                  semanticsLabel:
+                      'Sync code as a QR. Scan it from the other device.',
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 6),
           const Text(
             'Treat it like a password: anyone with it can read and change this library.',

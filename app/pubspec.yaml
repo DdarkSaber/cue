@@ -28,6 +28,8 @@ dependencies:
   intl: ^0.20.3
   protobuf: ^6.1.0
   xml: ^7.1.0
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^7.4.3
 
 dev_dependencies:
   flutter_test:
