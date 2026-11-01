@@ -338,6 +338,7 @@ class DeckController extends Notifier<DeckState> {
   Future<DecisionResult?> decide(
     Decision d, {
     DeckContext context = DeckContext.deck,
+    Duration? defer,
   }) async {
     final card = state.top;
     if (card == null || !_inFlight.add(card.title.id)) return null;
@@ -354,6 +355,7 @@ class DeckController extends Notifier<DeckState> {
             d,
             context: filters.isRevisit ? DeckContext.revisit : context,
             mood: filters.mood == QuickMood.forYou ? null : filters.mood.name,
+            defer: defer,
           );
       _session.record(card.title.features, switch (d) {
         Decision.willTry => 0.6,

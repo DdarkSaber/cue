@@ -38,6 +38,9 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
   int _toastId = 0;
   bool _sheetOpen = false;
 
+  /// Set by the Not now long-press menu for the next Not now.
+  Duration? _pendingDefer;
+
   @override
   void initState() {
     super.initState();
@@ -67,8 +70,47 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
       toastText(decision, reading: top.title.kind.isReading),
       decision: decision,
     );
-    await ref.read(deckControllerProvider.notifier).decide(decision);
+    final defer = decision == Decision.notNow ? _pendingDefer : null;
+    _pendingDefer = null;
+    await ref
+        .read(deckControllerProvider.notifier)
+        .decide(decision, defer: defer);
   }
+
+  /// Long press on Not now: choose how long to hide the title.
+  Future<void> _longAct(Decision d) async {
+    if (d != Decision.notNow) return _act(d);
+    final picked = await showModalBottomSheet<Duration>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (label, length) in [
+              ('Tomorrow', const Duration(days: 1)),
+              ('For a week', const Duration(days: 7)),
+              ('For two weeks', const Duration(days: 14)),
+              ('For a month', const Duration(days: 30)),
+            ])
+              ListTile(
+                title: Text('Not now: $label'),
+                onTap: () => Navigator.of(ctx).pop(length),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    _pendingDefer = picked;
+    _act(Decision.notNow);
+  }
+
+  static const _arrows = {
+    SwipeDirection.right: '→',
+    SwipeDirection.left: '←',
+    SwipeDirection.up: '↑',
+    SwipeDirection.down: '↓',
+  };
 
   void _act(Decision d) {
     final dir = ref.read(currentSettingsProvider).swipeMap.directionFor(d);
@@ -227,6 +269,15 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
               SizedBox(height: desktop ? 22 : 14),
               ActionBar(
                 onAction: top == null || _sheetOpen ? null : _act,
+                onLongAction: _longAct,
+                keyHints: {
+                  for (final d in Decision.values)
+                    d:
+                        _arrows[ref
+                            .watch(currentSettingsProvider)
+                            .swipeMap
+                            .directionFor(d)]!,
+                },
                 reading: top?.title.kind.isReading ?? false,
               ),
               if (desktop) ...[

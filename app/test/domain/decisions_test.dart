@@ -50,6 +50,18 @@ void main() {
     now = DateTime(2026, 10, 31, 12);
   });
 
+  test('Not now can hide for a chosen length', () async {
+    await decisions.decide(
+      profile,
+      anime,
+      Decision.notNow,
+      defer: const Duration(days: 1),
+    );
+    now = now.add(const Duration(days: 1, minutes: 1));
+    expect((await library.signals(profile)).deferred, isEmpty);
+    now = DateTime(2026, 10, 31, 12);
+  });
+
   test(
     'Watched records seen, never completed, and keeps a completion',
     () async {

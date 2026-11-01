@@ -16,7 +16,19 @@ const actionOrder = [
 ];
 
 class ActionBar extends StatelessWidget {
-  const ActionBar({super.key, required this.onAction, this.reading = false});
+  const ActionBar({
+    super.key,
+    required this.onAction,
+    this.onLongAction,
+    this.keyHints = const {},
+    this.reading = false,
+  });
+
+  /// Long press on a button (Not now offers how long to hide).
+  final ValueChanged<Decision>? onLongAction;
+
+  /// The key for each action on desktop, shown as a tooltip ("→").
+  final Map<Decision, String> keyHints;
 
   /// Null while there is no card to act on.
   final ValueChanged<Decision>? onAction;
@@ -34,7 +46,11 @@ class ActionBar extends StatelessWidget {
             decision: a,
             label: a.labelFor(reading: reading),
             desktop: desktop,
+            keyHint: keyHints[a],
             onPressed: onAction == null ? null : () => onAction!(a),
+            onLongPress: onAction == null || onLongAction == null
+                ? null
+                : () => onLongAction!(a),
           ),
         ),
     ];
@@ -57,12 +73,16 @@ class _ActionItem extends StatelessWidget {
     required this.label,
     required this.desktop,
     required this.onPressed,
+    this.onLongPress,
+    this.keyHint,
   });
 
   final Decision decision;
   final String label;
   final bool desktop;
   final VoidCallback? onPressed;
+  final VoidCallback? onLongPress;
+  final String? keyHint;
 
   @override
   Widget build(BuildContext context) {
@@ -99,12 +119,13 @@ class _ActionItem extends StatelessWidget {
         height: 1.2,
       ),
     );
-    return PressScale(
+    final button = PressScale(
       enabled: enabled,
       child: Opacity(
         opacity: enabled ? 1 : 0.5,
         child: TextButton(
           onPressed: onPressed,
+          onLongPress: onLongPress,
           style: ButtonStyle(
             minimumSize: const WidgetStatePropertyAll(
               Size(CueSize.minTarget, CueSize.minTarget),
@@ -137,5 +158,9 @@ class _ActionItem extends StatelessWidget {
         ),
       ),
     );
+    final hint = keyHint;
+    return desktop && hint != null
+        ? Tooltip(message: '$label ($hint)', child: button)
+        : button;
   }
 }

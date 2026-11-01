@@ -41,4 +41,25 @@ void main() {
       'true',
     );
   });
+
+  testWidgets('long-press Not now hides for the chosen length', (tester) async {
+    await pumpCue(tester);
+    await tester.longPress(find.text('Not now'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Not now: Tomorrow'));
+    await tester.pumpAndSettle();
+    final c = ProviderScope.containerOf(
+      tester.element(find.byType(MoodReadChip)),
+    );
+    final db = c.read(databaseProvider);
+    final row = await db.select(db.deferrals).getSingle();
+    final days = row.eligibleAfter.difference(DateTime.now()).inHours;
+    expect(days, inInclusiveRange(22, 25));
+  });
+
+  testWidgets('desktop buttons show their keys', (tester) async {
+    await pumpCue(tester, size: desktop);
+    expect(find.byTooltip('Will try (→)'), findsOneWidget);
+    expect(find.byTooltip('Not now (↓)'), findsOneWidget);
+  });
 }

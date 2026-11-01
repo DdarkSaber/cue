@@ -58,6 +58,9 @@ class DecisionService {
     Decision d, {
     DeckContext context = DeckContext.deck,
     String? mood,
+
+    /// How long Not now hides the title; [deferral] when not given.
+    Duration? defer,
   }) async {
     final now = _now();
     final id = randomId();
@@ -82,7 +85,7 @@ class DecisionService {
                   DeferralsCompanion.insert(
                     profileId: profileId,
                     titleId: title.id,
-                    eligibleAfter: now.add(deferral),
+                    eligibleAfter: now.add(defer ?? deferral),
                   ),
                 );
           case Decision.watched:
