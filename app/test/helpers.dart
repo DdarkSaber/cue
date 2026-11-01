@@ -8,6 +8,7 @@ import 'package:cue/data/db/database.dart';
 import 'package:cue/domain/models/title.dart';
 import 'package:cue/domain/ranker.dart';
 import 'package:cue/sync/sync_service.dart';
+import 'package:cue/features/deck/swipe_tutorial.dart';
 import 'package:cue/main.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -44,6 +45,7 @@ Future<void> pumpCue(
   List<Override> overrides = const [],
   CueDatabase? db,
   FakeGateway? gateway,
+  bool tutorial = false,
 }) async {
   final database = db ?? memoryDb();
   if (db == null) addTearDown(database.close);
@@ -63,6 +65,7 @@ Future<void> pumpCue(
         // No platform keystore in tests; sync stays local.
         codeStoreProvider.overrideWithValue(MemoryCodeStore()),
         tokenStoreProvider.overrideWithValue(MemoryTokenStore()),
+        swipeTutorialEnabledProvider.overrideWithValue(tutorial),
         // Seeded so decks (and goldens) are the same every run.
         rankerProvider.overrideWithValue(Ranker(random: Random(7))),
         ...overrides,

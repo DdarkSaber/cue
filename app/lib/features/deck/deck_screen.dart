@@ -18,6 +18,7 @@ import 'deck_controller.dart';
 import 'loading_card.dart';
 import 'mood_rail.dart';
 import 'mood_read_chip.dart';
+import 'swipe_tutorial.dart';
 import 'poster.dart';
 import 'swipe_deck.dart';
 import 'toast.dart';
@@ -36,6 +37,14 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
   ToastMessage? _toast;
   int _toastId = 0;
   bool _sheetOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => maybeShowSwipeTutorial(context, ref),
+    );
+  }
 
   @override
   void dispose() {

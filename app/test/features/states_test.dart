@@ -45,12 +45,12 @@ void main() {
 
     testWidgets('enabled controls scale to 0.96', (t) async {
       await pumpCue(t);
-      expect(await scaleWhilePressed(t, 'Comfort'), PressScale.pressedScale);
+      expect(await scaleWhilePressed(t, 'Hype'), PressScale.pressedScale);
     });
 
     testWidgets('reduced motion keeps controls still', (t) async {
       await pumpCue(t, disableAnimations: true);
-      expect(await scaleWhilePressed(t, 'Comfort'), 1);
+      expect(await scaleWhilePressed(t, 'Hype'), 1);
     });
 
     testWidgets('disabled controls do not react', (t) async {

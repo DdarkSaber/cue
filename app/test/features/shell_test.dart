@@ -108,9 +108,9 @@ void main() {
       matching: find.widgetWithText(OutlinedButton, label),
     );
     expect(t.getSemantics(chip('For you')), isSemantics(isSelected: true));
-    await t.tap(chip('Comfort'));
+    await t.tap(chip('Hype'));
     await t.pumpAndSettle();
-    expect(t.getSemantics(chip('Comfort')), isSemantics(isSelected: true));
+    expect(t.getSemantics(chip('Hype')), isSemantics(isSelected: true));
     expect(t.getSemantics(chip('For you')), isSemantics(isSelected: false));
   });
 

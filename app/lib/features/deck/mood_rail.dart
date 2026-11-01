@@ -7,6 +7,7 @@ import '../../app/tokens.dart';
 import '../../app/widgets.dart';
 import '../../domain/models/quick_mood.dart';
 import 'deck_controller.dart';
+import 'tell_me_pill.dart';
 
 /// Horizontal chip rail. One tap re-deals for that mood; no sheet. The
 /// selected chip scrolls into view, so Revisit (the last chip) is never
@@ -59,7 +60,7 @@ class _MoodRailState extends ConsumerState<MoodRail> {
         child: Row(
           spacing: CueSpace.sm,
           children: [
-            for (final mood in QuickMood.values)
+            for (final mood in QuickMood.values) ...[
               KeyedSubtree(
                 key: _keys[mood],
                 child: MoodPill(
@@ -69,6 +70,9 @@ class _MoodRailState extends ConsumerState<MoodRail> {
                       ref.read(deckFiltersProvider.notifier).setMood(mood),
                 ),
               ),
+              // Right after For you, so it is on screen on a phone.
+              if (mood == QuickMood.forYou) const TellMePill(),
+            ],
           ],
         ),
       ),

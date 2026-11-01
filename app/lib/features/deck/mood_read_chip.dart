@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../app/sheets.dart';
+import '../../app/text_prompt.dart';
 import '../../app/tokens.dart';
 import '../../domain/models/quick_mood.dart';
 import '../../domain/mood/mode_model.dart';
@@ -21,8 +22,30 @@ class MoodReadChip extends ConsumerWidget {
     final forYou = ref.watch(
       deckFiltersProvider.select((f) => f.mood == QuickMood.forYou),
     );
-    if (!forYou || read.label == null || read.confidence < showAbove) {
-      return const SizedBox.shrink();
+    if (!forYou) return const SizedBox.shrink();
+    if (read.label == null || read.confidence < showAbove) {
+      // Make the learner visible before it has a confident guess.
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(
+          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Cue learns your moods from what you pick. After a few sessions it shows its guess here, and you can correct it.',
+              ),
+            ),
+          ),
+          style: TextButton.styleFrom(
+            minimumSize: const Size(CueSize.minTarget, CueSize.minTarget),
+            foregroundColor: CueColors.textMuted,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+          ),
+          child: const Text(
+            'Cue is learning your moods',
+            style: TextStyle(fontSize: 13),
+          ),
+        ),
+      );
     }
     return Align(
       alignment: Alignment.centerLeft,
@@ -89,30 +112,13 @@ class MoodReadChip extends ConsumerWidget {
   }
 
   Future<void> _rename(BuildContext context, WidgetRef ref, Mode m) async {
-    final controller = TextEditingController(text: m.label);
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Rename mood'),
-        content: TextField(
-          controller: controller,
-          maxLength: 32,
-          autofocus: true,
-          onSubmitted: (v) => Navigator.of(ctx).pop(v),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(controller.text),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+    final name = await showTextPrompt(
+      context,
+      title: 'Rename mood',
+      confirmLabel: 'Save',
+      initial: m.label,
+      maxLength: 32,
     );
-    controller.dispose();
     final clean = name?.trim() ?? '';
     if (clean.isEmpty) return;
     final engine = await ref.read(moodEngineProvider.future);
