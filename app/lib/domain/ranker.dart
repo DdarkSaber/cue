@@ -165,7 +165,7 @@ class Ranker {
     final mood = switch (f.mood) {
       // The learned mood steers the default deck.
       QuickMood.forYou when target != null && target.confidence > 0 =>
-        0.5 + 0.5 * cosine(featureVec(moodFeatures(t)), target.vec),
+        0.5 + 0.5 * cosine(titleVec(t), target.vec),
       QuickMood.forYou => 0.5,
       QuickMood.revisit => _revisitMood(t, s, f),
       final m => moodOverlap(features, m),

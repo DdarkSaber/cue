@@ -42,3 +42,8 @@ const derivedWeight = 0.5;
 Vec featureVec(Set<String> features) => {
   for (final f in features) f: isDerivedFeature(f) ? derivedWeight : 1.0,
 };
+
+/// [featureVec] of [moodFeatures], computed once per title object: the
+/// ranker asks for it for every card on every re-rank.
+Vec titleVec(Title t) => _titleVecs[t] ??= featureVec(moodFeatures(t));
+final _titleVecs = Expando<Vec>('moodVec');

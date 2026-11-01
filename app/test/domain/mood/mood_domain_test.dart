@@ -46,6 +46,13 @@ void main() {
       const unknown = Title(id: 'd', kind: MediaKind.series);
       expect(lenBucket(unknown), isNull);
     });
+
+    test('a mood vector is computed once per title', () {
+      const t = Title(id: 'v', kind: MediaKind.anime, genres: ['Action']);
+      expect(identical(titleVec(t), titleVec(t)), isTrue);
+      expect(titleVec(t)['action'], 1.0);
+      expect(titleVec(t)['kind:anime'], derivedWeight);
+    });
   });
 
   group('vectors', () {
