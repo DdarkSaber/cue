@@ -211,6 +211,25 @@ export function createApp() {
   });
 
   // Optional, client-consented technical diagnostics. CORS is not authorization.
+  app.post("/diagnostics", async (c) => {
+    if (c.req.header("Authorization") !== undefined || Object.keys(c.req.query()).length) {
+      return fail(c, 400, "invalid_request");
+    }
+    const body = diagnosticsBody.safeParse(await jsonBody(c));
+    if (!body.success) return fail(c, 400, "invalid_request");
+    if (!c.env.SYNC_DB) return fail(c, 503, "unavailable");
+    try {
+      const result = await new DiagnosticsStore(c.env.SYNC_DB).create(body.data.events, Date.now());
+      if (result.ok) {
+        return c.json({ token: result.token, accepted: result.accepted, expiresAt: result.expiresAt });
+      }
+      c.header("Retry-After", "604800");
+      return fail(c, 429, result.reason);
+    } catch {
+      return fail(c, 503, "unavailable");
+    }
+  });
+
   const diagnosticsAuth = async (c: Parameters<typeof fail>[0]) => {
     const id = diagnosticsId.safeParse(c.req.param("id"));
     const token = diagnosticsToken(c.req.header("Authorization"));
@@ -241,7 +260,8 @@ export function createApp() {
     if (!body.success) return fail(c, 400, "invalid_request");
     try {
       const result = await a.store.append(a.id, body.data.events, Date.now());
-      if (result.ok) return c.json({ accepted: result.accepted });
+      if (result.ok) return c.json({ accepted: result.accepted, expiresAt: result.expiresAt });
+      if (result.reason === "not_found") return fail(c, 404, "not_found");
       c.header("Retry-After", result.reason === "rate_limited" ? "5" : "604800");
       return fail(c, 429, result.reason);
     } catch {

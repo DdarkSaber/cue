@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cue/app/providers.dart';
 import 'package:cue/data/catalog_gateway.dart';
 import 'package:cue/data/catalog_repository.dart';
@@ -14,10 +16,13 @@ import 'package:cue/imports/records.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import '../diagnostics/technical_diagnostics_test.dart' show ConsentMemory;
 import '../helpers.dart';
 import '../support/fakes.dart';
+import 'deck_test.dart' show settle;
 
 class _AiFailGateway extends FakeGateway {
   _AiFailGateway()
@@ -43,6 +48,60 @@ class _AiFailGateway extends FakeGateway {
 }
 
 void main() {
+  testWidgets(
+    'diagnostics sharing reset hides old code and waits for new uploads',
+    (t) async {
+      final service = TechnicalDiagnostics(
+        'https://synthetic.test',
+        ConsentMemory(),
+        clientFactory: () => MockClient(
+          (r) async => http.Response(
+            jsonEncode({
+              'accepted': 1,
+              'token': 'A' * 43,
+              'expiresAt': DateTime.utc(2030).millisecondsSinceEpoch,
+            }),
+            200,
+          ),
+        ),
+      );
+      addTearDown(service.dispose);
+      await service.load();
+      await service.setEnabled(true);
+      service.finish(
+        service.begin(DiagnosticProvider.local, DiagnosticOperation.settings),
+        DiagnosticStatus.ok,
+        DiagnosticError.none,
+      );
+      await service.upload();
+      final db = memoryDb();
+      addTearDown(db.close);
+      await t.runAsync(() => db.customSelect('SELECT 1').get());
+      await pumpCue(
+        t,
+        db: db,
+        location: '/settings/privacy',
+        size: desktop,
+        overrides: [technicalDiagnosticsProvider.overrideWithValue(service)],
+      );
+      final show = find.text('Show recovery code');
+      await t.ensureVisible(show);
+      await t.pumpAndSettle();
+      await t.tap(show);
+      await t.pumpAndSettle();
+      expect(find.text('A' * 43), findsOneWidget);
+      final reset = find.text('Start new diagnostics session');
+      await t.ensureVisible(reset);
+      await t.pumpAndSettle();
+      await t.tap(reset);
+      await t.pumpAndSettle();
+      expect(service.enabled, isTrue);
+      expect(service.recoveryCode, isNull);
+      expect(find.text('A' * 43), findsNothing);
+      expect(find.text('Show recovery code'), findsNothing);
+    },
+  );
+
   testWidgets(
     'large one-kind cache still fetches missing formats and explores them',
     (t) async {
@@ -71,6 +130,7 @@ void main() {
         ]),
       );
       await pumpCue(t, db: db, gateway: gateway);
+      await settle(t);
       final c = ProviderScope.containerOf(t.element(find.byType(DeckScreen)));
       final cards = c.read(deckControllerProvider).cards;
       expect(
@@ -89,6 +149,7 @@ void main() {
           .read(deckFiltersProvider.notifier)
           .apply(const DeckFilters(kinds: {MediaKind.movie}));
       await t.pumpAndSettle();
+      await settle(t);
       expect(
         c
             .read(deckControllerProvider)

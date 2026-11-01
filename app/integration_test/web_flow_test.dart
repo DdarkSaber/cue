@@ -19,9 +19,11 @@ import '../test/features/franchise_exclusions_section_test.dart'
 import '../test/features/try_now_flow_test.dart' as try_now_flow;
 import '../test/features/try_now_gesture_test.dart' as try_now_gesture;
 import '../test/domain/try_now_intent_test.dart' as try_now_intent;
+import '../test/diagnostics/capability_lifecycle_test.dart' as capabilities;
 import '../test/support/test_database_web.dart';
 import 'web_persistence_test.dart' as persistence;
 import 'web_test_binding.dart';
+import 'diagnostics_local_test.dart' as diagnostics_local;
 
 void main() {
   final binding = SyntheticWebTestBinding();
@@ -47,6 +49,12 @@ void main() {
     await deleteAllSyntheticDatabases();
     binding.reportData!['syntheticStorageCleanup'] = 'verified';
   });
+  if (const String.fromEnvironment('CUE_WEB_E2E_GROUP') == 'diagnostics') {
+    group('web diagnostics lifecycle', capabilities.main);
+    group('web local Worker capability isolation', diagnostics_local.main);
+    group('web diagnostics Settings and follow-up', followup.main);
+    return;
+  }
   if (const String.fromEnvironment('CUE_WEB_E2E_GROUP') == 'ratings') {
     group('web optional rating cards', ratings.main);
     return;

@@ -18,6 +18,15 @@ class ConsentMemory implements DiagnosticConsentStore {
   }
 }
 
+http.Response _ack(http.Request request) => http.Response(
+  jsonEncode({
+    'accepted': 1,
+    'expiresAt': DateTime.utc(2030).millisecondsSinceEpoch,
+    if (request.method == 'POST') 'token': 'A' * 43,
+  }),
+  200,
+);
+
 void main() {
   test('default off, no retrospective requests, disable drops pending/inflight result', () async {
     final store = ConsentMemory();
@@ -27,7 +36,7 @@ void main() {
       store,
       clientFactory: () => MockClient((r) async {
         requests.add(r);
-        return http.Response('{"accepted":1}', 200);
+        return _ack(r);
       }),
     );
     addTearDown(service.dispose);
@@ -60,7 +69,7 @@ void main() {
       store,
       clientFactory: () => MockClient((r) async {
         uploads.add(r);
-        return http.Response('{"accepted":1}', 200);
+        return _ack(r);
       }),
     );
     addTearDown(service.dispose);
@@ -107,11 +116,13 @@ void main() {
     expect(uploads.first.body, isNot(contains('PRIVATE')));
     expect(uploads.first.body, isNot(contains('private title')));
     expect(uploads.first.body, isNot(contains(service.recoveryCode!)));
+    expect(uploads.first.headers['Authorization'], isNull);
+    expect(uploads.first.url.path, '/diagnostics');
+    expect(uploads.last.url.path, '/diagnostics/${service.sessionId}');
     expect(
-      uploads.first.headers['Authorization'],
+      uploads.last.headers['Authorization'],
       'Bearer ${service.recoveryCode}',
     );
-    expect(uploads.first.url.path, '/diagnostics/${service.sessionId}');
     expect(service.pendingCount, 0);
   });
 
@@ -192,12 +203,20 @@ void main() {
         'https://synthetic.test',
         ConsentMemory(),
         clientFactory: () => MockClient(
-          (r) async => http.Response('{"events":[{"title":"PRIVATE"}]}', 200),
+          (r) async => r.method == 'POST'
+              ? _ack(r)
+              : http.Response('{"events":[{"title":"PRIVATE"}]}', 200),
         ),
       );
       addTearDown(service.dispose);
       await service.load();
       await service.setEnabled(true);
+      service.finish(
+        service.begin(DiagnosticProvider.local, DiagnosticOperation.settings),
+        DiagnosticStatus.ok,
+        DiagnosticError.none,
+      );
+      await service.upload();
       await expectLater(service.export(), throwsFormatException);
     },
   );

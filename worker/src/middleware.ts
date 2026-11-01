@@ -79,7 +79,7 @@ const diagnosticsBodyLimit: MiddlewareHandler<AppEnv> = (c, next) => {
 /** Diagnostics are additionally capped at 6 KB; sync uploads allow 2 MB. */
 export const bodyCap: MiddlewareHandler<AppEnv> = (c, next) =>
   c.req.path.startsWith("/sync/") ? syncBodyLimit(c, next)
-    : c.req.path.startsWith("/diagnostics/") ? diagnosticsBodyLimit(c, next)
+    : c.req.path === "/diagnostics" || c.req.path.startsWith("/diagnostics/") ? diagnosticsBodyLimit(c, next)
       : smallBody(c, next);
 
 /** Per-IP limit through the Workers rate-limiting binding. Fails closed. */

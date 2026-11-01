@@ -1,4 +1,5 @@
 import { diagnosticEvent, type DiagnosticEvent } from "./schemas";
+import { sha256Hex } from "../sync/store";
 
 export const DIAGNOSTICS_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 export const DIAGNOSTICS_WRITE_INTERVAL_MS = 5000;
@@ -14,8 +15,12 @@ interface Row {
 
 type StoredEvent = DiagnosticEvent & { receivedAt: number };
 export type AppendResult =
-  | { ok: true; accepted: number }
-  | { ok: false; reason: "rate_limited" | "quota_exceeded" };
+  | { ok: true; accepted: number; expiresAt: number }
+  | { ok: false; reason: "rate_limited" | "quota_exceeded" | "not_found" };
+
+export type CreateResult =
+  | { ok: true; token: string; accepted: number; expiresAt: number }
+  | { ok: false; reason: "quota_exceeded" };
 
 /** The capability digest is the primary key: no bearer token is persisted. */
 export class DiagnosticsStore {
@@ -71,21 +76,47 @@ export class DiagnosticsStore {
       .map(({ receivedAt: _receivedAt, ...event }) => event);
   }
 
+  async create(batch: DiagnosticEvent[], now: number): Promise<CreateResult> {
+    const token = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))
+      .replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+    const id = await sha256Hex(token);
+    await this.prune(id, now);
+    const ids = new Set<string>();
+    const unique = batch.filter((event) => {
+      if (ids.has(event.requestId)) return false;
+      ids.add(event.requestId);
+      return true;
+    });
+    const events = JSON.stringify(unique.map((event) => ({ ...event, receivedAt: now })));
+    const expiresAt = now + DIAGNOSTICS_MAX_AGE_MS;
+    // Neither the ID nor the token can be supplied by a caller. A collision
+    // fails closed rather than returning a capability for an existing row.
+    const changed = await this.run(
+      `INSERT INTO diagnostic_sessions (id, events, revision, last_write_at, expires_at)
+       SELECT ?, ?, 1, ?, ? WHERE (SELECT COUNT(*) FROM diagnostic_sessions) < ?
+       ON CONFLICT(id) DO NOTHING`,
+      id, events, now, expiresAt, MAX_DIAGNOSTICS_SESSIONS,
+    );
+    if (changed !== 1) return { ok: false, reason: "quota_exceeded" };
+    return { ok: true, token, accepted: unique.length, expiresAt };
+  }
+
   async append(id: string, batch: DiagnosticEvent[], now: number): Promise<AppendResult> {
     await this.prune(id, now);
-    // A single conditional INSERT serializes the global quota in SQLite.
-    // Existing sessions use revision CAS; a failed CAS always rereads.
+    // Update only: missing/expired capabilities can never recreate a session.
+    // A failed CAS always rereads; no fallback INSERT is permitted.
     for (let attempt = 0; attempt < 5; attempt++) {
       const row = await this.row(id);
-      const existing = row ? this.events(row) : [];
+      if (!row || row.expires_at <= now) return { ok: false, reason: "not_found" };
+      const existing = this.events(row);
       const ids = new Set(existing.map((event) => event.requestId));
       const added = batch.filter((event) => {
         if (ids.has(event.requestId)) return false;
         ids.add(event.requestId);
         return true;
       });
-      if (added.length === 0) return { ok: true, accepted: 0 };
-      if (row && now - row.last_write_at < DIAGNOSTICS_WRITE_INTERVAL_MS) {
+      if (added.length === 0) return { ok: true, accepted: 0, expiresAt: row.expires_at };
+      if (now - row.last_write_at < DIAGNOSTICS_WRITE_INTERVAL_MS) {
         return { ok: false, reason: "rate_limited" };
       }
       if (existing.length + added.length > MAX_DIAGNOSTICS_EVENTS) {
@@ -94,23 +125,12 @@ export class DiagnosticsStore {
       const events = JSON.stringify([
         ...existing, ...added.map((event) => ({ ...event, receivedAt: now })),
       ]);
-      if (!row) {
-        const changed = await this.run(
-          `INSERT INTO diagnostic_sessions (id, events, revision, last_write_at, expires_at)
-           SELECT ?, ?, 1, ?, ? WHERE (SELECT COUNT(*) FROM diagnostic_sessions) < ?
-           ON CONFLICT(id) DO NOTHING`,
-          id, events, now, now + DIAGNOSTICS_MAX_AGE_MS, MAX_DIAGNOSTICS_SESSIONS,
-        );
-        if (changed === 1) return { ok: true, accepted: added.length };
-        if (!(await this.row(id))) return { ok: false, reason: "quota_exceeded" };
-      } else {
-        const changed = await this.run(
-          `UPDATE diagnostic_sessions SET events = ?, revision = revision + 1, last_write_at = ?
-           WHERE id = ? AND revision = ? AND expires_at = ? AND expires_at > ?`,
-          events, now, id, row.revision, row.expires_at, now,
-        );
-        if (changed === 1) return { ok: true, accepted: added.length };
-      }
+      const changed = await this.run(
+        `UPDATE diagnostic_sessions SET events = ?, revision = revision + 1, last_write_at = ?
+         WHERE id = ? AND revision = ? AND expires_at = ? AND expires_at > ?`,
+        events, now, id, row.revision, row.expires_at, now,
+      );
+      if (changed === 1) return { ok: true, accepted: added.length, expiresAt: row.expires_at };
     }
     return { ok: false, reason: "rate_limited" };
   }

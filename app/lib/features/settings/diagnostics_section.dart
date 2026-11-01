@@ -17,7 +17,7 @@ class _DiagnosticsSectionState extends ConsumerState<DiagnosticsSection> {
       final agreed = await confirmAction(
         context,
         title: 'Share technical diagnostics?',
-        body: 'Off by default. Only new catalog/import HTTP requests send app version, provider, timing, status, fixed error codes and random request IDs to Cue. Never titles, searches, Tell me text, history, files, URLs, raw errors, tokens or keys. Up to 100 events per session; access expires 7 days after its first upload. Expired records are physically cleaned on later diagnostics requests, not on an exact deletion timer. Your private recovery code grants access; do not share it publicly. Turning off cancels pending events, but cannot recall an upload already received. Diagnostics cannot explain an incorrect title match without title data. Free-plan quotas or service failures can stop uploads; no free-forever guarantee.',
+        body: 'Off by default. Only new catalog/import HTTP requests send app version, provider, timing, status, fixed error codes and random request IDs to Cue. Never titles, searches, Tell me text, history, files, URLs, raw errors, tokens or keys. Up to 100 events per session; its private code and record access expire 7 days after the server accepts the first batch. Continuing after expiry or enabling again starts a separate session with a new code. Expired records are physically cleaned on later diagnostics requests, not on an exact deletion timer. Do not share the code publicly. Turning off stops collection and cancels pending events, but previously shared codes can still read their old records until expiry; they cannot read new sessions. Diagnostics cannot explain an incorrect title match without title data. Free-plan quotas or service failures can stop uploads; no free-forever guarantee.',
         confirmLabel: 'Enable diagnostics',
       );
       if (!agreed || !mounted) return;
@@ -80,7 +80,7 @@ class _DiagnosticsSectionState extends ConsumerState<DiagnosticsSection> {
             onChanged: service.loaded && !_busy ? _toggle : null,
           ),
           const Text(
-            'Device-wide consent, never copied by library backup or sync. Up to 100 events per seven-day session. Access expires after 7 days; physical cleanup happens on later diagnostics requests. Only new requests after consent; turning off drops pending events. Uploads require the updated Worker to be deployed separately. Quota/unavailable errors are shown; no automatic retry loop.',
+            'Device-wide consent, never copied by library backup or sync. The server issues a new private code on the first accepted upload; it expires with that session after 7 days. Enabling again or starting a new session stops future uploads to the old code, but does not revoke access to its old retained records. Only new requests after consent; turning off drops pending events. Uploads require the updated Worker to be deployed separately. Quota/unavailable errors are shown; no automatic retry loop.',
             style: _body,
           ),
           if (service.message != null)
@@ -102,6 +102,16 @@ class _DiagnosticsSectionState extends ConsumerState<DiagnosticsSection> {
                       : () => _action(service.upload),
                 ),
               if (service.recoveryCode != null) ...[
+                if (service.enabled)
+                  CueSecondaryButton(
+                    label: 'Start new diagnostics session',
+                    onPressed: _busy || service.sending
+                        ? null
+                        : () => _action(() async {
+                            setState(() => _showCode = false);
+                            await service.startNewSession();
+                          }),
+                  ),
                 CueSecondaryButton(
                   label: _showCode
                       ? 'Hide recovery code'
@@ -115,6 +125,11 @@ class _DiagnosticsSectionState extends ConsumerState<DiagnosticsSection> {
               ],
             ],
           ),
+          if (service.expiresAt != null)
+            Text(
+              'Current code expires: ${service.expiresAt!.toIso8601String()} (server deadline).',
+              style: _body,
+            ),
           if (_showCode && service.recoveryCode != null) ...[
             const Text(
               'Private capability: anyone holding this code can retrieve these technical logs. Share only with your trusted troubleshooting session.',

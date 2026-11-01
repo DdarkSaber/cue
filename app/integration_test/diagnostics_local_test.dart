@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:cue/diagnostics/technical_diagnostics.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:integration_test/integration_test.dart';
 
 class _EphemeralConsent implements DiagnosticConsentStore {
@@ -25,8 +26,9 @@ void main() {
       );
       final uri = Uri.parse(base);
       expect({'10.0.2.2', '127.0.0.1', 'localhost'}, contains(uri.host));
-      final diagnostics = TechnicalDiagnostics(base, _EphemeralConsent());
-      addTearDown(diagnostics.dispose);
+      final store = _EphemeralConsent();
+      var diagnostics = TechnicalDiagnostics(base, store);
+      addTearDown(() => diagnostics.dispose());
       await diagnostics.load();
       expect(
         diagnostics.begin(
@@ -61,6 +63,15 @@ void main() {
       expect(event['operation'], 'settings');
       expect(event['status'], 'ok');
       expect(document.containsKey('token'), isFalse);
+      final oldCode = diagnostics.recoveryCode!;
+      final oldId = diagnostics.sessionId!;
+      final deadline = diagnostics.expiresAt;
+      diagnostics.dispose();
+      diagnostics = TechnicalDiagnostics(base, store);
+      await diagnostics.load();
+      expect(diagnostics.enabled, isTrue);
+      expect(diagnostics.recoveryCode == oldCode, isTrue);
+      expect(diagnostics.expiresAt, deadline);
       final pending = diagnostics.begin(
         DiagnosticProvider.local,
         DiagnosticOperation.import,
@@ -73,6 +84,35 @@ void main() {
       );
       expect(diagnostics.pendingCount, 0);
       expect(diagnostics.enabled, isFalse);
+      expect(
+        (jsonDecode(await diagnostics.export()) as Map)['events'],
+        hasLength(1),
+      );
+      await diagnostics.setEnabled(true);
+      expect(diagnostics.recoveryCode, isNull);
+      diagnostics.finish(
+        diagnostics.begin(
+          DiagnosticProvider.local,
+          DiagnosticOperation.settings,
+        ),
+        DiagnosticStatus.ok,
+        DiagnosticError.none,
+      );
+      await diagnostics.upload();
+      expect(diagnostics.pendingCount, 0);
+      expect(diagnostics.recoveryCode != oldCode, isTrue);
+      expect(diagnostics.sessionId != oldId, isTrue);
+      final oldResponse = await http.get(
+        Uri.parse('$base/diagnostics/$oldId'),
+        headers: {'Authorization': 'Bearer $oldCode'},
+      );
+      expect(oldResponse.statusCode, 200);
+      expect((jsonDecode(oldResponse.body) as Map)['events'], hasLength(1));
+      final crossResponse = await http.get(
+        Uri.parse('$base/diagnostics/${diagnostics.sessionId}'),
+        headers: {'Authorization': 'Bearer $oldCode'},
+      );
+      expect(crossResponse.statusCode, 403);
       expect(
         (jsonDecode(await diagnostics.export()) as Map)['events'],
         hasLength(1),

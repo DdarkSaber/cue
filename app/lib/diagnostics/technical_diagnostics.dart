@@ -53,9 +53,6 @@ class SecureDiagnosticConsentStore implements DiagnosticConsentStore {
       _storage.write(key: 'cue_technical_diagnostics', value: value);
 }
 
-String _token() =>
-    base64UrlEncode(List.generate(32, (_) => Random.secure().nextInt(256)))
-        .replaceAll('=', '');
 String _requestId() {
   final random = Random.secure();
   final bytes = List.generate(16, (_) => random.nextInt(256));
@@ -81,10 +78,14 @@ class TechnicalDiagnostics extends ChangeNotifier {
     this.base,
     this.store, {
     http.Client Function()? clientFactory,
-  }) : _clientFactory = clientFactory ?? (() => http.Client());
+    DateTime Function()? clock,
+  }) : _clientFactory = clientFactory ?? (() => http.Client()),
+       _now = clock ?? DateTime.now;
   final String base;
   final DiagnosticConsentStore store;
   final http.Client Function() _clientFactory;
+  final DateTime Function() _now;
+  Future<void> _saveTail = Future<void>.value();
   final _pending = <Map<String, Object>>[];
   bool enabled = false;
   bool loaded = false;
@@ -93,11 +94,15 @@ class TechnicalDiagnostics extends ChangeNotifier {
   bool _disposed = false;
   int _epoch = 0;
   String? _code;
+  int? _expiresAt;
   String? message;
   Timer? _timer;
   http.Client? _uploadClient;
   int get pendingCount => _pending.length;
   String? get recoveryCode => _code;
+  DateTime? get expiresAt => _expiresAt == null
+      ? null
+      : DateTime.fromMillisecondsSinceEpoch(_expiresAt!, isUtc: true);
   String? get sessionId =>
       _code == null ? null : sha256.convert(utf8.encode(_code!)).toString();
 
@@ -107,13 +112,39 @@ class TechnicalDiagnostics extends ChangeNotifier {
       if (raw != null) {
         final json = jsonDecode(raw) as Map;
         final code = json['token'];
-        if (code is! String ||
-            !RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(code) ||
-            json['enabled'] is! bool) {
+        final expiry = json['expiresAt'];
+        if (json['enabled'] is! bool ||
+            (json['version'] != null && json['version'] != 2) ||
+            (json['version'] == null && !_validToken(code)) ||
+            (json['version'] == 2 &&
+                ((code == null) != (expiry == null) ||
+                    (code != null &&
+                        (!_validToken(code) ||
+                            expiry is! int ||
+                            expiry <= 0))))) {
           throw const FormatException('Invalid consent record');
         }
-        _code = code;
-        if (!_disposed) enabled = json['enabled'] as bool;
+        // Legacy client-generated capabilities are never used to open a session.
+        final reusable =
+            json['version'] == 2 &&
+            code != null &&
+            (expiry as int) > _now().millisecondsSinceEpoch;
+        final epoch = _epoch;
+        final nextCode = reusable ? code as String : null;
+        final nextExpiry = reusable ? expiry : null;
+        if (!await _persist(
+              epoch,
+              json['enabled'] as bool,
+              nextCode,
+              nextExpiry,
+            ) ||
+            _disposed ||
+            epoch != _epoch) {
+          return;
+        }
+        _code = nextCode;
+        _expiresAt = nextExpiry;
+        enabled = json['enabled'] as bool;
       }
     } on Object {
       message = 'Could not read diagnostics consent. Collection stays off.';
@@ -135,12 +166,20 @@ class TechnicalDiagnostics extends ChangeNotifier {
     _uploadClient?.close();
     _uploadClient = null;
     _changed();
-    _code ??= _token();
+    final epoch = _epoch;
     try {
-      await store.write(jsonEncode({'enabled': value, 'token': _code}));
-      if (!_disposed) enabled = value;
+      final code = value ? null : _code;
+      final expiry = value ? null : _expiresAt;
+      if (!await _persist(epoch, value, code, expiry) ||
+          _disposed ||
+          epoch != _epoch) {
+        return;
+      }
+      _code = code;
+      _expiresAt = expiry;
+      enabled = value;
       message = value
-          ? 'Technical diagnostics on. Only new requests are collected.'
+          ? 'Technical diagnostics on. Only new requests are collected. A new private code is issued after the first upload.'
           : 'Diagnostics off. Pending events discarded; already uploaded records expire after 7 days.';
     } on Object {
       message = 'Could not save diagnostics consent. Collection is off.';
@@ -148,6 +187,42 @@ class TechnicalDiagnostics extends ChangeNotifier {
     } finally {
       changing = false;
       _changed();
+    }
+  }
+
+  /// Stops future uploads to a shared code, without deleting its retained logs.
+  Future<void> startNewSession() async {
+    if (!enabled) throw StateError('Diagnostics is off');
+    await setEnabled(true);
+  }
+
+  bool _validToken(Object? code) =>
+      code is String &&
+      RegExp(r'^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$').hasMatch(code);
+
+  Future<bool> _persist(
+    int epoch,
+    bool consent,
+    String? code,
+    int? expiry,
+  ) async {
+    final previous = _saveTail;
+    final done = Completer<void>();
+    _saveTail = done.future;
+    try {
+      await previous;
+      if (_disposed || epoch != _epoch) return false;
+      await store.write(
+        jsonEncode({
+          'version': 2,
+          'enabled': consent,
+          'token': code,
+          'expiresAt': expiry,
+        }),
+      );
+      return !_disposed && epoch == _epoch;
+    } finally {
+      done.complete();
     }
   }
 
@@ -197,17 +272,60 @@ class TechnicalDiagnostics extends ChangeNotifier {
     final client = _clientFactory();
     _uploadClient = client;
     _changed();
+    var savingSession = false;
     try {
-      final response = await client
-          .put(
-            Uri.parse('$base/diagnostics/$sessionId'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $_code',
-            },
-            body: jsonEncode({'events': batch}),
-          )
-          .timeout(const Duration(seconds: 15));
+      var code = _code;
+      if (_expiresAt != null && _now().millisecondsSinceEpoch >= _expiresAt!) {
+        code = null;
+      }
+      Future<bool> retire() async {
+        savingSession = true;
+        if (!await _persist(epoch, true, null, null) ||
+            _disposed ||
+            epoch != _epoch) {
+          return false;
+        }
+        _code = null;
+        _expiresAt = null;
+        savingSession = false;
+        return true;
+      }
+
+      if (code == null && _code != null && !await retire()) return;
+      if (epoch != _epoch || _disposed || !enabled) return;
+      Future<http.Response> send(String? capability) {
+        final body = jsonEncode({'events': batch});
+        if (capability == null) {
+          return client
+              .post(
+                Uri.parse('$base/diagnostics'),
+                headers: {'Content-Type': 'application/json'},
+                body: body,
+              )
+              .timeout(const Duration(seconds: 15));
+        }
+        final id = sha256.convert(utf8.encode(capability)).toString();
+        return client
+            .put(
+              Uri.parse('$base/diagnostics/$id'),
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $capability',
+              },
+              body: body,
+            )
+            .timeout(const Duration(seconds: 15));
+      }
+
+      var response = await send(code);
+      if (epoch != _epoch || _disposed) return;
+      // The server is authoritative even when the device clock moves backwards.
+      if (code != null && response.statusCode == 404) {
+        code = null;
+        if (!await retire()) return;
+        if (epoch != _epoch || _disposed || !enabled) return;
+        response = await send(null);
+      }
       if (epoch != _epoch || _disposed) return;
       if (response.statusCode < 200 || response.statusCode >= 300) {
         message = response.statusCode == 429
@@ -216,18 +334,51 @@ class TechnicalDiagnostics extends ChangeNotifier {
       } else {
         final body = jsonDecode(response.body);
         if (body is! Map ||
-            body.keys.length != 1 ||
+            body.keys.length != (code == null ? 3 : 2) ||
+            !body.keys.toSet().containsAll({
+              'accepted',
+              'expiresAt',
+              if (code == null) 'token',
+            }) ||
+            body['expiresAt'] is! int ||
+            (body['expiresAt'] as int) <= 0 ||
+            (code == null && !_validToken(body['token'])) ||
+            (code == null && body['accepted'] != batch.length) ||
+            (code != null && body['expiresAt'] != _expiresAt) ||
             body['accepted'] is! int ||
             (body['accepted'] as int) < 0 ||
             (body['accepted'] as int) > batch.length) {
           throw const FormatException('Invalid acknowledgement');
+        }
+        if (code == null) {
+          savingSession = true;
+          final newCode = body['token'] as String;
+          final expiry = body['expiresAt'] as int;
+          if (!await _persist(epoch, true, newCode, expiry) ||
+              _disposed ||
+              epoch != _epoch) {
+            return;
+          }
+          _code = newCode;
+          _expiresAt = expiry;
+          savingSession = false;
         }
         final ids = batch.map((e) => e['requestId']).toSet();
         _pending.removeWhere((e) => ids.contains(e['requestId']));
         message = 'Technical diagnostics uploaded. Up to 100 events per seven-day session.';
       }
     } on Object {
-      if (epoch == _epoch && !_disposed) message = 'Diagnostics upload failed. Retry later; no request content was logged.';
+      if (epoch == _epoch && !_disposed) {
+        if (savingSession) {
+          enabled = false;
+          _epoch++;
+          _pending.clear();
+          _timer?.cancel();
+          message = 'Could not save the new diagnostics session. Collection is off; retry consent before collecting more.';
+        } else {
+          message = 'Diagnostics upload failed. Retry later; no request content was logged.';
+        }
+      }
     } finally {
       client.close();
       if (identical(_uploadClient, client)) _uploadClient = null;
@@ -238,15 +389,21 @@ class TechnicalDiagnostics extends ChangeNotifier {
 
   /// Explicit user action; never exports the recovery code with the logs.
   Future<String> export() async {
-    if (_code == null) throw StateError('No diagnostics session');
+    final code = _code;
+    final epoch = _epoch;
+    if (code == null) throw StateError('No diagnostics session');
+    final id = sha256.convert(utf8.encode(code)).toString();
     final client = _clientFactory();
     try {
       final response = await client
           .get(
-            Uri.parse('$base/diagnostics/$sessionId'),
-            headers: {'Authorization': 'Bearer $_code'},
+            Uri.parse('$base/diagnostics/$id'),
+            headers: {'Authorization': 'Bearer $code'},
           )
           .timeout(const Duration(seconds: 15));
+      if (_disposed || epoch != _epoch) {
+        throw StateError('Diagnostics session changed');
+      }
       if (response.statusCode != 200) {
         throw StateError('Diagnostics export unavailable');
       }

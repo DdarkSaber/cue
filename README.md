@@ -67,7 +67,7 @@ Clear everything any time in *Settings > Privacy*.
 - Title removals use encrypted sync tombstones so an older device cannot silently add them back. An explicit later edit or confirmed re-import can restore a title. Deleting an entire local library forgets its local sync code but does not delete the server's encrypted copy or another device's library.
 - Recommendation measures (choice counts, explicit follow-up outcomes, exposure/repetition, format coverage and detected constraint leaks) are device-only proxies, not an accuracy score. They are excluded from sync, backups and technical diagnostics; they can be cleared independently. They do not prove unseen catalog coverage or real-world enjoyment.
 - **Technical diagnostics:** Settings > Privacy explains consent before enabling. Only random request IDs, numeric app version, fixed provider/operation/status/error codes and bounded elapsed time are allowed. Never title names, Tell me/search text, history, imported files, URLs, tokens, keys, response bodies or raw error messages. There is no retrospective disk backlog. Turning off discards pending events and stops collection/uploads. A failing preference write is reported rather than silently claiming durable success.
-- Diagnostics uses an authenticated random recovery capability, not public logs or CORS as authentication. Keep its export/recovery code private; a later CLI session can use the documented authenticated export. No server secret is embedded in the app. At most 20 events/upload, first 100 unique events/session, 1,000 sessions globally; fixed seven-day expiry from first accepted upload, payload/rate/storage safeguards and explicit quota/unavailable errors. Expired records are inaccessible; physical pruning is opportunistic on later diagnostics requests, not a scheduled deletion guarantee. No paid-plan upgrade or guaranteed free-forever promise. See [Worker diagnostics](worker/DIAGNOSTICS.md).
+- Diagnostics uses a server-issued random recovery capability, not public logs or CORS as authentication. Keep its export/recovery code private; a later CLI session can use the documented authenticated export. No server secret is embedded in the app. At most 20 events/upload, first 100 unique events/session, 1,000 sessions globally; fixed seven-day expiry from the server's first accepted upload, payload/rate/storage safeguards and explicit quota/unavailable errors. Continuing after expiry, enabling again, or choosing **Start new diagnostics session** issues a separate code on the next upload. The app persists the server deadline; the server also rejects writes to expired/missing sessions, even if a device clock is wrong or an old client retries. Old codes cannot read future sessions, but can still read their own retained records until expiry: turning off or rotating does not recall received uploads or immediately revoke old-record access. Expired records are inaccessible; physical pruning is opportunistic on later diagnostics requests, not a scheduled deletion guarantee. No paid-plan upgrade or guaranteed free-forever promise. See [Worker diagnostics](worker/DIAGNOSTICS.md).
 - The diagnostics implementation requires the matching Worker build and D1 migration `0002_diagnostics.sql`; local implementation does not make an older deployed Worker support it. Technical-only events cannot diagnose semantic title mismatches without title data.
 - No ads, third-party telemetry SDKs, trackers or remote fonts.
 
@@ -145,7 +145,7 @@ They are production-like checks, not a guarantee of finding every corner case.
 | Rating and saved picks | Optional answers/Skip/dismissal, explicit overwrite confirmation, exact/stale-safe Undo, factual comparison, saved-only deck and Tonight priority |
 | Four swipes and Try now | Single/double-tap/drag arbitration, all original directions, reduced motion, keyboard/custom semantics, duplicate promotion and fractional timestamp Undo |
 | Removal and sync | Atomic priority tombstones on entry/shortlist removal and swipe reset, older remote intent rejection, ordinary re-add, two-device conflict convergence and profile isolation |
-| Technical diagnostics | Consent OFF/default/no backfill, strict private-field rejection, capability authorization, caps/expiry/races/retries, exact export validation, actual Android client to local Worker/D1 roundtrip |
+| Technical diagnostics | Consent OFF/default/no backfill, strict private-field rejection, server-issued capability sessions, update-only expired-ID rejection, off/on rotation, durable expiry/clock rollback, queued-write races and fail-closed persistence, caps/retries, exact export validation, actual client to local Worker/D1 roundtrip |
 | Layout and lifecycle | Small phone/desktop, 200% text and scrolling, labelled accessible targets, route/profile changes and asynchronous SQLite readiness |
 
 Actual device checks use an owned disposable emulator, never an emulator in
@@ -161,7 +161,7 @@ successful Groq result does not independently establish Gemini key validity.
 Cloud diagnostics remain unavailable until their Worker migration/deployment is
 separately authorized.
 
-Latest local validation: analyzer clean, **385 app tests** including three
+Pre-remediation feature validation: analyzer clean, **385 app tests** including three
 visually reviewed phone/desktop goldens, **68 Android integrated scenarios**,
 one additional actual Android diagnostics-client/local-D1 roundtrip, and
 **179 Worker tests** plus TypeScript typecheck. The opt-in real-file import test
@@ -182,6 +182,23 @@ opt-in sentence produced **HTTP 200 from Groq**. Diagnostics stayed OFF with no
 uploads during that probe. This does not independently validate Gemini.
 The isolated release APK was rebuilt and cold-launched; its certificate uses
 the documented **debug fallback**, not release credentials.
+
+Capability-session remediation was then checked with a clean analyzer,
+**397 app tests** (the same one opt-in real-file test skipped), **186 Worker
+tests** including 62 diagnostics cases, and TypeScript typecheck. The updated
+diagnostics/consent group passed **17/17 in actual debug Chrome**, **5/5 on the
+owned Android emulator**, plus a separate actual Android-client/local-D1 API
+roundtrip. Those checks include off/on isolation, old-code/new-ID rejection,
+serialized expiry restore, server-authoritative expiry despite a wrong device
+clock, and queued persistence/late-response guards. The browser fixture now
+opens its synthetic SQLite connection before mounting Settings, and uses the
+existing bounded deck-readiness wait before candidate assertions. Final platform
+builds are serialized because Flutter regenerates shared plugin registrants.
+These are local checks, not a deployed fix or proof that no other leaks exist;
+the previously noted release-browser, physical-device and Gemini limitations
+still apply. Both production artifacts were rebuilt after this remediation;
+the refreshed APK was installed and cold-launched on the owned emulator, with
+its Android Debug certificate verified (not release signing credentials).
 
 ## Run it yourself
 

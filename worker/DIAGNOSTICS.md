@@ -10,8 +10,9 @@ implementation.
 
 ## Capability-authenticated API
 
-Generate a cryptographically random **32-byte** capability and encode it as
-canonical, unpadded base64url (43 characters). Derive the session ID as lowercase
+The server generates a cryptographically random **32-byte** capability on
+creation, encoded as canonical, unpadded base64url (43 characters). Clients
+cannot choose a capability or session ID. Derive the session ID as lowercase
 hex SHA-256 of the **UTF-8 encoded token string**, not the decoded random bytes.
 Use HTTPS and keep the capability private on the device; do not put it in URLs,
 analytics, logs, or diagnostic events. There is no shared server secret or
@@ -19,19 +20,29 @@ public diagnostics listing. Knowledge of an ID alone cannot authorize access.
 The stored session ID is itself the capability digest; no raw token or additional
 token hash is stored.
 
-Both methods require `Authorization: Bearer <token>` and the matching
+GET and PUT require `Authorization: Bearer <token>` and the matching
 64-character ID. CORS/preflight is not authentication. Query parameters are
 rejected.
 
+- `POST /diagnostics`, `Content-Type: application/json`:
+  `{"events":[...events]}` creates a session with **1–20** events.
+  Success: HTTP 200 `{"token":"<server-issued-token>","accepted":N,"expiresAt":E}`.
+  `E` is integer server epoch milliseconds, first accepted time plus seven days;
+  `N` is integer 1–20 after deduplication. No ID is returned: derive it from
+  the token string as above. **Any Authorization header** (even empty), query
+  parameter, caller-chosen token/ID, or unknown field causes 400.
 - `PUT /diagnostics/:id`, `Content-Type: application/json`:
-  `{"events":[...events]}` appends **1–20** events atomically.
-  Success: HTTP 200 `{"accepted":N}`, counting only newly accepted request IDs.
+  `{"events":[...events]}` appends **1–20** events atomically to an existing,
+  unexpired session only. Success: HTTP 200 `{"accepted":N,"expiresAt":E}`,
+  counting only newly accepted request IDs (`N` integer 0–20). `E` is the same
+  fixed server expiry returned at creation. Missing or expired sessions return
+  404; PUT **never creates or recreates** a session.
   All envelope and event fields are required as specified below; unknown fields
   are rejected, never silently stripped.
 - `GET /diagnostics/:id`: HTTP 200 `{"events":[...events]}` with at most 100
   technical events in append order, or HTTP 404 `{"error":"not_found"}` for an
   absent/expired session. Server timestamps and other storage metadata are not
-  returned. Responses use `Cache-Control: no-store`.
+  returned. All diagnostics responses use `Cache-Control: no-store`.
 - No DELETE, public listing, arbitrary metadata, or query-based token support.
 
 Every event has exactly these fields:
@@ -51,8 +62,8 @@ strings, raw exception messages, client timestamps, tokens, names, account data,
 files, or watch/import history. `requestId` must be newly random, not derived
 from any personal data. Technical values must describe an operation, not encode
 personal information in allowed numeric fields. Format validation cannot prove
-that an untrusted client generated its capability/UUID randomly or prevent
-covert encoding; correct client generation and minimization are essential.
+that an untrusted client generated its UUID randomly or prevent covert
+encoding; correct client UUID generation and minimization are essential.
 
 For `POST /ai/mood`, use `provider:cue` and `operation:mood`. Instrument only
 HTTP-header timing/status, never request/response bodies, phrase text, URLs,
@@ -76,13 +87,28 @@ to avoid recursive collection.
 - A session expires **exactly seven days after its first accepted batch**.
   Subsequent writes do not extend its lifetime. This intentionally bounds every
   event's retention to no more than seven days, even for continuously active
-  devices. GET on expiry is 404. A later PUT can create a fresh session using
-  the same capability; UUID deduplication only applies within the retained
-  session. Prefer rotating to a new random capability for a new client session.
+  devices. GET and PUT on expiry are 404, including duplicate-only PUT retries.
+  An old capability cannot be used to upload new logs after expiry, physical
+  pruning or deletion; there is no PUT creation fallback and no caller-chosen
+  POST ID. A new POST receives a fresh server-generated capability. No
+  tombstones or additional migration are needed.
+- The client must start with POST lazily on its first consented batch, persist
+  the returned server expiry with the capability, and abandon that capability
+  on consent OFF, re-enable, expiry or 404. A new consent/session uses a new
+  POST. Server capability expiry does not itself revoke read access before
+  seven days: an old recovery code can still read its own historical session,
+  but must never receive the new session's code or future events.
+- POST is intentionally not idempotent and accepts no client creation token.
+  A lost creation response can leave an unreachable session; retrying POST
+  creates a separate session with a different token. Each orphan still counts
+  toward the 1000 cap and expires within seven days, with the same bounded
+  opportunistic cleanup. The client must not guess/reuse an old token to
+  recover it. The raw capability is returned only by successful POST and is
+  never stored or logged by the Worker.
 - Server event receipt timestamps are stored only for retention. There are no
   client-supplied timestamps, token values, IPs, user agents, or device IDs in
   the table. GET returns only schema-validated technical fields.
-- Authenticated GET/PUT opportunistically prune at most 25 expired sessions,
+- POST and authenticated GET/PUT opportunistically prune at most 25 expired sessions,
   plus the requested expired session. No background cron is added or changed.
   Expired records may remain physically stored when no traffic occurs, but
   are never returned; seven days is the logical retention window, not a promise
@@ -96,13 +122,13 @@ names:
 
 | HTTP | Code | Meaning |
 | --- | --- | --- |
-| 400 | `invalid_request` | Bad JSON, wrong content type, unknown/missing/invalid fields or query parameters |
+| 400 | `invalid_request` | Bad JSON, wrong content type, unknown/missing/invalid fields, query parameters, or any Authorization header on POST |
 | 403 | `forbidden` | Missing/malformed capability, invalid ID, or ID/token mismatch |
 | 403 | `origin_not_allowed` | Existing browser origin middleware |
 | 404 | `not_found` | Absent/expired session or unsupported route/method |
 | 413 | `payload_too_large` | Body cap exceeded |
 | 429 | `rate_limited` | Per-IP limit (`Retry-After: 60`) or session write/CAS contention (`Retry-After: 5`) |
-| 429 | `quota_exceeded` | Session event cap or global session cap (`Retry-After: 604800`, conservative backoff) |
+| 429 | `quota_exceeded` | Session event cap, global session cap, or random creation collision fails closed (`Retry-After: 604800`, conservative backoff) |
 | 503 | `unavailable` | Missing D1/rate-limit binding, unapplied migration, or storage read/write/cleanup failure |
 
 Middleware can reject oversized, disallowed-origin or rate-limited requests
