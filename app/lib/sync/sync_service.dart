@@ -295,9 +295,17 @@ class SyncService {
         final at = DateTime.tryParse('${it['updated_at']}');
         if (id is! String || at == null) continue;
         final local = before[id];
-        if (local != null && !at.isAfter(local.updatedAt)) {
-          await db.into(db.userTitles).insertOnConflictUpdate(local);
-          continue;
+        if (local != null) {
+          // Stored times have one-second precision. On a tie both devices
+          // pick the same side by comparing the content, so they converge.
+          final tie = at.isAtSameMomentAs(local.updatedAt);
+          final localWins = tie
+              ? _content(local).compareTo(_remoteContent(it)) >= 0
+              : !at.isAfter(local.updatedAt);
+          if (localWins) {
+            await db.into(db.userTitles).insertOnConflictUpdate(local);
+            continue;
+          }
         }
         final progress = it['progress'] is Map ? it['progress'] as Map : null;
         final watched = DateTime.tryParse('${it['watched_at']}');
@@ -602,6 +610,18 @@ class SyncService {
       }
     });
   }
+
+  /// The fields a title's last edit decides, in a fixed order, for ties.
+  static String _content(UserTitle u) =>
+      [u.state, u.rating, u.rewatchMood, u.progressValue, u.note].join('|');
+
+  static String _remoteContent(Map<dynamic, dynamic> it) => [
+    it['status'] ?? 'none',
+    it['rating'],
+    it['rewatch_mood'],
+    ((it['progress'] as Map?)?['read_to'] as num?)?.toDouble(),
+    it['note'],
+  ].join('|');
 
   /// Stops syncing on this device. The encrypted copy stays for others.
   Future<void> disable(String profileId) async {

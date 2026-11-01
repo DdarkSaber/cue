@@ -216,6 +216,29 @@ void main() {
       expect((await phone.library.signals(phone.id)).shortlisted, isEmpty);
     });
 
+    test('edits in the same second still end up the same', () async {
+      final code = await phone.sync.enable(phone.id);
+      await laptop.sync.join(laptop.id, code);
+      await phone.library.saveEntry(
+        phone.id,
+        'anilist:1',
+        state: LibraryState.completed,
+        rating: Rating.favourite,
+      );
+      await laptop.library.saveEntry(
+        laptop.id,
+        'anilist:1',
+        state: LibraryState.completed,
+        rating: Rating.okay,
+      );
+      await phone.sync.syncNow(phone.id);
+      await laptop.sync.syncNow(laptop.id);
+      await phone.sync.syncNow(phone.id);
+      final a = (await phone.library.entry(phone.id, 'anilist:1'))!.rating;
+      final b = (await laptop.library.entry(laptop.id, 'anilist:1'))!.rating;
+      expect(a, b);
+    });
+
     test('the Worker only ever sees ciphertext', () async {
       await phone.library.saveEntry(
         phone.id,
