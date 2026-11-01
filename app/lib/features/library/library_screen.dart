@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../app/icons.dart';
 import '../../app/providers.dart';
 import '../../app/route_scaffold.dart';
+import '../../app/sheets.dart';
 import '../../app/router.dart';
 import '../../app/tokens.dart';
 import '../../app/widgets.dart';
@@ -97,6 +98,21 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _dismissAll(
+    BuildContext context,
+    List<SourceObservation> review,
+  ) async {
+    final ok = await confirmAction(
+      context,
+      title: 'Clear ${review.length} entries from review?',
+      body: 'They leave the review queue. Your imports and their undo stay as they are.',
+      confirmLabel: 'Clear them',
+    );
+    if (!ok) return;
+    await ref.read(importServiceProvider).dismissAll(review);
+    ref.read(libraryVersionProvider.notifier).bump();
   }
 
   List<Widget> _empty(BuildContext context) => [
@@ -213,6 +229,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 subtitle: 'Match it',
                 onTap: () => showReviewSheet(context, o),
               ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () => _dismissAll(context, d.review),
+                child: const Text('None of these are in my history'),
+              ),
+            ),
           ],
         ),
       if (longAgo.isNotEmpty)

@@ -518,6 +518,14 @@ class ImportService {
 
   /// Takes an entry out of the review queue ("not in my history"). The
   /// import itself and its undo are unaffected.
+  /// Takes many entries out of the review queue at once.
+  Future<void> dismissAll(Iterable<SourceObservation> list) =>
+      db.transaction(() async {
+        for (final o in list) {
+          await dismiss(o);
+        }
+      });
+
   Future<void> dismiss(SourceObservation o) =>
       (db.update(db.sourceObservations)..where((x) => x.id.equals(o.id))).write(
         const SourceObservationsCompanion(matchClass: Value('dismissed')),

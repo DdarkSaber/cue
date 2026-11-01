@@ -171,6 +171,14 @@ void main() {
     expect(again.alreadyImported, isFalse);
   });
 
+  test('the whole review queue can be cleared at once', () async {
+    await service.commit(profile, await stage(file));
+    final queue = await service.reviewQueue(profile);
+    expect(queue, isNotEmpty);
+    await service.dismissAll(queue);
+    expect(await service.reviewQueue(profile), isEmpty);
+  });
+
   test(
     'unmatched titles wait in the review queue and can be resolved',
     () async {
