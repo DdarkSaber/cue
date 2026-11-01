@@ -55,6 +55,16 @@ class DetailsBody extends ConsumerStatefulWidget {
 class _DetailsBodyState extends ConsumerState<DetailsBody> {
   late Title _title = widget.title;
   WatchProvidersDto? _providers;
+  bool get _hasProviders {
+    final p = _providers;
+    return p != null &&
+        (p.link != null ||
+            p.stream.isNotEmpty ||
+            p.free.isNotEmpty ||
+            p.rent.isNotEmpty ||
+            p.buy.isNotEmpty);
+  }
+
   bool _providersLoaded = false;
 
   @override
@@ -157,12 +167,16 @@ class _DetailsBodyState extends ConsumerState<DetailsBody> {
             ],
           ),
         ],
-        const CueSectionLabel('Where to watch in your region'),
-        _WhereToWatch(
-          title: t,
-          providers: _providers,
-          loaded: _providersLoaded,
-        ),
+        // Shown only when a source actually lists services; without a TMDB
+        // key there never is one, and an empty section looks broken.
+        if (_hasProviders) ...[
+          const CueSectionLabel('Where to watch'),
+          _WhereToWatch(
+            title: t,
+            providers: _providers,
+            loaded: _providersLoaded,
+          ),
+        ],
         const SizedBox(height: CueSpace.lg),
         Text(
           'Metadata and artwork: ${_source(t)}.',
