@@ -1,107 +1,164 @@
 # Cue
 
-A swipe-card recommender for anime, K/C/J-dramas, series, movies, manhwa, manhua and manga. Open it, see one poster, decide with a swipe. Personal history stays on the device.
+**Your next story, one swipe at a time.**
 
-Free and non-commercial. No accounts, ads, analytics or trackers.
+Cue is a free, private recommender for **anime, manga, manhwa, manhua, K/C/J-dramas, series and movies**. Open it, see one poster, swipe. It learns what you are in the mood for and keeps your history on your own device.
 
-- Web app: https://cue-next.cue-worker.workers.dev
-- Android: `app/build/app/outputs/flutter-apk/app-release.apk` after `flutter build apk --release`
+No accounts, no ads, no analytics, no trackers.
+
+| | |
+|---|---|
+| **Web app** | https://cue-next.cue-worker.workers.dev |
+| **Android** | build the APK (see [Run it yourself](#run-it-yourself)) |
+
+---
+
+## Contents
+
+- [What it does](#what-it-does)
+- [Live mood](#live-mood)
+- [Privacy](#privacy)
+- [How it works](#how-it-works)
+- [Run it yourself](#run-it-yourself)
+- [Deploy your own copy](#deploy-your-own-copy)
+- [Project layout](#project-layout)
+- [Status](#status)
+
+---
+
+## What it does
+
+- **Swipe deck.** Right = *Will try*, left = *Not interested*, up = *Watched / Read it*, down = *Not now* (hidden for 14 days). Remap any direction in Settings. Buttons, arrow keys and screen readers work too, and Undo always works.
+- **Honest reasons.** Every card says why it is there ("because you rated X highly"). No fake match percentages.
+- **Bring your history.** Upload a MyAnimeList XML, Netflix viewing activity, a Mihon/Tachiyomi backup, any CSV or Excel sheet with a Title column, or a Cue backup. Or sign in to MyAnimeList, or type a public AniList username. Everything is previewed first and every import can be undone.
+- **One title, many names.** Manhwa and manhua often have 3 or 4 names. Cue checks official, romanised and fan names (AniList, MangaDex, MangaUpdates) and asks you before linking anything it is unsure of.
+- **Sync between phone and web** with a code, end-to-end encrypted. Optional.
+
+## Live mood
+
+Cue works out what you feel like **right now**, on your device:
+
+- It learns your **modes** from what you pick (for example "Isekai · Fantasy" or "Romance · Comedy") and notices within a few swipes when you switch.
+- It learns what **your words** mean ("grind", "slow", "trash") from what you choose after typing them. Nothing is hard-coded.
+- A **"Cue read: …"** chip shows its guess. Tap to correct it, long-press to rename a mood.
+- Optional **Smarter mood text** (off by default) sends only the sentence you type to an AI service (Groq, falling back to Google Gemini) for genre hints.
+
+Clear everything any time in *Settings > Privacy*.
+
+## Privacy
+
+- Your library lives on your device (SQLite). Nothing is uploaded unless you turn on sync.
+- Sync encrypts the library on the device (AES-256-GCM, keys derived from your 32-character code). The server stores only ciphertext and cannot read it.
+- Catalog lookups send title names or catalog ids, never your history.
+- Sign-in uses the provider's own page. Cue never sees a password. Tokens stay on the device.
+- No analytics, ads, trackers or remote fonts.
 
 ## How it works
 
 ```
-Flutter app (Android, web; iOS later)                Cloudflare Worker (TypeScript)
-  deck, gestures, ranker, imports, sync    HTTPS       fixed endpoints only
-  local database (Drift / SQLite)       ----------->   /catalog/*  TVmaze, Cinemeta (+ KV cache)
-  AniList queries (fixed, public)                      /oauth/*    token exchange
-       |                                               /import/*   MAL list reads
-       v HTTPS                                         /sync/*     encrypted blobs (D1)
-  graphql.anilist.co
+ Flutter app (Android, web)                              Cloudflare Worker (free plan)
+ +------------------------------+   HTTPS, fixed routes  +-------------------------------+
+ | deck, ranker, live mood      | ---------------------> | /catalog  TVmaze, Cinemeta,   |
+ | imports, library, sync       |                        |           MangaDex, MangaUpd. |
+ | local SQLite (Drift)         |                        | /oauth    MAL token exchange  |
+ +--------------+---------------+                        | /import   MAL list reads      |
+                | HTTPS                                  | /sync     encrypted blobs (D1)|
+                v                                        | /ai/mood  Groq / Gemini hints |
+        graphql.anilist.co                               +-------------------------------+
+   (anime and comics, called from the device,
+    because AniList blocks Cloudflare)
 ```
 
-- **Swipes.** Default: right = Will try, down = Not now (hidden 14 days), up = Watched / Read it (seen, not "completed"), left = Not interested (until restored). Settings > Swipe actions lets you remap any direction. Buttons, arrow keys and screen-reader actions do the same thing, and Undo always works, even after a restart.
-- **Recommendations are rules, not a model.** The ranker runs on the device: hard filters (hidden, deferred, saved, seen titles and the filter sheet), then a score from tags you rated well, the mood you picked, catalog quality, freshness and a little exploration. A small in-session lean follows what you keep or skip right now (never stored). Each card gets one true reason line, never a fake match percentage.
-- **Moods are tag sets.** Hype, Comfort, Gripping and Feels map to catalog tags. "Tell me what you feel like" is read on the device with keyword rules. AI parsing is not used.
-- **Sources, none needing a key or an account.** AniList for anime, manga, manhwa and manhua; TVmaze for K/C/J-dramas and series; Stremio's public Cinemeta catalog for movies (an unofficial source). AniList refuses requests from Cloudflare Workers, allows browser origins and allows only about 30 calls a minute, so the app calls it directly with fixed queries and paces itself. Everything else goes through the Worker. A TMDB key, if you ever add one, takes over dramas, series and movies.
-- **Imports are local.** Files (Excel .xlsx, MAL XML, Netflix CSV, Mihon backup, CSV, Cue backup) are detected by their bytes, parsed on the device, matched (catalog id first, then exact title, then a similar title you tick yourself, else a review queue), previewed, and committed in one batch you can undo. MAL sign-in uses MAL's own page with PKCE and keeps a read-only token on the device (Sign out removes it). AniList is public username only, because AniList refuses Cloudflare's IPs.
-- **One title, many names.** Comics have an official, a licensed, a romanised and several fan names, and each database keeps a different set. Matching compares a name against every title and AniList synonym, cleans quotes, parentheses and season suffixes, and for comics still unmatched asks MangaDex (through the Worker) for the work's other names and its AniList link, filtered by language so a manhwa is never a manhua. Anything uncertain is offered unticked, never linked silently.
-- **Sync is optional and end-to-end encrypted.** A 32-character code encrypts the library on the device (AES-256-GCM, keys from HKDF). The Worker stores only ciphertext and a hash of the write token.
-- **Posters** come from AniList, TVmaze or Cinemeta (and TMDB if keyed).
-
-## Keys (all optional, all free)
-
-Never in the app. Set them on the Worker from `worker/` with `npx wrangler secret put NAME`.
-
-| Secret | Turns on | Register at |
+| Data | Source | Key needed |
 |---|---|---|
-| `TMDB_API_KEY` | Optional. Richer data and where-to-watch; dramas, series and movies work without it | themoviedb.org > Settings > API (needs personal details) |
-| `MAL_CLIENT_ID` (+ `MAL_CLIENT_SECRET` for "web" apps) | MyAnimeList sign-in and username import | myanimelist.net/apiconfig |
+| Anime, manga, manhwa, manhua | AniList | no |
+| K/C/J-dramas, series | TVmaze | no |
+| Movies | Stremio Cinemeta (unofficial) | no |
+| Comic alternate names | MangaDex, MangaUpdates | no |
 
-Redirect URIs to register: `cue://oauth/<provider>` (Android) and `https://cue-next.cue-worker.workers.dev/auth.html` (web). Without a key, that source shows as "not set up" and the rest keeps working.
+**Tech:** Flutter, Riverpod, go_router, Drift · Cloudflare Workers, Hono, zod, KV, D1 · Vitest and flutter_test.
 
-## Run it
+## Run it yourself
 
-Requirements: Flutter (stable), Android SDK with an emulator, Node 22+.
+Needs Flutter (stable), Node 22+, and the Android SDK for phone builds.
 
 ```sh
 # Worker
 cd worker
 npm ci
 npm test && npm run typecheck
-npx wrangler dev                          # local Worker on :8787
+npx wrangler dev                    # local Worker on :8787
 
 # App
 cd app
 flutter pub get
 flutter analyze && flutter test
-flutter run -d <emulator-id>              # debug build talks to 10.0.2.2:8787
-tool/build_web.sh http://127.0.0.1:8787   # web build for the local Worker
+flutter run -d chrome --web-port 7357
+flutter build apk --release         # APK in build/app/outputs/flutter-apk/
 ```
 
-## Check an import file against the live catalogs
+Release APKs are signed with the key named in `app/android/key.properties` (git-ignored). Without it they use the debug key.
+
+**Install on Android:** copy the APK to the phone, open it, and allow installs from that app when asked.
+
+## Deploy your own copy
+
+Everything fits the Cloudflare free plan.
+
+```sh
+cd worker
+npx wrangler d1 migrations apply cue-sync --remote
+npx wrangler deploy
+
+cd ../app
+tool/build_web.sh https://<your-worker>.workers.dev
+npx --prefix ../worker wrangler deploy
+```
+
+Update the KV and D1 ids and `ALLOWED_ORIGINS` in `worker/wrangler.toml` for your account.
+
+### Optional keys
+
+All free. Set secrets from `worker/` with `npx wrangler secret put NAME`. Never put them in the app or in git.
+
+| Name | Turns on | Get it at |
+|---|---|---|
+| `MAL_CLIENT_ID` (var) + `MAL_CLIENT_SECRET` | MyAnimeList sign-in and username import | myanimelist.net/apiconfig |
+| `GROQ_API_KEY` | Smarter mood text | console.groq.com |
+| `GEMINI_API_KEY` | Smarter mood text fallback | aistudio.google.com |
+| `TMDB_API_KEY` | Richer dramas, series and movies (optional) | themoviedb.org |
+
+For MyAnimeList, register both redirect URLs: `https://<your-site>/auth.html` and `cue://oauth/mal`.
+
+Check how well a list file matches the live catalogs (the file is read from the path you give and never stored):
 
 ```sh
 cd app
 CUE_LIVE_FILE=path/to/your-list.xlsx flutter test test/live/import_check_test.dart
 ```
 
-Prints match rates per kind (exact, similar, none, not checked) and lists the misses. The file is read from the path you give and never stored in the repo.
-
-## Deploy (Cloudflare free plan)
-
-```sh
-cd worker && npx wrangler d1 migrations apply cue-sync --remote && npx wrangler deploy
-cd app && tool/build_web.sh https://cue-worker.cue-worker.workers.dev && npx --prefix ../worker wrangler deploy
-```
-
-Release Android builds sign with the key named in `app/android/key.properties` (gitignored; the keystore lives outside the repo). Without it they fall back to the debug key.
-
-## Repository layout
+## Project layout
 
 ```
-app/        Flutter app (lib/app, lib/features, lib/domain, lib/data, lib/imports, lib/sync)
-worker/     Cloudflare Worker (Hono, zod, Vitest, D1 migrations)
+app/                Flutter app
+  lib/app/          theme, routing, providers
+  lib/features/     screens: deck, library, imports, settings, sync
+  lib/domain/       ranker, live mood (lib/domain/mood), models
+  lib/data/         local database, catalog, repositories
+  lib/imports/      file detection, adapters, title matching
+  lib/sync/         end-to-end encrypted sync
+worker/             Cloudflare Worker
+  src/catalog/      TVmaze, Cinemeta, MangaDex, MangaUpdates, cache
+  src/imports/      MAL lists and token exchange
+  src/sync/         encrypted blob store (D1)
+  src/ai/           mood hints (Groq, Gemini)
+fixtures/           synthetic test files only
 ```
 
-## Privacy and security rules
+## Status
 
-- No analytics, ads, trackers or remote fonts. DM Sans is bundled.
-- Personal data is never committed or bundled. `.gitignore` blocks common export filenames.
-- No password field for any third-party service; sign-ins use the provider's page.
-- The Worker exposes fixed endpoints only: no URL pass-through, image host allowlist, per-IP rate limits, 8 KB request cap (2 MB for encrypted sync), logs without bodies, query strings or tokens.
-- Android backups are disabled so the local library never leaves the device that way.
+Working: deck, ranker, live mood, imports with undo, MyAnimeList sign-in with renewal, AniList by username, library, encrypted sync (titles, lists, settings, mood), Android and web.
 
-## Milestones
+Not planned for now: iOS, Trakt, MyDramaList and Prime Video sign-in (their data can still come in as a CSV).
 
-| | Milestone | State |
-|---|---|---|
-| M0 | Scaffold: app shell, theme, Worker skeleton, CI | done |
-| M1 | Catalog: discover, title, search, KV cache, local catalog, posters, offline | done |
-| M2 | Deck: card, gesture engine, four actions, keys, toast, undo, decisions persisted | done |
-| M3 | Ranker, mood rail, filter sheet, reasons, details sheet, desktop split card | done |
-| M4 | Imports: upload any file, preview, commit, undo import | done |
-| M5 | Library, Will try, Settings (swipe remap, export, delete, motion, privacy) | done |
-| M6 | Sign-in imports (MAL, AniList, Trakt), Mihon adapter | done (keys needed for sign-in) |
-| M7 | Icon, release signing, reading badges, polish | done (AI mood parsing left off on purpose) |
-| M8 | End-to-end encrypted sync between devices | done |
-| Later | Live mood analyser, iOS, MyDramaList, Prime Video, removals that sync | |
+Contributions: keep test fixtures synthetic. Never commit a real export.
