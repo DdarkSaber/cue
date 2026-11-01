@@ -188,6 +188,58 @@ class LibraryRepository {
     ];
   }
 
+  /// "Reset swipes": forgets every deck decision and what it implied
+  /// (Will try, Not interested, Not now, learned tag weights) but keeps the
+  /// titles that came from imports or were rated in Library.
+  Future<void> resetSwipes(String profileId) => db.transaction(() async {
+    // Titles that exist only because of a Watched swipe (no import behind
+    // them, no rating) go too; everything imported or rated stays.
+    final watched = {
+      for (final e
+          in await (db.select(db.decisionEvents)..where(
+                (x) =>
+                    x.profileId.equals(profileId) &
+                    x.action.isIn(const ['watched', 'read']),
+              ))
+              .get())
+        e.titleId,
+    };
+    final batches = await (db.select(
+      db.importBatches,
+    )..where((b) => b.profileId.equals(profileId))).get();
+    final imported = {
+      for (final o in await (db.select(
+        db.sourceObservations,
+      )..where((o) => o.batchId.isIn([for (final b in batches) b.id]))).get())
+        ?o.titleId,
+    };
+    final swipeOnly = watched.difference(imported);
+    if (swipeOnly.isNotEmpty) {
+      await (db.delete(db.userTitles)..where(
+            (x) =>
+                x.profileId.equals(profileId) &
+                x.titleId.isIn(swipeOnly) &
+                x.rating.isNull(),
+          ))
+          .go();
+    }
+    await (db.delete(
+      db.decisionEvents,
+    )..where((x) => x.profileId.equals(profileId))).go();
+    await (db.delete(
+      db.shortlist,
+    )..where((x) => x.profileId.equals(profileId))).go();
+    await (db.delete(
+      db.exclusions,
+    )..where((x) => x.profileId.equals(profileId))).go();
+    await (db.delete(
+      db.deferrals,
+    )..where((x) => x.profileId.equals(profileId))).go();
+    await (db.delete(
+      db.tagWeights,
+    )..where((x) => x.profileId.equals(profileId))).go();
+  });
+
   Future<void> removeFromShortlist(String profileId, String titleId) =>
       (db.delete(db.shortlist)..where(
             (x) => x.profileId.equals(profileId) & x.titleId.equals(titleId),

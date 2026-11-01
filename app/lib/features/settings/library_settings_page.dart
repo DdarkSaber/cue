@@ -32,6 +32,31 @@ class _LibrarySettingsPageState extends ConsumerState<LibrarySettingsPage> {
     resetLibraryState(ref);
   }
 
+  Future<void> _resetSwipes() async {
+    final ok = await confirmAction(
+      context,
+      title: 'Reset your swipes?',
+      body: 'Will try, Not interested, Not now and mood learning are cleared. Imported and rated titles stay.',
+      confirmLabel: 'Reset swipes',
+    );
+    if (!ok) return;
+    final id = await ref.read(profileIdProvider.future);
+    await ref.read(libraryRepositoryProvider).resetSwipes(id);
+    try {
+      (await ref.read(moodEngineProvider.future)).forget();
+    } on Object {
+      // Not loaded yet.
+    }
+    await ref.read(moodRepositoryProvider).clear(id);
+    ref.invalidate(moodEngineProvider);
+    ref.read(decisionVersionProvider.notifier).bump();
+    ref.read(libraryVersionProvider.notifier).bump();
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Swipes reset.')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final profiles = ref.watch(_profilesProvider);
@@ -104,6 +129,20 @@ class _LibrarySettingsPageState extends ConsumerState<LibrarySettingsPage> {
             label: 'Start a fresh library',
             onPressed: _fresh,
           ),
+        ),
+        const SizedBox(height: CueSpace.md),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: CueSecondaryButton(
+            label: 'Reset swipes',
+            destructive: true,
+            onPressed: _resetSwipes,
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Forgets your deck decisions and mood learning. Imported and rated titles stay. With sync on, your other devices follow.',
+          style: TextStyle(fontSize: 13, color: CueColors.textMuted),
         ),
       ],
     );

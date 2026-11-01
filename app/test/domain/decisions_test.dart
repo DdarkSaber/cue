@@ -50,6 +50,26 @@ void main() {
     now = DateTime(2026, 10, 31, 12);
   });
 
+  test('reset swipes clears deck decisions but keeps rated titles', () async {
+    await decisions.decide(profile, anime, Decision.willTry);
+    await decisions.decide(profile, manhwa, Decision.watched);
+    await library.saveEntry(
+      profile,
+      'anilist:99',
+      state: LibraryState.completed,
+      rating: Rating.favourite,
+    );
+    await library.resetSwipes(profile);
+    final s = await library.signals(profile);
+    expect(s.shortlisted, isEmpty);
+    expect(await library.entry(profile, manhwa.id), isNull);
+    expect(
+      (await library.entry(profile, 'anilist:99'))!.rating,
+      Rating.favourite,
+    );
+    expect(await decisions.canUndo(profile), isFalse);
+  });
+
   test('Not now can hide for a chosen length', () async {
     await decisions.decide(
       profile,
