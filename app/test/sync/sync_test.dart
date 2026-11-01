@@ -59,6 +59,7 @@ class Device {
     imports: ImportService(db, catalog),
     profiles: profiles,
     library: library,
+    db: db,
   );
   late String id;
 
@@ -136,6 +137,39 @@ void main() {
     tearDown(() async {
       await phone.db.close();
       await laptop.db.close();
+    });
+
+    test('the last edit wins, in both directions', () async {
+      final code = await phone.sync.enable(phone.id);
+      await laptop.sync.join(laptop.id, code);
+      // Both know the title; the laptop rated it first.
+      await laptop.library.saveEntry(
+        laptop.id,
+        'anilist:1',
+        state: LibraryState.completed,
+        rating: Rating.okay,
+      );
+      await laptop.sync.syncNow(laptop.id);
+      await phone.sync.syncNow(phone.id);
+      // Later the phone changes its mind: dropped, no rating.
+      // Stored times have one-second precision.
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      await phone.library.saveEntry(
+        phone.id,
+        'anilist:1',
+        state: LibraryState.dropped,
+      );
+      await phone.sync.syncNow(phone.id);
+      await laptop.sync.syncNow(laptop.id);
+      final onLaptop = (await laptop.library.entry(laptop.id, 'anilist:1'))!;
+      expect(onLaptop.state, LibraryState.dropped);
+      expect(onLaptop.rating, isNull);
+      // And the phone keeps its newer edit when it pulls again.
+      await phone.sync.syncNow(phone.id);
+      expect(
+        (await phone.library.entry(phone.id, 'anilist:1'))!.state,
+        LibraryState.dropped,
+      );
     });
 
     test('the Worker only ever sees ciphertext', () async {

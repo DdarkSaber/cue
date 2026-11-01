@@ -101,6 +101,8 @@ class BackupService {
               },
             if (u.actualWatchedAt != null) 'watched_at': day(u.actualWatchedAt),
             if (u.note != null) 'note': u.note,
+            // Full time, so sync can tell which device edited last.
+            'updated_at': u.updatedAt.toUtc().toIso8601String(),
             if (identities[u.titleId] != null)
               'ids': {
                 for (final e in identities[u.titleId]!.entries)

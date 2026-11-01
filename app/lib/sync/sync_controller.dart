@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../app/providers.dart';
@@ -68,7 +69,12 @@ class SyncController extends AsyncNotifier<SyncStatus> {
 
   @override
   Future<SyncStatus> build() async {
-    ref.onDispose(() => _debounce?.cancel());
+    // Coming back to the app pulls what other devices changed meanwhile.
+    final life = AppLifecycleListener(onResume: schedule);
+    ref.onDispose(() {
+      _debounce?.cancel();
+      life.dispose();
+    });
     final profileId = await ref.watch(profileIdProvider.future);
     final service = ref.watch(syncServiceProvider);
     final code = await service.code(profileId);

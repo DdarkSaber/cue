@@ -200,5 +200,6 @@ final syncServiceProvider = Provider<SyncService>(
     imports: ref.watch(importServiceProvider),
     profiles: ref.watch(profileRepositoryProvider),
     library: ref.watch(libraryRepositoryProvider),
+    db: ref.watch(databaseProvider),
   ),
 );

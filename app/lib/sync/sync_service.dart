@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:drift/drift.dart';
 import 'package:http/http.dart' as http;
 
 import '../data/backup_service.dart';
+import '../data/db/database.dart';
 import '../data/library_repository.dart';
 import '../data/profile_repository.dart';
 import '../imports/detect.dart';
@@ -151,6 +152,7 @@ class SyncService {
     required this.imports,
     required this.profiles,
     required this.library,
+    required this.db,
   });
 
   final SyncRemote remote;
@@ -159,6 +161,7 @@ class SyncService {
   final ImportService imports;
   final ProfileRepository profiles;
   final LibraryRepository library;
+  final CueDatabase db;
 
   static const _versionKey = 'syncVersion';
   static const _lastKey = 'syncLast';
@@ -235,6 +238,14 @@ class SyncService {
   }
 
   Future<int> _merge(String profileId, String json) async {
+    // The import merge only adds and never lowers a status, so remember
+    // this device's rows first and settle each title by its last edit.
+    final before = {
+      for (final u in await (db.select(
+        db.userTitles,
+      )..where((u) => u.profileId.equals(profileId))).get())
+        u.titleId: u,
+    };
     final bytes = Uint8List.fromList(utf8.encode(json));
     final parsed = parseDetected(detect(bytes, 'sync.json'));
     final staged = await imports.stage(
@@ -250,8 +261,56 @@ class SyncService {
       offlineOnly: true,
     );
     final summary = await imports.commit(profileId, staged);
+    await _lastEditWins(profileId, json, before);
     await library.recomputeWeights(profileId);
     return summary.added + summary.updated;
+  }
+
+  /// For every title both sides know, keeps the version edited last: the
+  /// local row as it was before the merge, or the remote item. Items from
+  /// older blobs without `updated_at` keep the import result.
+  Future<void> _lastEditWins(
+    String profileId,
+    String json,
+    Map<String, UserTitle> before,
+  ) async {
+    final items = (jsonDecode(json) as Map)['items'];
+    if (items is! List) return;
+    await db.transaction(() async {
+      for (final it in items) {
+        if (it is! Map) continue;
+        final id = it['cue_id'];
+        final at = DateTime.tryParse('${it['updated_at']}');
+        if (id is! String || at == null) continue;
+        final local = before[id];
+        if (local != null && !at.isAfter(local.updatedAt)) {
+          await db.into(db.userTitles).insertOnConflictUpdate(local);
+          continue;
+        }
+        final progress = it['progress'] is Map ? it['progress'] as Map : null;
+        final watched = DateTime.tryParse('${it['watched_at']}');
+        await (db.update(db.userTitles)..where(
+              (u) => u.profileId.equals(profileId) & u.titleId.equals(id),
+            ))
+            .write(
+              UserTitlesCompanion(
+                state: Value('${it['status'] ?? 'none'}'),
+                rating: Value(it['rating'] as String?),
+                rewatchMood: Value(it['rewatch_mood'] as String?),
+                progressUnit: Value(progress?['unit'] as String?),
+                progressValue: Value(
+                  (progress?['read_to'] as num?)?.toDouble(),
+                ),
+                latestKnown: Value(
+                  (progress?['latest_known'] as num?)?.toDouble(),
+                ),
+                actualWatchedAt: Value(watched),
+                note: Value(it['note'] as String?),
+                updatedAt: Value(at),
+              ),
+            );
+      }
+    });
   }
 
   /// Stops syncing on this device. The encrypted copy stays for others.
