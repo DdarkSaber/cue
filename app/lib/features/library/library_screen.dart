@@ -18,6 +18,7 @@ import '../../domain/models/title.dart';
 import '../deck/deck_controller.dart';
 import '../imports/import_screen.dart' show importSourceName;
 import 'entry_sheet.dart';
+import 'add_title_sheet.dart';
 import 'review_sheet.dart';
 
 /// Everything the Library route shows, loaded in one go.
@@ -88,7 +89,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       children: data.when(
         loading: () => const [LinearProgressIndicator(color: CueColors.accent)],
         error: (_, _) => const [Text('Your library could not be read.')],
-        data: (d) => d.isEmpty ? _empty(context) : _full(context, d),
+        data: (d) => [
+          const AddTitleButton(),
+          const SizedBox(height: CueSpace.md),
+          ...(d.isEmpty ? _empty(context) : _full(context, d)),
+        ],
       ),
     );
   }
