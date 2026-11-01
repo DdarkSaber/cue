@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show compute;
+
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
@@ -67,7 +69,14 @@ const _formatVersion = 1;
 
 /// gzip, then AES-256-GCM with a fresh nonce. Layout: version byte,
 /// 12-byte nonce, ciphertext, 16-byte tag; base64 for transport.
-Future<String> sealBlob(String plaintext, SecretKey key) async {
+/// Runs on a background isolate (inline on the web), so a large library
+/// does not stall the UI.
+Future<String> sealBlob(String plaintext, SecretKey key) async =>
+    compute(_seal, (plaintext, await key.extractBytes()));
+
+Future<String> _seal((String, List<int>) job) async {
+  final (plaintext, keyBytes) = job;
+  final key = SecretKey(keyBytes);
   final packed = const GZipEncoder().encode(utf8.encode(plaintext));
   final box = await _aes.encrypt(
     packed,
@@ -88,7 +97,12 @@ class SyncDecryptFailed implements Exception {
   const SyncDecryptFailed();
 }
 
-Future<String> openBlob(String blob, SecretKey key) async {
+Future<String> openBlob(String blob, SecretKey key) async =>
+    compute(_open, (blob, await key.extractBytes()));
+
+Future<String> _open((String, List<int>) job) async {
+  final (blob, keyBytes) = job;
+  final key = SecretKey(keyBytes);
   try {
     final bytes = base64.decode(blob);
     if (bytes.isEmpty ||
