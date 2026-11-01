@@ -240,6 +240,10 @@ class SourceObservations extends Table {
   DateTimeColumn get activityDate => dateTime().nullable()();
   BoolColumn get included => boolean().withDefault(const Constant(true))();
 
+  /// The similar title offered but not ticked (catalog JSON), so the review
+  /// queue can accept it later in one go.
+  TextColumn get candidateJson => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

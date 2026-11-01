@@ -43,7 +43,7 @@ class CueDatabase extends _$CueDatabase {
   );
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -66,6 +66,9 @@ class CueDatabase extends _$CueDatabase {
       if (from < 2) {
         await m.createTable(moodStates);
         await m.createTable(moodSessions);
+      }
+      if (from < 3) {
+        await m.addColumn(sourceObservations, sourceObservations.candidateJson);
       }
     },
     beforeOpen: (details) async {

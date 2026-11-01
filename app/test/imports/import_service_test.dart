@@ -171,6 +171,21 @@ void main() {
     expect(again.alreadyImported, isFalse);
   });
 
+  test('similar matches left unticked can be accepted in one go', () async {
+    gateway.matchCatalog['the infinite mage'] = [
+      item(7).map((k, v) => MapEntry(k, k == 'titleEn' ? 'Infinite Mage' : v)),
+    ];
+    final f = backup([
+      {'title': 'The Infinite Mage', 'media': 'anime', 'status': 'seen'},
+    ]);
+    await service.commit(profile, await stage(f));
+    final queue = await service.reviewQueue(profile);
+    expect(queue.single.candidateJson, contains('Infinite Mage'));
+    expect(await service.acceptAllSimilar(profile, queue), 1);
+    expect(await service.reviewQueue(profile), isEmpty);
+    expect(await library.entry(profile, 'anilist:7'), isNotNull);
+  });
+
   test('the whole review queue can be cleared at once', () async {
     await service.commit(profile, await stage(file));
     final queue = await service.reviewQueue(profile);

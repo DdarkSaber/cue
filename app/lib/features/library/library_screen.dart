@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart' hide Title;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -98,6 +100,21 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ],
       ),
     );
+  }
+
+  /// The suggested title's name, from the stored candidate.
+  static String? _maybe(SourceObservation o) {
+    final raw = o.candidateJson;
+    if (raw == null) return null;
+    final j = jsonDecode(raw) as Map;
+    return (j['titleEn'] ?? j['titleRomaji'] ?? j['titleNative']) as String?;
+  }
+
+  Future<void> _acceptSimilar(List<SourceObservation> review) async {
+    final id = await ref.read(profileIdProvider.future);
+    await ref.read(importServiceProvider).acceptAllSimilar(id, review);
+    await ref.read(libraryRepositoryProvider).recomputeWeights(id);
+    ref.read(libraryVersionProvider.notifier).bump();
   }
 
   Future<void> _dismissAll(
@@ -226,8 +243,18 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ))
               CueListRow(
                 title: o.rawTitle,
-                subtitle: 'Match it',
+                subtitle: _maybe(o) == null ? 'Match it' : 'Maybe ${_maybe(o)}',
                 onTap: () => showReviewSheet(context, o),
+              ),
+            if (d.review.any((o) => o.candidateJson != null))
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: () => _acceptSimilar(d.review),
+                  child: Text(
+                    'Accept all ${d.review.where((o) => o.candidateJson != null).length} suggested matches',
+                  ),
+                ),
               ),
             Align(
               alignment: Alignment.centerLeft,

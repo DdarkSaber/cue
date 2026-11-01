@@ -6,7 +6,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('a version 1 database gains the mood tables on upgrade', () async {
+  test('a version 1 database gains the mood tables and candidate column on upgrade', () async {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
     final dir = await Directory.systemTemp.createTemp('cue_mig');
     final file = File('${dir.path}/cue.sqlite');
@@ -15,6 +15,9 @@ void main() {
     await v2.customSelect('SELECT 1').get();
     await v2.customStatement('DROP TABLE mood_states');
     await v2.customStatement('DROP TABLE mood_sessions');
+    await v2.customStatement(
+      'ALTER TABLE source_observations DROP COLUMN candidate_json',
+    );
     await v2.customStatement('PRAGMA user_version = 1');
     await v2.close();
 
@@ -24,6 +27,11 @@ void main() {
         .map((r) => r.read<String>('name'))
         .get();
     expect(tables, containsAll(['mood_states', 'mood_sessions']));
+    final cols = await upgraded
+        .customSelect('PRAGMA table_info(source_observations)')
+        .map((r) => r.read<String>('name'))
+        .get();
+    expect(cols, contains('candidate_json'));
     await upgraded.close();
     await dir.delete(recursive: true);
   });

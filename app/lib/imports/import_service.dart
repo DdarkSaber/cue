@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart';
 
+import '../data/catalog_gateway.dart' show CatalogItemDto;
 import '../data/catalog_repository.dart';
 import '../data/db/database.dart';
 import '../data/profile_repository.dart';
@@ -211,6 +212,11 @@ class ImportService {
                 progress: Value(r.progressValue),
                 activityDate: Value(r.activityDate),
                 included: Value(m.included && tid != null),
+                candidateJson: Value(
+                  tid == null && m.candidate != null
+                      ? jsonEncode(m.candidate!.json)
+                      : null,
+                ),
               ),
               mode: InsertMode.insertOrReplace,
             );
@@ -518,6 +524,25 @@ class ImportService {
 
   /// Takes an entry out of the review queue ("not in my history"). The
   /// import itself and its undo are unaffected.
+  /// Links every queued entry that came with a similar title to that title.
+  /// Returns how many were accepted.
+  Future<int> acceptAllSimilar(
+    String profileId,
+    Iterable<SourceObservation> list,
+  ) async {
+    var n = 0;
+    for (final o in list) {
+      final raw = o.candidateJson;
+      if (raw == null) continue;
+      final ids = await catalog.upsert([
+        CatalogItemDto(Map<String, dynamic>.from(jsonDecode(raw) as Map)),
+      ]);
+      await resolve(profileId, o, ids.first);
+      n++;
+    }
+    return n;
+  }
+
   /// Takes many entries out of the review queue at once.
   Future<void> dismissAll(Iterable<SourceObservation> list) =>
       db.transaction(() async {
