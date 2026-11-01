@@ -30,5 +30,8 @@ void main() {
         .read(libraryRepositoryProvider)
         .entry(id, 'anilist:901');
     expect(entry, isNotNull);
+    // The same title now shows as already in the library.
+    expect(find.text('In your library'), findsOneWidget);
+    expect(find.text('Seen'), findsNothing);
   });
 }

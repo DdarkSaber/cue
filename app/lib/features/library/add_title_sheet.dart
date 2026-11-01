@@ -38,6 +38,9 @@ class _AddTitleBody extends ConsumerStatefulWidget {
 class _AddTitleBodyState extends ConsumerState<_AddTitleBody> {
   final _query = TextEditingController();
   List<CatalogItemDto>? _results;
+
+  /// Results already in this library, so they are not offered again.
+  Set<String> _owned = const {};
   bool _busy = false;
   String? _message;
 
@@ -56,7 +59,18 @@ class _AddTitleBodyState extends ConsumerState<_AddTitleBody> {
     });
     try {
       final r = await ref.read(catalogGatewayProvider).search(q);
-      if (mounted) setState(() => _results = r);
+      final profileId = await ref.read(profileIdProvider.future);
+      final library = ref.read(libraryRepositoryProvider);
+      final owned = <String>{
+        for (final dto in r)
+          if (await library.entry(profileId, dto.titleId) != null) dto.titleId,
+      };
+      if (mounted) {
+        setState(() {
+          _results = r;
+          _owned = owned;
+        });
+      }
     } on CatalogUnavailable {
       if (mounted) {
         setState(() => _message = 'Offline. Search needs a connection.');
@@ -76,6 +90,7 @@ class _AddTitleBodyState extends ConsumerState<_AddTitleBody> {
     ref.read(decisionVersionProvider.notifier).bump();
     ref.read(libraryVersionProvider.notifier).bump();
     if (!mounted) return;
+    _owned = {..._owned, dto.titleId};
     setState(
       () => _message =
           '${title.displayTitle}: ${d.labelFor(reading: title.kind.isReading)}.',
@@ -141,14 +156,21 @@ class _AddTitleBodyState extends ConsumerState<_AddTitleBody> {
                     style: const TextStyle(fontSize: 15),
                   ),
                 ),
-                TextButton(
-                  onPressed: () => _mark(r, Decision.watched),
-                  child: const Text('Seen'),
-                ),
-                TextButton(
-                  onPressed: () => _mark(r, Decision.willTry),
-                  child: const Text('Will try'),
-                ),
+                if (_owned.contains(r.titleId))
+                  const Text(
+                    'In your library',
+                    style: TextStyle(fontSize: 13, color: CueColors.textMuted),
+                  )
+                else ...[
+                  TextButton(
+                    onPressed: () => _mark(r, Decision.watched),
+                    child: const Text('Seen'),
+                  ),
+                  TextButton(
+                    onPressed: () => _mark(r, Decision.willTry),
+                    child: const Text('Will try'),
+                  ),
+                ],
               ],
             ),
           ),
