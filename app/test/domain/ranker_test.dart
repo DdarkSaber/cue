@@ -21,6 +21,7 @@ Title t(
   String status = 'finished',
   String? country = 'JP',
   String? name,
+  String? format,
 }) => Title(
   id: id,
   kind: kind,
@@ -33,6 +34,7 @@ Title t(
   franchiseId: franchise,
   status: status,
   country: country,
+  format: format,
 );
 
 void main() {
@@ -45,6 +47,41 @@ void main() {
   ]) => ranker.eligible(x, s, f, showAdult: false, enabledKinds: all);
 
   group('hard filters', () {
+    test('novels and music stay excluded from discovery and Revisit', () {
+      for (final (format, kind) in [
+        ('NOVEL', MediaKind.manga),
+        ('MUSIC', MediaKind.anime),
+      ]) {
+        final title = t('cached', kind: kind, format: format);
+        const signals = ProfileSignals(
+          library: {
+            'cached': LibraryEntry(
+              titleId: 'cached',
+              state: LibraryState.completed,
+              rating: Rating.wouldRewatch,
+            ),
+          },
+        );
+        expect(ok(title), isFalse);
+        expect(
+          ok(title, signals, const DeckFilters(mood: QuickMood.revisit)),
+          isFalse,
+        );
+        expect(
+          ranker.eligible(
+            title,
+            const ProfileSignals(),
+            const DeckFilters(),
+            showAdult: true,
+            enabledKinds: all,
+          ),
+          isFalse,
+        );
+      }
+      expect(ok(t('comic', kind: MediaKind.manga, format: 'MANGA')), isTrue);
+      expect(ok(t('anime', format: 'TV')), isTrue);
+    });
+
     test('adult titles are hidden unless enabled', () {
       final x = t('a', adult: true);
       expect(ok(x), isFalse);

@@ -113,6 +113,7 @@ class Ranker {
     required Set<MediaKind> enabledKinds,
     bool includeRewatchesDefault = false,
   }) {
+    if (t.format == 'NOVEL' || t.format == 'MUSIC') return false;
     if (t.adult && !showAdult) return false;
     if (s.excluded.contains(t.id)) return false;
     final franchise = reliableFranchiseId(t);

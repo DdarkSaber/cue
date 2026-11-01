@@ -477,6 +477,39 @@ void main() {
       },
     );
 
+    test('novels and the wrong medium do not make comic or anime matches ambiguous', () async {
+      final items = [
+        {
+          ...item(61, kind: 'manga'),
+          'titleEn': 'Invented Shared Medium',
+          'format': 'NOVEL',
+        },
+        {
+          ...item(62, kind: 'manga'),
+          'titleEn': 'Invented Shared Medium',
+          'format': 'MANGA',
+        },
+        {...item(63), 'titleEn': 'Invented Shared Medium', 'format': 'TV'},
+      ];
+      gateway.matchCatalog['invented shared medium'] = items;
+      for (final cached in [false, true]) {
+        if (cached) {
+          await catalog.upsert(items.map(CatalogItemDto.new).toList());
+        }
+        for (final (kind, id) in [
+          (MediaKind.manga, 'anilist:62'),
+          (MediaKind.anime, 'anilist:63'),
+        ]) {
+          final match = (await ImportMatcher(catalog).match([
+            rec('Invented Shared Medium', kind: kind),
+          ], offlineOnly: cached)).single;
+          expect(match.titleId, id);
+          expect(match.included, isTrue);
+          expect(match.matchClass, isNot(MatchClass.similar));
+        }
+      }
+    });
+
     test('spacing differences still match exactly', () async {
       gateway.matchCatalog['konna ni kawaii'] = [
         {...item(1), 'titleEn': 'Konnani Kawaii'},

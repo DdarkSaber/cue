@@ -26,6 +26,9 @@ invented 4/5 rating. Try now adds no stronger durable taste signal.
 
 ## Confidence and ranking
 
+Novels and music entries are excluded from recommendations, including cached
+titles and Revisit. Manga, manhwa and manhua refer to comics, not prose novels.
+
 Confidence grows as `min(1, evidenceStrength / 20)`, summing
 `min(1, abs(signal))` over distinct metadata-bearing titles.
 Taste blends from neutral 0.5 towards 70% tag-cosine and 30% best-cluster
