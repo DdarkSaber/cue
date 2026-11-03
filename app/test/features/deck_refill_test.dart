@@ -218,7 +218,7 @@ void main() {
   );
 
   testWidgets(
-    'a bounded batch is not exhaustion and Retry reaches later matching pages',
+    'a bounded batch is not exhaustion: longer picks show while later exact pages are fetched in the background',
     (t) async {
       final gateway = FakeGateway(
         pages: {
@@ -234,21 +234,31 @@ void main() {
         overrides: [deckFiltersProvider.overrideWith(_ShortAnime.new)],
       );
       await settle(t);
-      expect(gateway.calls, hasLength(DeckController.maxRefillRounds));
+      // One bounded batch, then a background continuation reaches pages 5-6.
+      expect(gateway.calls, hasLength(DeckController.maxRefillRounds + 2));
       expect(find.text('Review filters'), findsNothing);
-      expect(find.textContaining('More catalog pages remain'), findsOneWidget);
-      await t.tap(find.text('Try again'));
-      await settle(t);
+      expect(find.textContaining('More catalog pages remain'), findsNothing);
       final container = ProviderScope.containerOf(
         t.element(find.byType(DeckScreen)),
       );
-      expect(container.read(deckControllerProvider).cards, hasLength(2));
+      final state = container.read(deckControllerProvider);
+      expect(state.cards.take(2).map((c) => c.title.id).toSet(), {
+        'anilist:5',
+        'anilist:6',
+      });
+      expect(state.lengthFallback, isFalse);
+      expect(
+        state.cards
+            .skip(2)
+            .every((c) => c.reason.startsWith('Longer than requested -')),
+        isTrue,
+      );
       expect(container.read(deckFiltersProvider).shortOnly, isTrue);
     },
   );
 
   testWidgets(
-    'offline is Retry, not Review filters, and failed pages can be retried',
+    'offline deals cached nearest picks, not Review filters, and retries failed pages automatically',
     (t) async {
       final db = memoryDb();
       addTearDown(db.close);
@@ -273,15 +283,21 @@ void main() {
         overrides: [deckFiltersProvider.overrideWith(_ShortAnime.new)],
       );
       await settle(t);
-      expect(find.text('Review filters'), findsNothing);
-      expect(find.text('Try again'), findsOneWidget);
-      gateway.offline = false;
-      await t.tap(find.text('Try again'));
-      await settle(t);
       final container = ProviderScope.containerOf(
         t.element(find.byType(DeckScreen)),
       );
-      expect(container.read(deckControllerProvider).top!.title.id, 'anilist:2');
+      var state = container.read(deckControllerProvider);
+      expect(find.text('Review filters'), findsNothing);
+      expect(state.top!.title.id, 'anilist:1');
+      expect(state.top!.reason, startsWith('Longer than requested - 24'));
+      expect(state.offline, isTrue);
+      gateway.offline = false;
+      // No tap: the automatic retry picks up the connection.
+      await t.pump(DeckController.retryBase + const Duration(seconds: 1));
+      await settle(t);
+      state = container.read(deckControllerProvider);
+      expect(state.top!.title.id, 'anilist:2');
+      expect(state.offline, isFalse);
       expect(
         gateway.calls.where((c) => c == 'discover:anime:-:1'),
         hasLength(2),

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
@@ -11,12 +12,14 @@ import '../../domain/models/decision.dart';
 import '../../domain/models/quick_mood.dart';
 import '../../domain/models/title.dart';
 import '../../domain/mood/mood_engine.dart';
+import '../../domain/mood/mode_model.dart' show Mode;
 import '../../domain/mood/mood_features.dart';
 import '../../domain/mood/sessions.dart' show sessionGap;
 import '../../domain/ranker.dart';
 import '../../domain/mood_rules.dart';
 import '../../domain/reasons.dart';
 import '../../domain/recommendation_context.dart';
+import 'deck_fallback.dart';
 
 class DeckState {
   const DeckState({
@@ -31,12 +34,16 @@ class DeckState {
     this.directionSuggestion = false,
     this.catalogPending = false,
     this.lengthFallback = false,
+    this.relaxed = const {},
+    this.refreshing = false,
+    this.offline = false,
   });
 
   final List<RankedCard> cards;
   final bool loading;
 
-  /// Set when there are no cards: says which filter or state caused it.
+  /// Set only when no eligible title exists anywhere (for example offline
+  /// with an empty cache): a friendly retry message, never a dead end.
   final String? emptyMessage;
 
   /// Small non-blocking note, e.g. offline.
@@ -49,9 +56,24 @@ class DeckState {
   final String? error;
   final bool directionSuggestion;
   final bool catalogPending;
+
+  /// No exact match is dealt: the deck is the nearest-length fallback.
   final bool lengthFallback;
 
+  /// Cards outside the exact request, by title id, with their honest label.
+  final Map<String, DeckRelaxation> relaxed;
+
+  /// Cards are shown from the cache while the catalog is still searched.
+  final bool refreshing;
+
+  /// The last catalog refill failed because the device is offline.
+  final bool offline;
+
   RankedCard? get top => cards.isEmpty ? null : cards.first;
+
+  /// Why the top card is here when it is not an exact match.
+  DeckRelaxation? get topRelaxation =>
+      top == null ? null : relaxed[top!.title.id];
 
   DeckState copyWith({
     List<RankedCard>? cards,
@@ -68,6 +90,9 @@ class DeckState {
     bool? directionSuggestion,
     bool? catalogPending,
     bool? lengthFallback,
+    Map<String, DeckRelaxation>? relaxed,
+    bool? refreshing,
+    bool? offline,
   }) => DeckState(
     cards: cards ?? this.cards,
     loading: loading ?? this.loading,
@@ -80,6 +105,9 @@ class DeckState {
     directionSuggestion: directionSuggestion ?? this.directionSuggestion,
     catalogPending: catalogPending ?? this.catalogPending,
     lengthFallback: lengthFallback ?? this.lengthFallback,
+    relaxed: relaxed ?? this.relaxed,
+    refreshing: refreshing ?? this.refreshing,
+    offline: offline ?? this.offline,
   );
 }
 
@@ -130,8 +158,22 @@ class DeckController extends Notifier<DeckState> {
   /// Titles being decided right now: a second tap on the same card is ignored.
   final Set<String> _inFlight = {};
 
-  static const refillBelow = 4;
+  /// Prefetch while the person still has cards, not when the deck is empty.
+  static const refillBelow = 8;
   static const maxRefillRounds = 4;
+
+  /// Background searches for exact matches while relaxed cards are shown.
+  static const maxContinuations = 3;
+
+  /// Automatic retries after an offline refill: 5 s doubling to a minute.
+  static const retryBase = Duration(seconds: 5);
+  static const retryMax = Duration(minutes: 1);
+
+  int _continuations = 0;
+  bool _continueNext = false;
+  DeckFilters? _continuedFor;
+  Timer? _retryTimer;
+  int _retryAttempt = 0;
 
   @override
   DeckState build() {
@@ -152,8 +194,40 @@ class DeckController extends Notifier<DeckState> {
         ),
       ),
     );
+    final life = AppLifecycleListener(onResume: _retryNowIfOffline);
+    ref.onDispose(() {
+      life.dispose();
+      _retryTimer?.cancel();
+      _retryTimer = null;
+    });
     if (!profile.isLoading && !settingsLoading) Future.microtask(_deal);
     return const DeckState();
+  }
+
+  /// Back in the app after being offline: look again straight away.
+  void _retryNowIfOffline() {
+    if (!ref.mounted || !state.offline) return;
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    _wantRetrieval = true;
+    unawaited(_deal(keepTop: true, quiet: true));
+  }
+
+  /// Retries an offline refill automatically with a capped backoff, so the
+  /// deck recovers as soon as the connection does.
+  void _scheduleRetry() {
+    if (_retryTimer != null) return;
+    final seconds = retryBase.inSeconds * (1 << _retryAttempt.clamp(0, 4));
+    final delay = Duration(seconds: seconds) > retryMax
+        ? retryMax
+        : Duration(seconds: seconds);
+    _retryAttempt++;
+    _retryTimer = Timer(delay, () {
+      _retryTimer = null;
+      if (!ref.mounted) return;
+      _wantRetrieval = true;
+      unawaited(_deal(keepTop: true, quiet: true));
+    });
   }
 
   Future<String> get _profile => ref.read(profileIdProvider.future);
@@ -252,15 +326,18 @@ class DeckController extends Notifier<DeckState> {
     final f = ref.read(deckFiltersProvider);
     final signals = await ref.read(libraryRepositoryProvider).signals(id);
     if (!ref.mounted) return;
-    final valid = ref
-        .read(rankerProvider)
-        .eligible(
-          title,
-          signals,
-          state.lengthFallback ? f.copyWith(shortOnly: false) : f,
-          showAdult: ref.read(currentSettingsProvider).showAdult,
-          enabledKinds: _enabledKinds,
-        );
+    // A labelled fallback card is disclosed, so it is not a filter leak.
+    final valid =
+        state.relaxed.containsKey(title.id) ||
+        ref
+            .read(rankerProvider)
+            .eligible(
+              title,
+              signals,
+              f,
+              showAdult: ref.read(currentSettingsProvider).showAdult,
+              enabledKinds: _enabledKinds,
+            );
     try {
       await ref
           .read(recommendationRepositoryProvider)
@@ -288,30 +365,34 @@ class DeckController extends Notifier<DeckState> {
   }
 
   /// Rebuilds the upcoming deck. The current top card is kept when it is
-  /// still eligible, so filters never yank a card mid-look.
-  Future<void> _deal({bool keepTop = false}) async {
+  /// still eligible, so filters never yank a card mid-look. [quiet] keeps a
+  /// friendly retry message on screen during an automatic retry.
+  Future<void> _deal({bool keepTop = false, bool quiet = false}) async {
     if (!ref.mounted) return;
     if (_dealing) {
       _again = true;
       return;
     }
     _dealing = true;
-    if (state.cards.isEmpty) {
+    if (state.cards.isEmpty && !(quiet && state.emptyMessage != null)) {
       state = state.copyWith(loading: true, clearEmpty: true);
     }
     try {
       do {
         _again = false;
-        await _dealOnce(keepTop: keepTop);
+        final keep = keepTop || _continueNext;
+        _continueNext = false;
+        await _dealOnce(keepTop: keep);
       } while (_again);
     } on Object {
       if (!ref.mounted) return;
       state = state.copyWith(
         loading: false,
+        refreshing: false,
         catalogPending: true,
         error: 'Could not prepare recommendations. Try again.',
         emptyMessage: state.cards.isEmpty
-            ? 'Your local library or candidate cache could not be read.'
+            ? 'Cue could not read the titles saved on this device. Try again in a moment.'
             : null,
       );
     } finally {
@@ -410,6 +491,10 @@ class DeckController extends Notifier<DeckState> {
     final library = ref.read(libraryRepositoryProvider);
     final ranker = ref.read(rankerProvider);
     final kinds = filters.kinds.isEmpty ? _enabledKinds : filters.kinds;
+    if (_continuedFor != filters) {
+      _continuations = 0;
+      _continuedFor = filters;
+    }
 
     var signals = await library.signals(profileId);
     if (!ref.mounted) return;
@@ -429,6 +514,10 @@ class DeckController extends Notifier<DeckState> {
     });
     String? notice;
     var catalogPending = false;
+    var refilled = false;
+    var offline = false;
+    var failed = false;
+    var advanced = false;
 
     int eligibleCount() => pool
         .where(
@@ -458,10 +547,47 @@ class DeckController extends Notifier<DeckState> {
         ))
           kind,
     };
-    if (!filters.isRevisit &&
+    final needsRefill =
+        !filters.isRevisit &&
         (_wantRetrieval ||
             eligibleCount() < Ranker.deckSize * 2 ||
-            (filters.activeCount == 0 && missingKinds.isNotEmpty))) {
+            (filters.activeCount == 0 && missingKinds.isNotEmpty));
+
+    // Instant open: deal from the cache now and look further meanwhile.
+    if (needsRefill && state.cards.isEmpty) {
+      final engine = _engine;
+      final early = await _compose(
+        profileId: profileId,
+        filters: filters,
+        signals: signals,
+        pool: pool,
+        target:
+            filters.mood == QuickMood.forYou && engine?.profileId == profileId
+            ? engine?.target
+            : null,
+        keepTop: false,
+      );
+      if (!ref.mounted) return;
+      if (early.cards.isNotEmpty &&
+          state.cards.isEmpty &&
+          await _profile == profileId &&
+          ref.mounted &&
+          ref.read(deckFiltersProvider) == filters) {
+        _dealtProfile = profileId;
+        state = state.copyWith(
+          cards: early.cards,
+          relaxed: early.relaxed,
+          lengthFallback: early.lengthFallback,
+          loading: false,
+          refreshing: true,
+          clearEmpty: true,
+        );
+        keepTop = true;
+      }
+      if (!ref.mounted) return;
+    }
+
+    if (needsRefill) {
       final refillKinds =
           (_wantRetrieval || eligibleCount() < Ranker.deckSize * 2
                   ? kinds
@@ -495,8 +621,12 @@ class DeckController extends Notifier<DeckState> {
           : null;
       for (var round = 0; round < maxRefillRounds; round++) {
         final result = await _refill(refillKinds, routes: routes);
+        refilled = true;
         notice = result.notice;
         catalogPending = result.pending;
+        offline = result.offline;
+        failed = result.failed;
+        advanced = result.advanced;
         if (!ref.mounted) return;
         signals = await library.signals(profileId);
         if (!ref.mounted) return;
@@ -518,19 +648,6 @@ class DeckController extends Notifier<DeckState> {
       _wantRetrieval = false;
     }
 
-    final byId = {for (final t in pool) t.id: t};
-    // Rated titles may not be in this pool; reasons need them.
-    final ratedIds = signals.library.values
-        .where(
-          (e) => e.rating != null || signals.weakHistoryIds.contains(e.titleId),
-        )
-        .map((e) => e.titleId)
-        .where((id) => !byId.containsKey(id));
-    for (final t in await catalog.titlesByIds(ratedIds)) {
-      byId[t.id] = t;
-    }
-    if (!ref.mounted) return;
-
     if (!ref.mounted) return;
     final activeProfile = await _profile;
     if (!ref.mounted) return;
@@ -547,109 +664,17 @@ class DeckController extends Notifier<DeckState> {
     final target = filters.mood == QuickMood.forYou ? mood?.target : null;
     ref.read(moodReadProvider.notifier).set(target ?? MoodTarget.none);
 
-    var rankingFilters = filters;
-    var rankingPool = pool;
-    var lengthFallback = false;
-    if (!catalogPending &&
-        filters.shortOnly &&
-        !filters.isRevisit &&
-        kinds.length == 1 &&
-        kinds.contains(MediaKind.anime) &&
-        eligibleCount() == 0) {
-      final nearbyFilters = filters.copyWith(shortOnly: false);
-      final nearby =
-          pool
-              .where(
-                (t) =>
-                    t.episodes != null &&
-                    t.episodes! > 13 &&
-                    ranker.eligible(
-                      t,
-                      signals,
-                      nearbyFilters,
-                      showAdult: settings.showAdult,
-                      enabledKinds: _enabledKinds,
-                    ),
-              )
-              .toList()
-            ..sort((a, b) => a.episodes!.compareTo(b.episodes!));
-      if (nearby.isNotEmpty) {
-        rankingFilters = nearbyFilters;
-        rankingPool = nearby;
-        lengthFallback = true;
-      }
-    }
-    final previous = keepTop ? state.top : null;
-    final keep =
-        previous != null &&
-            ranker.eligible(
-              previous.title,
-              signals,
-              rankingFilters,
-              showAdult: settings.showAdult,
-              enabledKinds: _enabledKinds,
-            )
-        ? previous
-        : null;
-    final exposures =
-        (await ref.read(recommendationRepositoryProvider).exposures(profileId))
-            .keys
-            .toSet();
-    if (!ref.mounted) return;
-    poolSize = pool.length;
-    final unseenEligible = rankingPool
-        .where(
-          (t) =>
-              !_temporary.shown.contains(t.id) &&
-              ranker.eligible(
-                t,
-                signals,
-                rankingFilters,
-                showAdult: settings.showAdult,
-                enabledKinds: _enabledKinds,
-              ),
-        )
-        .isNotEmpty;
-    final dealt = ranker.deal(
-      rankingPool,
-      signals,
-      rankingFilters,
-      showAdult: settings.showAdult,
-      enabledKinds: _enabledKinds,
-      titlesById: byId,
-      includeRewatchesDefault: settings.includeRewatches,
-      session: _session,
+    final composed = await _compose(
+      profileId: profileId,
+      filters: filters,
+      signals: signals,
+      pool: pool,
       target: target,
-      size: keep == null ? Ranker.deckSize : Ranker.deckSize - 1,
-      shortestFirst: lengthFallback,
-      temporary: _temporary.bias,
-      preferShorter: _temporary.preferShorter,
-      clusters: clusters,
-      recentExposures: exposures,
-      explorePreference: _temporary.effectiveExploration,
-      skip: {
-        if (keep != null) keep.title.id,
-        if (_skipCurrent && eligibleCount() > 1 && _visibleId != null)
-          _visibleId!,
-        if (unseenEligible) ..._temporary.shown,
-      },
+      secondMode: (target?.confidence ?? 0) > 0.4 ? mood?.secondMode : null,
+      keepTop: keepTop,
     );
-    final cards = lengthFallback
-        ? [
-            for (final c in dealt.take(
-              keep == null ? Ranker.deckSize : Ranker.deckSize - 1,
-            ))
-              RankedCard(
-                c.title,
-                c.score,
-                'Longer than requested - ${c.title.episodes} episodes. ${c.reason}',
-              ),
-          ]
-        : diversify(
-            dealt,
-            (target?.confidence ?? 0) > 0.4 ? mood?.secondMode : null,
-          );
-    final next = [?keep, ...cards];
+    if (!ref.mounted) return;
+    final next = composed.cards;
     final notices = [?notice, ?_aiNotice];
     final canUndo = await ref.read(decisionServiceProvider).canUndo(profileId);
     if (!ref.mounted) return;
@@ -669,30 +694,214 @@ class DeckController extends Notifier<DeckState> {
     }
     _dealtProfile = profileId;
     _skipCurrent = false;
-    final empty = next.isEmpty
-        ? ranker.explainEmpty(
-            pool,
-            signals,
-            filters,
-            showAdult: settings.showAdult,
-            enabledKinds: _enabledKinds,
-          )
-        : null;
+
+    // Relaxed or no cards while more pages remain: keep searching for exact
+    // matches in the background, a bounded number of times.
+    final searching =
+        !filters.isRevisit &&
+        catalogPending &&
+        advanced &&
+        !failed &&
+        (next.isEmpty || composed.relaxed.isNotEmpty) &&
+        _continuations < maxContinuations;
+    if (composed.relaxed.isEmpty && next.isNotEmpty) _continuations = 0;
+    final isOffline = refilled ? offline : state.offline;
+    if (refilled && !offline) {
+      _retryAttempt = 0;
+      _retryTimer?.cancel();
+      _retryTimer = null;
+    }
+    if (isOffline || (next.isEmpty && !searching && !filters.isRevisit)) {
+      _scheduleRetry();
+    }
     state = state.copyWith(
       cards: next,
+      relaxed: composed.relaxed,
       loading: false,
+      refreshing: searching,
+      offline: isOffline,
       catalogPending: catalogPending,
-      lengthFallback: lengthFallback,
-      emptyMessage: next.isEmpty
-          ? catalogPending && pool.isNotEmpty
-                ? notice ?? 'More catalog pages remain. Try again to keep looking with these filters.'
-                : empty?.message
+      lengthFallback: composed.lengthFallback,
+      emptyMessage: next.isEmpty && !searching
+          ? _emptyMessage(filters, pool, signals, offline: isOffline)
           : null,
-      clearEmpty: next.isNotEmpty,
-      // "Showing saved stories" only when there are saved stories to show.
+      clearEmpty: next.isNotEmpty || searching,
       notice: notices.isEmpty ? null : notices.join(' '),
       clearNotice: notices.isEmpty,
       canUndo: canUndo,
+    );
+    if (searching) {
+      _continuations++;
+      _continueNext = true;
+      _again = true;
+    }
+  }
+
+  /// The only non-card state: no eligible title exists anywhere Cue can
+  /// reach right now. Friendly, and retried automatically.
+  String _emptyMessage(
+    DeckFilters filters,
+    List<Title> pool,
+    ProfileSignals signals, {
+    required bool offline,
+  }) {
+    if (filters.isRevisit) {
+      return ref
+          .read(rankerProvider)
+          .explainEmpty(
+            pool,
+            signals,
+            filters,
+            showAdult: ref.read(currentSettingsProvider).showAdult,
+            enabledKinds: _enabledKinds,
+          )
+          .message;
+    }
+    if (offline) {
+      return pool.isEmpty
+          ? "You're offline, and nothing is saved on this device yet. Cue will try again on its own as soon as you're back online."
+          : "You're offline, and you've seen everything saved on this device. Cue will look for more as soon as you're back online.";
+    }
+    return pool.isEmpty
+        ? "Cue couldn't reach the catalog just now. It will keep trying, or you can try again."
+        : "You've been through everything Cue has checked so far. It will keep looking, or you can try again.";
+  }
+
+  /// Ranks the deck: exact matches first, then the fallback ladder, so a card
+  /// is dealt whenever any eligible real title is cached.
+  Future<LadderResult> _compose({
+    required String profileId,
+    required DeckFilters filters,
+    required ProfileSignals signals,
+    required List<Title> pool,
+    required bool keepTop,
+    MoodTarget? target,
+    Mode? secondMode,
+  }) async {
+    final catalog = ref.read(catalogRepositoryProvider);
+    final ranker = ref.read(rankerProvider);
+    final settings = ref.read(currentSettingsProvider);
+    final byId = {for (final t in pool) t.id: t};
+    // Rated titles may not be in this pool; reasons need them.
+    final ratedIds = signals.library.values
+        .where(
+          (e) => e.rating != null || signals.weakHistoryIds.contains(e.titleId),
+        )
+        .map((e) => e.titleId)
+        .where((id) => !byId.containsKey(id));
+    for (final t in await catalog.titlesByIds(ratedIds)) {
+      byId[t.id] = t;
+    }
+    if (!ref.mounted) return const LadderResult([], {});
+    final union = {..._enabledKinds, ...filters.kinds};
+    bool eligible(Title t, ProfileSignals s, DeckFilters f) => ranker.eligible(
+      t,
+      s,
+      f,
+      showAdult: settings.showAdult,
+      enabledKinds: union,
+      includeRewatchesDefault: settings.includeRewatches,
+    );
+    final exposures =
+        (await ref.read(recommendationRepositoryProvider).exposures(profileId))
+            .keys
+            .toSet();
+    if (!ref.mounted) return const LadderResult([], {});
+    List<RankedCard> dealer(
+      List<Title> candidates,
+      DeckFilters f, {
+      required int size,
+      bool shortestFirst = false,
+      ProfileSignals? using,
+      Set<String> skip = const {},
+    }) => ranker.deal(
+      candidates,
+      using ?? signals,
+      f,
+      showAdult: settings.showAdult,
+      enabledKinds: union,
+      titlesById: byId,
+      includeRewatchesDefault: settings.includeRewatches,
+      session: _session,
+      target: target,
+      size: size,
+      shortestFirst: shortestFirst,
+      temporary: _temporary.bias,
+      preferShorter: _temporary.preferShorter,
+      clusters: clusters,
+      recentExposures: exposures,
+      explorePreference: _temporary.effectiveExploration,
+      skip: skip,
+    );
+
+    final previous = keepTop ? state.top : null;
+    final keep = previous != null && eligible(previous.title, signals, filters)
+        ? previous
+        : null;
+    poolSize = pool.length;
+    final exactPool = pool.where((t) => eligible(t, signals, filters)).toList();
+    final unseenEligible = exactPool.any(
+      (t) => !_temporary.shown.contains(t.id),
+    );
+    final dealt = dealer(
+      pool,
+      filters,
+      size: keep == null ? Ranker.deckSize : Ranker.deckSize - 1,
+      skip: {
+        if (keep != null) keep.title.id,
+        if (_skipCurrent && exactPool.length > 1 && _visibleId != null)
+          _visibleId!,
+        if (unseenEligible) ..._temporary.shown,
+      },
+    );
+    final exact = [?keep, ...diversify(dealt, secondMode)];
+    if (filters.isRevisit || exact.length >= Ranker.deckSize) {
+      return LadderResult(exact, const {});
+    }
+
+    // The card on screen stays while no exact match replaces it.
+    RankedCard? keptRelaxed;
+    DeckRelaxation? keptRelaxation;
+    if (previous != null && keep == null && exact.isEmpty) {
+      final before = state.relaxed[previous.title.id];
+      final now =
+          relaxationFor(previous.title, signals, filters, eligible) ??
+          (before?.rung == DeckRung.backFromNotNow &&
+                  eligible(
+                    previous.title,
+                    withoutDeferred(signals),
+                    openFilters(filters),
+                  )
+              ? before
+              : null);
+      if (now != null) {
+        keptRelaxation = now;
+        keptRelaxed = before?.label == now.label
+            ? previous
+            : RankedCard(
+                previous.title,
+                previous.score,
+                '${now.label}. ${reasonFor(previous.title, signals, filters, titlesById: byId)}',
+              );
+      }
+    }
+    final wide = filters.kinds.isEmpty ? pool : await catalog.pool(union);
+    if (!ref.mounted) return const LadderResult([], {});
+    final ladder = runLadder(
+      exact: exact,
+      pool: wide,
+      signals: signals,
+      filters: filters,
+      eligible: eligible,
+      deal: dealer,
+      size: keptRelaxed == null ? Ranker.deckSize : Ranker.deckSize - 1,
+      taken: {?keptRelaxed?.title.id},
+      shown: _temporary.shown,
+    );
+    if (keptRelaxed == null) return ladder;
+    return LadderResult(
+      [keptRelaxed, ...ladder.cards],
+      {keptRelaxed.title.id: keptRelaxation!, ...ladder.relaxed},
     );
   }
 
@@ -717,10 +926,10 @@ class DeckController extends Notifier<DeckState> {
   }
 
   /// One bounded pass; only a provider's final page proves exhaustion.
-  Future<({String? notice, bool pending, bool failed, bool advanced})> _refill(
-    Set<MediaKind> kinds, {
-    List<RetrievalRequest>? routes,
-  }) async {
+  Future<
+    ({String? notice, bool pending, bool failed, bool advanced, bool offline})
+  >
+  _refill(Set<MediaKind> kinds, {List<RetrievalRequest>? routes}) async {
     final catalog = ref.read(catalogRepositoryProvider);
     var offline = false;
     var gotAny = false;
@@ -766,7 +975,7 @@ class DeckController extends Notifier<DeckState> {
     ]);
     return (
       notice: offline && !gotAny
-          ? 'Offline. Showing saved stories when available; retry when connected.'
+          ? 'Offline. Showing saved stories; Cue retries automatically when you reconnect.'
           : failedKinds.isNotEmpty
           ? 'Some formats unavailable: ${failedKinds.map((k) => k.label).join(', ')}. Retry to check more stories; cached matches are still available.'
           : limited
@@ -775,6 +984,7 @@ class DeckController extends Notifier<DeckState> {
       pending: pending,
       failed: failedKinds.isNotEmpty,
       advanced: advanced,
+      offline: offline && !gotAny,
     );
   }
 
@@ -877,8 +1087,13 @@ class DeckController extends Notifier<DeckState> {
         }
       }
       // Re-rank every few swipes so a change of mood shows up quickly.
+      // Below [refillBelow] the deck prefetches in the background (the
+      // catalog is checked when cached matches run thin), so the person
+      // never swipes into an empty deck.
       if (state.cards.length < refillBelow || count % 3 == 0) {
-        _wantRetrieval = true;
+        if (state.cards.length < refillBelow ~/ 2 || count % 3 == 0) {
+          _wantRetrieval = true;
+        }
         unawaited(_deal(keepTop: true));
       }
       return result;
@@ -1024,38 +1239,43 @@ class DeckController extends Notifier<DeckState> {
         .signals(profileId);
     if (!current()) return undone;
     final settings = ref.read(currentSettingsProvider);
-    final undoFilters = state.lengthFallback
-        ? filters.copyWith(shortOnly: false)
-        : filters;
+    final union = {..._enabledKinds, ...filters.kinds};
+    bool eligible(Title t, ProfileSignals s, DeckFilters f) => ref
+        .read(rankerProvider)
+        .eligible(
+          t,
+          s,
+          f,
+          showAdult: settings.showAdult,
+          enabledKinds: union,
+          includeRewatchesDefault: settings.includeRewatches,
+        );
+    final exact = eligible(title, signals, filters);
+    // A card that came from the fallback ladder comes back with its label.
+    final relaxation = exact
+        ? null
+        : relaxationFor(title, signals, filters, eligible);
     if (filters != ref.read(deckFiltersProvider) ||
-        !ref
-            .read(rankerProvider)
-            .eligible(
-              title,
-              signals,
-              undoFilters,
-              showAdult: settings.showAdult,
-              enabledKinds: _enabledKinds,
-              includeRewatchesDefault: settings.includeRewatches,
-            )) {
+        (!exact && relaxation == null)) {
       await _deal();
       return undone;
     }
     final reason = reasonFor(
       title,
       signals,
-      undoFilters,
+      relaxation == null ? filters : openFilters(filters),
       titlesById: {title.id: title},
     );
-    final card = RankedCard(
-      title,
-      1,
-      state.lengthFallback && title.episodes != null && title.episodes! > 13
-          ? 'Longer than requested - ${title.episodes} episodes. $reason'
-          : reason,
-    );
+    final card = relaxation == null
+        ? RankedCard(title, 1, reason)
+        : labelled(RankedCard(title, 1, reason), relaxation);
     state = state.copyWith(
       cards: [card, ...state.cards.where((c) => c.title.id != titleId)],
+      relaxed: {
+        for (final e in state.relaxed.entries)
+          if (e.key != titleId) e.key: e.value,
+        titleId: ?relaxation,
+      },
       canUndo: canUndo,
       clearEmpty: true,
     );

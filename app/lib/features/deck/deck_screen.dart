@@ -16,7 +16,9 @@ import '../../domain/models/decision.dart';
 import '../details/details_sheet.dart';
 import '../filters/filter_sheet.dart';
 import 'action_bar.dart';
+import '../../domain/models/deck_filters.dart';
 import 'deck_controller.dart';
+import 'deck_fallback.dart';
 import 'loading_card.dart';
 import 'mood_rail.dart';
 import 'mood_read_chip.dart';
@@ -42,6 +44,9 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
   ToastMessage? _toast;
   int _toastId = 0;
   bool _sheetOpen = false;
+
+  /// Filters the person chose to keep after seeing a relaxed card.
+  DeckFilters? _keptFilters;
 
   /// Set by the Not now long-press menu for the next Not now.
   Duration? _pendingDefer;
@@ -256,14 +261,21 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
         reduceMotion: settings.reduceMotion,
         haptics: settings.haptics,
       );
-    } else if (deck.loading) {
+    } else if (deck.loading || deck.refreshing || deck.emptyMessage == null) {
+      // Still looking: a card-shaped placeholder, never a dead end.
       cardArea = const LoadingCard();
     } else {
+      // Only when no eligible title is reachable (e.g. offline, empty cache).
       cardArea = LoadingCard(
-        message: deck.emptyMessage ?? 'No stories right now.',
+        message: deck.emptyMessage,
         action: _EmptyAction(revisit: filters.isRevisit),
       );
     }
+    final relaxation = deck.topRelaxation;
+    final showRelaxed =
+        relaxation != null &&
+        relaxation.misses.isNotEmpty &&
+        _keptFilters != filters;
 
     final showInvite =
         deck.sessionDecisions >= 6 && !settings.inviteDismissed && top != null;
@@ -317,6 +329,14 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
                   ),
                 ),
               if (showInvite) const _ImportInvite(),
+              if (showRelaxed)
+                _RelaxedFilterChip(
+                  relaxation: relaxation,
+                  onKeep: () => setState(() => _keptFilters = filters),
+                  onClear: () => ref
+                      .read(deckFiltersProvider.notifier)
+                      .apply(relaxation.clearedFrom(filters)),
+                ),
               SizedBox(height: desktop ? 16 : 10),
               Expanded(
                 child: Center(
@@ -444,6 +464,74 @@ class _ImportInvite extends ConsumerWidget {
                   .change((s) => s.copyWith(inviteDismissed: true)),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Inline note for a card outside the person's explicit filters, with a
+/// one-tap choice to keep or clear the filter that excluded everything.
+class _RelaxedFilterChip extends StatelessWidget {
+  const _RelaxedFilterChip({
+    required this.relaxation,
+    required this.onKeep,
+    required this.onClear,
+  });
+
+  final DeckRelaxation relaxation;
+  final VoidCallback onKeep;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final longer = relaxation.rung == DeckRung.longer;
+    final text = longer
+        ? 'Longer than requested: no short matches left'
+        : outsideLabel(relaxation.misses);
+    final plural = relaxation.misses.length > 1;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Semantics(
+        container: true,
+        label: text,
+        child: Container(
+          padding: const EdgeInsets.only(left: 14),
+          decoration: BoxDecoration(
+            color: const Color(0x0AA9D7FF),
+            borderRadius: BorderRadius.circular(CueRadius.chip),
+            border: Border.all(color: const Color(0x26A9D7FF)),
+          ),
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              ExcludeSemantics(
+                child: Text(
+                  text,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFFCFE6FB),
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: onKeep,
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(CueSize.minTarget, CueSize.minTarget),
+                  foregroundColor: const Color(0xFFC1CEDD),
+                ),
+                child: Text(plural ? 'Keep filters' : 'Keep filter'),
+              ),
+              TextButton(
+                onPressed: onClear,
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(CueSize.minTarget, CueSize.minTarget),
+                  foregroundColor: CueColors.accent,
+                ),
+                child: Text(plural ? 'Clear filters' : 'Clear filter'),
+              ),
+            ],
+          ),
         ),
       ),
     );
