@@ -20,7 +20,7 @@ export const GROQ_MODEL = "openai/gpt-oss-20b";
 export const GEMINI_MODEL = "gemini-flash-lite-latest";
 
 /** Like fetchJson, but a 404 is an error too (a retired model answers 404). */
-async function post(url: string, headers: Record<string, string>, body: unknown): Promise<Row | null> {
+export async function post(url: string, headers: Record<string, string>, body: unknown): Promise<Row | null> {
   let res: Response;
   try {
     res = await fetch(url, {
@@ -58,7 +58,7 @@ export function cleanHints(raw: unknown, allowed: string[], cap: number): string
   return [...out];
 }
 
-function parse(text: unknown): Row | null {
+export function parse(text: unknown): Row | null {
   if (typeof text !== "string") return null;
   try {
     const j = JSON.parse(text);

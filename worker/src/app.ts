@@ -9,6 +9,14 @@ import { same, sha256Hex, SyncStore } from "./sync/store";
 import { diagnosticsBody, diagnosticsId, diagnosticsToken } from "./diagnostics/schemas";
 import { DiagnosticsStore } from "./diagnostics/store";
 import { moodHints, underDailyCap } from "./ai/mood";
+import {
+  cachedRecommendations,
+  hasAiKeys,
+  profileKey,
+  recommend,
+  recommendBody,
+  storeRecommendations,
+} from "./ai/recommend";
 import { fail } from "./errors";
 import {
   allowedOrigins,
@@ -278,6 +286,23 @@ export function createApp() {
       return fail(c, 429, "rate_limited");
     }
     return c.json(await moodHints(c.env, b.data.text, b.data.allowed));
+  });
+
+  // Opt-in taste picks. Titles go to the AI provider for this request only.
+  app.post("/ai/recommend", async (c) => {
+    const b = check(c, recommendBody, await jsonBody(c));
+    if (!b.ok) return b.res;
+    if (!hasAiKeys(c.env)) return fail(c, 503, "not_configured");
+    const key = await profileKey(b.data);
+    const hit = await cachedRecommendations(c.env.CATALOG_CACHE, key);
+    if (hit) return c.json(hit);
+    if (!(await underDailyCap(c.env.CATALOG_CACHE))) {
+      c.header("Retry-After", "3600");
+      return fail(c, 429, "rate_limited");
+    }
+    const out = await recommend(c.env, b.data);
+    await storeRecommendations(c.env.CATALOG_CACHE, key, out);
+    return c.json(out);
   });
 
   app.notFound((c) => fail(c, 404, "not_found"));
