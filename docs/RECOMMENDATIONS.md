@@ -70,16 +70,46 @@ TVmaze discovery samples four index pages with variable result counts.
 App page cursors stop at 50 per kind/mood and refresh after seven days.
 
 Hard filters and saved-history exclusions apply to every exact-match route and
-exploration slot. A bounded batch or network failure is not proof of exhaustion:
-Cue keeps the constraints and offers Retry, not a Review filters dead-end.
+exploration slot. A bounded batch or network failure is not proof of exhaustion.
+Swiping prefetches once fewer than eight cards remain, so the deck refills
+before it runs out.
 
-Short anime means at most 13 total episodes. When the broad anime catalog has
-reported its final page and no eligible short anime remain, Cue can deal nearby
-unwatched anime, shortest known episode count first. Each such card is labelled
-"Longer than requested" with its episode count; the original filter stays visible.
-Other constraints and saved-history exclusions still apply. New exact matches
-take precedence when available again. Unknown lengths are not called short.
-No titles are fabricated, and an unavailable catalog cannot guarantee a card.
+## Never an empty deck
+
+Cue deals a card whenever any eligible real title is cached. Exact matches always
+come first; later steps are reached only when earlier ones cannot fill the deck,
+and every card they add carries a short label saying why it is there:
+
+1. **Exact matches** for every filter, ranked as above.
+2. **Soft preferences relaxed.** Mood, session lean and the exploration mix only
+   affect ranking, never eligibility. Short season (at most 13 episodes or 60
+   chapters) pads the deck with nearby known lengths, shortest first, labelled
+   "Longer than requested" with the actual length. Unknown lengths are not
+   called short.
+3. **Wider search.** While relaxed cards are shown and more catalog pages remain,
+   Cue keeps fetching in the background (up to three more bounded batches per
+   filter set). New exact matches take precedence when they arrive.
+4. **Nearest matches outside your filters.** If explicit filters (format, genre,
+   era, status, country, Tell me exclusions) exclude every cached title, Cue
+   deals the titles that miss the fewest filters, ranked by taste and quality,
+   labelled "Outside your filter: Comedy". An inline chip offers Keep filter or
+   Clear filter in one tap. While any exact match exists, format and genre
+   filters stay strict.
+5. **Back from Not now.** As a last resort, titles set aside with Not now in an
+   earlier session can return, labelled.
+
+Never relaxed: titles in the library (including saved, watching and planned),
+Not interested, novels and music, explicit franchise exclusions, adult titles
+when hidden, and formats disabled in Settings. No titles are fabricated.
+
+Only when no eligible title is reachable at all (for example offline with an
+empty cache) does Cue show a non-card state: a friendly message with Try again
+and Choose from saved. Offline refills retry automatically (5 s doubling to a
+minute) and immediately when the app returns to the foreground.
+
+On launch, the deck is ranked from the local cache with current taste and shown
+at once while the network refill runs; the card on screen is kept when the
+refill finishes.
 
 ## Familiar, adjacent and exploring picks
 

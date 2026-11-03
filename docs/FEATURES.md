@@ -60,17 +60,22 @@ including offline. Provider failures produce an incomplete-results warning,
 not a false "no matches" result.
 
 The deck checks further catalog pages when the first batch is mostly saved,
-watched or outside the requested filters. Each refill is bounded; a batch limit
-or provider failure offers Retry rather than blaming the filters. An empty
-non-final page is not treated as the end of the catalog.
+watched or outside the requested filters, and prefetches in the background once
+fewer than eight cards remain. Each refill is bounded. An empty non-final page
+is not treated as the end of the catalog.
 
-For "short anime", short means at most 13 total episodes, not short episode
-runtime. Exact matches come first. Once the checked anime catalog is exhausted,
-Cue can offer unwatched anime with more episodes, nearest lengths first, labelled
-"Longer than requested" with the actual episode count. Other format, genre and
-history exclusions still apply. Unknown lengths are not claimed to be short.
-Offline or unavailable catalogs cannot guarantee a new card; cached matches
-remain usable and Cue reports when retry is needed.
+The deck never dead-ends while an eligible title is cached. Opening the app
+shows cached cards immediately while the catalog refreshes. When exact matches
+run out, Cue deals the nearest honest alternatives, each labelled: "Longer than
+requested" for Short season (nearest known lengths first; short means at most 13
+episodes, not short runtime), then "Outside your filter: <name>" with a one-tap
+Keep filter / Clear filter chip, then earlier Not now titles. Saved, watched,
+Not interested, novels, music and excluded franchises never return. See
+[Recommendations](RECOMMENDATIONS.md#never-an-empty-deck).
+
+Only offline with an empty cache (or with every cached title used) does Cue show
+a message instead of a card; it retries automatically when the connection
+returns, and Try again or Choose from saved are always available.
 
 New unresolved rows retain their original normalized rating and progress fields
 locally until reviewed, including across restart. Older review rows retain only
