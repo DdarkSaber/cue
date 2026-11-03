@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="900" viewBox="0 0 900 900" role="img" aria-labelledby="t d">
+  <title id="t">Cue deck mockup</title>
+  <desc id="d">A phone showing one abstract poster card labelled "Your next pick", a reason chip reading "Because you liked a title you rated highly", and four swipe buttons.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07080d"/><stop offset="1" stop-color="#0f1426"/>
+    </linearGradient>
+    <linearGradient id="poster" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffb36b"/><stop offset="0.5" stop-color="#ff6f91"/><stop offset="1" stop-color="#7b5cff"/>
+    </linearGradient>
+    <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0.45" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.7"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#7b5cff" stop-opacity="0.35"/><stop offset="1" stop-color="#7b5cff" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="screen"><rect x="300" y="110" width="300" height="680" rx="30"/></clipPath>
+  </defs>
+  <rect width="900" height="900" fill="url(#bg)"/>
+  <circle cx="450" cy="450" r="420" fill="url(#glow)"/>
+  <!-- phone frame -->
+  <rect x="285" y="95" width="330" height="710" rx="44" fill="#151a2b" stroke="#2a3150" stroke-width="3"/>
+  <rect x="300" y="110" width="300" height="680" rx="30" fill="#0a0d18"/>
+  <g clip-path="url(#screen)">
+    <rect x="435" y="118" width="30" height="8" rx="4" fill="#1d2339"/>
+    <!-- poster card -->
+    <rect x="316" y="150" width="268" height="410" rx="20" fill="url(#poster)"/>
+    <circle cx="500" cy="250" r="70" fill="#fff" fill-opacity="0.14"/>
+    <circle cx="380" cy="360" r="95" fill="#fff" fill-opacity="0.10"/>
+    <path d="M316 470 C380 420 450 500 584 440 L584 560 L316 560 Z" fill="#fff" fill-opacity="0.12"/>
+    <rect x="316" y="150" width="268" height="410" rx="20" fill="url(#shade)"/>
+    <text x="334" y="522" font-family="sans-serif" font-size="26" font-weight="700" fill="#ffffff">Your next pick</text>
+    <text x="334" y="544" font-family="sans-serif" font-size="13" fill="#ffffff" fill-opacity="0.8">Format  ·  Genre  ·  Year</text>
+    <!-- reason chip -->
+    <rect x="316" y="576" width="268" height="34" rx="17" fill="#a9d7ff" fill-opacity="0.08" stroke="#a9d7ff" stroke-opacity="0.3"/>
+    <text x="332" y="598" font-family="sans-serif" font-size="13" fill="#cfe6fb">Because you liked [a title you rated highly]</text>
+    <!-- swipe buttons -->
+    <g font-family="sans-serif" font-size="11" text-anchor="middle" fill="#c1cedd">
+      <circle cx="354" cy="672" r="26" fill="#1a2036" stroke="#ff6f91" stroke-width="2"/><text x="354" y="720">Skip</text>
+      <circle cx="418" cy="672" r="26" fill="#1a2036" stroke="#e2d4b8" stroke-width="2"/><text x="418" y="720">Not now</text>
+      <circle cx="482" cy="672" r="26" fill="#1a2036" stroke="#9d7bff" stroke-width="2"/><text x="482" y="720">Seen it</text>
+      <circle cx="546" cy="672" r="26" fill="#1a2036" stroke="#22c7b8" stroke-width="2"/><text x="546" y="720">Save</text>
+    </g>
+    <g fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M344 662 l20 20 M364 662 l-20 20" stroke="#ff6f91"/>
+      <path d="M418 660 v13 l9 5" stroke="#e2d4b8"/>
+      <path d="M470 672 l8 8 l14 -16" stroke="#9d7bff"/>
+      <path d="M546 683 l-12 -10 a7 7 0 0 1 12 -9 a7 7 0 0 1 12 9 z" stroke="#22c7b8"/>
+    </g>
+  </g>
+  <text x="450" y="860" font-family="sans-serif" font-size="18" text-anchor="middle" fill="#8a94b0">Illustration with placeholder content</text>
+</svg>

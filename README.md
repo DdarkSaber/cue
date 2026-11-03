@@ -49,12 +49,11 @@
 ## Screenshots
 
 <p align="center">
-  <img src="docs/assets/phone-showcase.png" alt="Cue's recommendation deck on desktop web and on a phone, using synthetic test data" width="100%">
+  <img src="docs/assets/phone-showcase.svg" alt="Illustration of the Cue deck on a phone: an abstract poster card, a Because you liked reason chip and four swipe buttons" width="520">
 </p>
 
-<sub>Rendered from the golden tests in
-<code>app/test/golden/goldens/</code> with synthetic data; real cards show
-catalog posters.</sub>
+<sub>An illustration with placeholder content; real cards show catalog
+posters and the actual reason for each pick.</sub>
 
 ## How it works
 
