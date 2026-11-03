@@ -874,16 +874,7 @@ class DeckController extends Notifier<DeckState> {
     DeckRelaxation? keptRelaxation;
     if (previous != null && keep == null && exact.isEmpty) {
       final before = state.relaxed[previous.title.id];
-      final now =
-          relaxationFor(previous.title, signals, filters, eligible) ??
-          (before?.rung == DeckRung.backFromNotNow &&
-                  eligible(
-                    previous.title,
-                    withoutDeferred(signals),
-                    openFilters(filters),
-                  )
-              ? before
-              : null);
+      final now = relaxationFor(previous.title, signals, filters, eligible);
       if (now != null) {
         keptRelaxation = now;
         keptRelaxed = before?.label == now.label

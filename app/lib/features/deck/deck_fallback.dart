@@ -16,9 +16,6 @@ enum DeckRung {
 
   /// Misses one or more explicit filters; fewest misses first.
   outsideFilter,
-
-  /// Hidden with Not now in an earlier session; nothing newer qualifies.
-  backFromNotNow,
 }
 
 /// One explicit filter a card does not satisfy.
@@ -47,7 +44,7 @@ class DeckRelaxation {
   /// Short honest label, e.g. "Outside your filter: Comedy".
   final String label;
 
-  /// The explicit filters this card misses (empty for Not now returns).
+  /// The explicit filters this card misses .
   final List<FilterMiss> misses;
 
   /// The filters with every constraint this card misses removed.
@@ -328,54 +325,8 @@ LadderResult runLadder({
     }
   }
 
-  // Last resort: titles set aside with Not now before this session.
-  if (cards.isEmpty && remaining() > 0 && signals.deferred.isNotEmpty) {
-    final returning = withoutDeferred(signals);
-    final candidates = pool
-        .where(
-          (t) =>
-              signals.deferred.contains(t.id) &&
-              !shown.contains(t.id) &&
-              !ids.contains(t.id) &&
-              !franchises.contains(t.franchiseKey) &&
-              eligible(t, returning, open),
-        )
-        .toList();
-    for (final c in deal(
-      candidates,
-      open,
-      size: remaining(),
-      using: returning,
-    )) {
-      final misses = missesOf(c.title, returning);
-      add(
-        c,
-        DeckRelaxation(
-          DeckRung.backFromNotNow,
-          [
-            'Back from Not now',
-            if (misses.isNotEmpty) outsideLabel(misses),
-          ].join('. '),
-          misses: misses,
-        ),
-      );
-    }
-  }
   return LadderResult(cards, relaxed);
 }
-
-/// The same signals with Not now deferrals lifted (never exclusions).
-ProfileSignals withoutDeferred(ProfileSignals s) => ProfileSignals(
-  excluded: s.excluded,
-  excludedFranchises: s.excludedFranchises,
-  shortlisted: s.shortlisted,
-  library: s.library,
-  weights: s.weights,
-  evidenceTitles: s.evidenceTitles,
-  evidenceStrength: s.evidenceStrength,
-  weakHistoryIds: s.weakHistoryIds,
-  kindRatings: s.kindRatings,
-);
 
 /// Relaxation for one title outside the exact request (used by Undo), or
 /// null when a hard exclusion still applies.

@@ -329,7 +329,7 @@ void main() {
   );
 
   testWidgets(
-    'when everything else is used up, earlier Not now titles come back labelled',
+    'titles set aside with Not now never return inside their 14 days',
     (t) async {
       final db = memoryDb();
       addTearDown(db.close);
@@ -353,11 +353,8 @@ void main() {
       await settle(t);
       c = _container(t);
       final state = c.read(deckControllerProvider);
-      expect(state.cards, hasLength(2));
-      for (final card in state.cards) {
-        expect(card.reason, startsWith('Back from Not now.'));
-        expect(state.relaxed[card.title.id]!.rung, DeckRung.backFromNotNow);
-      }
+      expect(state.cards, isEmpty);
+      expect(state.relaxed, isEmpty);
     },
   );
 

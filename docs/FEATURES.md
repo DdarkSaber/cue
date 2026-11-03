@@ -69,8 +69,8 @@ shows cached cards immediately while the catalog refreshes. When exact matches
 run out, Cue deals the nearest honest alternatives, each labelled: "Longer than
 requested" for Short season (nearest known lengths first; short means at most 13
 episodes, not short runtime), then "Outside your filter: <name>" with a one-tap
-Keep filter / Clear filter chip, then earlier Not now titles. Saved, watched,
-Not interested, novels, music and excluded franchises never return. See
+Keep filter / Clear filter chip. Titles set aside with Not now stay hidden for
+their 14 days. Saved, watched, Not interested, novels, music and excluded franchises never return. See
 [Recommendations](RECOMMENDATIONS.md#never-an-empty-deck).
 
 Only offline with an empty cache (or with every cached title used) does Cue show

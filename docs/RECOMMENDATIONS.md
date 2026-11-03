@@ -140,10 +140,9 @@ and every card they add carries a short label saying why it is there:
    labelled "Outside your filter: Comedy". An inline chip offers Keep filter or
    Clear filter in one tap. While any exact match exists, format and genre
    filters stay strict.
-5. **Back from Not now.** As a last resort, titles set aside with Not now in an
-   earlier session can return, labelled.
 
-Never relaxed: titles in the library (including saved, watching and planned),
+Never relaxed: titles set aside with Not now (they stay hidden for their
+full 14 days), titles in the library (including saved, watching and planned),
 Not interested, novels and music, explicit franchise exclusions, adult titles
 when hidden, and formats disabled in Settings. No titles are fabricated.
 
