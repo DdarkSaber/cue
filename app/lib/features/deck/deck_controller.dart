@@ -984,6 +984,11 @@ class DeckController extends Notifier<DeckState> {
             if (broad) pending = true;
             return;
           }
+          // Budget spent: more pages exist, but this cycle asks no more.
+          if (budget != null && budget.spent) {
+            if (broad) pending = true;
+            return;
+          }
           try {
             final n = await catalog.fetchNext(
               request.kind,

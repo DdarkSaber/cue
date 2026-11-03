@@ -35,7 +35,7 @@ class CatalogSearchResult {
 /// so every route gets a look before one overlapping route spends the rest,
 /// and the budget closes early once [freshTarget] unseen titles arrived.
 class RequestBudget {
-  RequestBudget({this.limit = 12, this.freshTarget = 40});
+  RequestBudget({this.limit = 12, this.freshTarget = 100});
 
   /// Most discover/recommendation requests the budget allows.
   final int limit;

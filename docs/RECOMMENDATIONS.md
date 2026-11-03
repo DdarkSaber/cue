@@ -91,7 +91,7 @@ now bounds the work:
 - Every route's first request is claimed before any route digs deeper, so
   routes that have not been tried come before extra pages from overlapping
   ones.
-- The budget closes early once 40 unseen titles have arrived.
+- The budget closes early once 100 unseen titles have arrived.
 
 At the paced rate 12 requests is about 24 seconds of AniList time.
 
