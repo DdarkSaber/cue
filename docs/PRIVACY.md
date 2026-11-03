@@ -5,7 +5,7 @@
 ## Library and imports
 
 Your library lives in local SQLite. Library/history uploads require optional
-encrypted sync. AI text and technical diagnostics are separate opt-ins.
+encrypted sync. AI text, AI taste picks and technical diagnostics are separate opt-ins.
 Catalog lookups send title names or IDs, never your whole history.
 Provider sign-in uses the provider's page; Cue does not see passwords.
 Tokens stay on the device.
@@ -70,6 +70,17 @@ See [Worker diagnostics](../worker/DIAGNOSTICS.md) for auth, retrieval and limit
 
 Optional Smarter mood text sends the typed sentence to an AI service for
 allowlisted hints. It is not required for local mood rules.
+
+Optional AI picks from my taste (Settings, off by default, offered once on the
+deck when you have 5 or more liked titles) sends the Worker, and through it
+Groq or Google Gemini, only: up to 25 liked titles (name, format, year and, for
+explicit ratings, a 0-10 number), up to 10 disliked titles (name, format), your
+enabled formats and no other library data. Ratings dates, notes, ids, sync
+codes and import sources are never sent. The Worker does not log titles and
+caches the answer for a few hours under a hash of the profile. Suggestions
+are matched against the real catalog; unmatched, ambiguous, already-owned,
+disliked, novel and music results are dropped. Turning it off stops all
+requests; picks already stored stay on the device and are ignored.
 There are no ads, trackers, third-party telemetry SDKs or remote fonts.
 Provider and Cloudflare quotas can change; there is no paid-plan requirement
 or guaranteed free-forever capacity.

@@ -4,10 +4,13 @@ import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import 'candidate_sources.dart';
 import '../../data/catalog_gateway.dart';
 import '../../data/catalog_repository.dart'
     show CatalogPageState, RequestBudget;
+import '../../domain/ai_taste.dart' show AiPick;
 import '../../domain/decisions.dart';
+import '../../domain/models/settings.dart' show AppSettings;
 import '../../domain/models/deck_filters.dart';
 import '../../domain/models/decision.dart';
 import '../../domain/models/quick_mood.dart';
@@ -510,6 +513,9 @@ class DeckController extends Notifier<DeckState> {
 
     var signals = await library.signals(profileId);
     if (!ref.mounted) return;
+    for (final source in ref.read(candidateSourcesProvider)) {
+      source.refill(profileId, signals, _enabledKinds, settings);
+    }
     var pool = await _pool(filters, kinds, signals);
     if (!ref.mounted) return;
     final history = signals.library.values.toList()
@@ -875,16 +881,22 @@ class DeckController extends Notifier<DeckState> {
     final unseenEligible = exactPool.any(
       (t) => !_temporary.shown.contains(t.id),
     );
-    final dealt = dealer(
+    final exactSkip = {
+      if (keep != null) keep.title.id,
+      if (_skipCurrent && exactPool.length > 1 && _visibleId != null)
+        _visibleId!,
+      if (unseenEligible) ..._temporary.shown,
+    };
+    // AI picks mix into exact matches only (still hard-filtered by the
+    // ranker); the relaxed ladder steps below never use them.
+    final aiPicks = await _sourcePicks(profileId, settings);
+    if (!ref.mounted) return const LadderResult([], {});
+    final dealt = dealWithPicks(
+      (dealPool, dealSize) =>
+          dealer(dealPool, filters, size: dealSize, skip: exactSkip),
       pool,
-      filters,
+      aiPicks,
       size: keep == null ? Ranker.deckSize : Ranker.deckSize - 1,
-      skip: {
-        if (keep != null) keep.title.id,
-        if (_skipCurrent && exactPool.length > 1 && _visibleId != null)
-          _visibleId!,
-        if (unseenEligible) ..._temporary.shown,
-      },
     );
     final exact = [?keep, ...diversify(dealt, secondMode)];
     if (filters.isRevisit || exact.length >= Ranker.deckSize) {
@@ -927,6 +939,14 @@ class DeckController extends Notifier<DeckState> {
       {keptRelaxed.title.id: keptRelaxation!, ...ladder.relaxed},
     );
   }
+
+  Future<Map<String, AiPick>> _sourcePicks(
+    String profileId,
+    AppSettings settings,
+  ) async => {
+    for (final source in ref.read(candidateSourcesProvider))
+      ...await source.provenance(profileId, settings),
+  };
 
   Future<List<Title>> _pool(
     DeckFilters filters,

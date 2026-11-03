@@ -87,8 +87,12 @@ for weights, caps and the full fallback rules.
 - **Your library lives on your device.** Optional sync uploads an encrypted
   copy (AES-256-GCM); the server never holds the key. Keep the code safe.
 - **Catalog lookups** send title names or IDs, never your whole history.
-- **AI is opt-in.** Smarter mood text sends only your typed sentence. AI picks
-  send only the names of titles you liked, and only when you turn them on.
+- **AI is opt-in.** Smarter mood text sends only your typed sentence. Optional
+  "AI picks from my taste" (off by default) sends the names and years of up to
+  25 titles you liked and up to 10 you disliked, plus your enabled formats, to
+  an AI service; never ratings, notes or dates. Every suggestion is checked
+  against the real catalog before you see it. Turning it off deletes the
+  stored picks.
 - **Diagnostics are off by default** and exclude titles, history, search text,
   files, tokens and raw errors.
 - **No ads, trackers, third-party analytics SDKs or remote fonts.**

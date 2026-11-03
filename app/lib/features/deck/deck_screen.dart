@@ -17,6 +17,7 @@ import '../details/details_sheet.dart';
 import '../filters/filter_sheet.dart';
 import 'action_bar.dart';
 import '../../domain/models/deck_filters.dart';
+import 'candidate_sources.dart';
 import 'deck_controller.dart';
 import 'deck_fallback.dart';
 import 'loading_card.dart';
@@ -302,6 +303,7 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
               const MoodRail(),
               const MoodReadChip(),
               const ImportJobBanner(),
+              const AiPicksPrompt(),
               if (deck.notice != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 6, left: 4),

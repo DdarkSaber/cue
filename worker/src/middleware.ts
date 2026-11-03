@@ -87,7 +87,7 @@ export const rateLimit: MiddlewareHandler<AppEnv> = async (c, next) => {
   const limiter =
     c.req.path === "/catalog/image"
       ? c.env.IMAGE_LIMITER
-      : c.req.path === "/ai/mood"
+      : c.req.path === "/ai/mood" || c.req.path === "/ai/recommend"
         ? (c.env.AI_LIMITER ?? c.env.RATE_LIMITER)
         : c.env.RATE_LIMITER;
   if (!limiter) return fail(c, 503, "unavailable");
