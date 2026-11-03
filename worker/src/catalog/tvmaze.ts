@@ -143,7 +143,7 @@ export async function discoverTvmaze(
     )
     .sort((a, b) => Number(b.weight ?? 0) - Number(a.weight ?? 0))
     .map((s) => ({ ...normalizeTvmaze(s), kind }));
-  return { items, hasNext: first - PAGES_PER_DISCOVER >= 0 && page < 50 };
+  return { items, hasNext: first - PAGES_PER_DISCOVER >= 0 && page < 500 };
 }
 
 export async function titleTvmaze(id: string): Promise<CatalogItem | null> {

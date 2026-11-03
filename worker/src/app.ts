@@ -81,6 +81,16 @@ export function createApp() {
     return value ? publicJson(c, value) : fail(c, 404, "not_found");
   });
 
+  // "More like this" for one title the person liked. The id is the only input.
+  app.get("/catalog/recommendations/:provider/:id", async (c) => {
+    const p = check(c, titleParams, c.req.param());
+    if (!p.ok) return p.res;
+    const q = check(c, titleQuery, c.req.query());
+    if (!q.ok) return q.res;
+    const value = await catalog.recommendations(c.env, p.data.provider, p.data.id, q.data.type);
+    return publicJson(c, value);
+  });
+
   app.get("/catalog/search", async (c) => {
     const q = check(c, searchQuery, c.req.query());
     if (!q.ok) return q.res;

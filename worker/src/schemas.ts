@@ -49,7 +49,8 @@ export function isAllowedImageUrl(raw: string): boolean {
 export const discoverQuery = z.object({
   kind: mediaKind,
   mood: mood.optional(),
-  page: z.coerce.number().int().min(1).max(50).default(1),
+  // Deep paging for big libraries; TMDB itself stops at page 500.
+  page: z.coerce.number().int().min(1).max(500).default(1),
 });
 
 export const titleParams = z.object({
