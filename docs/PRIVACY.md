@@ -80,7 +80,7 @@ codes and import sources are never sent. The Worker does not log titles and
 caches the answer for a few hours under a hash of the profile. Suggestions
 are matched against the real catalog; unmatched, ambiguous, already-owned,
 disliked, novel and music results are dropped. Turning it off stops all
-requests; picks already stored stay on the device and are ignored.
+requests and deletes the picks stored on the device.
 There are no ads, trackers, third-party telemetry SDKs or remote fonts.
 Provider and Cloudflare quotas can change; there is no paid-plan requirement
 or guaranteed free-forever capacity.
