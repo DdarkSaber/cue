@@ -17,6 +17,7 @@ import 'package:cue/imports/import_service.dart';
 import 'package:cue/imports/records.dart';
 import 'package:flutter/widgets.dart' show SizedBox;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/widgets.dart' show Size;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers.dart';
@@ -168,6 +169,41 @@ void main() {
     expect(state.top!.title.id, 'anilist:1');
     expect(state.relaxed, isEmpty);
     expect(state.top!.reason, isNot(contains('Outside your filter')));
+  });
+
+  testWidgets('the filter chip row fits 320x640 with both chips tappable', (
+    t,
+  ) async {
+    await pumpCue(
+      t,
+      size: const Size(320, 640),
+      gateway: _anime([
+        [
+          item(1, genres: const ['Action'], country: 'JP'),
+        ],
+      ]),
+      overrides: [deckFiltersProvider.overrideWith(_ComedyFromIndia.new)],
+    );
+    await settle(t);
+    expect(t.takeException(), isNull);
+    final keep = find.text('Keep filters');
+    final clear = find.text('Clear filters');
+    expect(keep, findsOneWidget);
+    expect(clear, findsOneWidget);
+    expect(find.textContaining('Outside your filters'), findsWidgets);
+    for (final f in [keep, clear]) {
+      final r = t.getRect(f);
+      expect(r.left, greaterThanOrEqualTo(0));
+      expect(r.right, lessThanOrEqualTo(320));
+      expect(r.bottom, lessThanOrEqualTo(640));
+    }
+    // Both hit-test (nothing overlaps or clips them), then Keep works.
+    expect(keep.hitTestable(), findsOneWidget);
+    expect(clear.hitTestable(), findsOneWidget);
+    await t.tap(keep);
+    await t.pumpAndSettle();
+    expect(t.takeException(), isNull);
+    expect(find.text('Keep filters'), findsNothing);
   });
 
   testWidgets(
