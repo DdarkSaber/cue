@@ -60,6 +60,22 @@ class CatalogPages extends Table {
   Set<Column> get primaryKey => {mediaKind, mood, page};
 }
 
+/// Public "more like this" edges: the provider (AniList community, TMDB)
+/// recommends [titleId] to people who liked [seedId]. Both are catalog ids.
+/// Nothing here says who liked what; the deck joins these edges with the
+/// active profile's liked titles in memory.
+class CatalogRecommendations extends Table {
+  TextColumn get seedId => text()();
+  TextColumn get titleId => text()();
+
+  /// Position in the provider's list, 0 = best rated.
+  IntColumn get rank => integer()();
+  DateTimeColumn get fetchedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {seedId, titleId};
+}
+
 class WatchProviders extends Table {
   TextColumn get titleId => text().references(CatalogTitles, #id)();
   TextColumn get region => text()();

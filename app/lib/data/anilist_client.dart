@@ -27,14 +27,24 @@ class AniListClient {
   Duration _gap = Duration.zero;
   DateTime? _last;
 
+  /// Reserves the next send slot before waiting, so calls made at the same
+  /// time (one refill fans out several routes) queue one gap apart instead
+  /// of all waking together and bursting into a 429.
   Future<void> _pace() async {
+    final now = _now();
     final last = _last;
+    var slot = now;
     if (last != null && _gap > Duration.zero) {
-      final wait = _gap - _now().difference(last);
-      if (wait > Duration.zero) await _sleep(wait);
+      final earliest = last.add(_gap);
+      if (earliest.isAfter(now)) slot = earliest;
     }
-    _last = _now();
+    _last = slot;
+    final wait = slot.difference(now);
+    if (wait > Duration.zero) await _sleep(wait);
   }
+
+  /// AniList's degraded limit is 30 a minute; after a 429 never go faster.
+  static const _minGapAfter429 = Duration(milliseconds: 2050);
 
   static final endpoint = Uri.parse('https://graphql.anilist.co');
 
@@ -62,14 +72,41 @@ class AniListClient {
   tags { name rank isAdult isMediaSpoiler }
 ''';
 
+  /// Discovery orders, each with its own page cursor. A big watched library
+  /// overlaps the most popular pages almost entirely; other orders surface
+  /// different titles long before any one cursor runs dry. The first is the
+  /// default and keeps the original cursor.
+  static const sorts = [
+    'POPULARITY_DESC',
+    'TRENDING_DESC',
+    'SCORE_DESC',
+    'FAVOURITES_DESC',
+    'START_DATE_DESC',
+  ];
+
   // Fixed queries. Variables carry the only request-specific values.
   static const _discover =
-      '''query (\$page: Int, \$type: MediaType, \$country: CountryCode, \$genres: [String], \$notFormats: [MediaFormat]) {
+      '''query (\$page: Int, \$type: MediaType, \$country: CountryCode, \$genres: [String], \$notFormats: [MediaFormat], \$notStatus: [MediaStatus], \$sort: [MediaSort]) {
   Page(page: \$page, perPage: 50) {
     pageInfo { hasNextPage }
-    media(type: \$type, countryOfOrigin: \$country, genre_in: \$genres, format_not_in: \$notFormats, isAdult: false, sort: [POPULARITY_DESC]) { $_fields }
+    media(type: \$type, countryOfOrigin: \$country, genre_in: \$genres, format_not_in: \$notFormats, status_not_in: \$notStatus, isAdult: false, sort: \$sort) { $_fields }
   }
 }''';
+
+  /// AniList's own "people who liked this also liked" lists, several seeds
+  /// per request (4 x 15 stays well under the query complexity cap). Only
+  /// AniList ids are sent.
+  static String _recommendations(int n) {
+    final decls = [for (var i = 0; i < n; i++) '\$i$i: Int'].join(', ');
+    final parts = [
+      for (var i = 0; i < n; i++)
+        'r$i: Media(id: \$i$i) { id recommendations(sort: [RATING_DESC], perPage: 15) { nodes { rating mediaRecommendation { $_fields } } } }',
+    ].join(' ');
+    return 'query ($decls) { $parts }';
+  }
+
+  /// Seeds per recommendations request.
+  static const recommendationBatch = 4;
 
   static const _title =
       '''query (\$id: Int) {
@@ -143,10 +180,13 @@ class AniListClient {
         _gap = Duration(milliseconds: (60000 / limit).ceil() + 50);
       }
       if (res.statusCode != 429) break;
+      if (_gap < _minGapAfter429) _gap = _minGapAfter429;
       if (attempt >= 3) throw const CatalogUnavailable('rate_limited');
       final after = int.tryParse(res.headers['retry-after'] ?? '') ?? 60;
       // Without a readable header (some browsers hide it) assume the long wait.
       await _sleep(Duration(seconds: after.clamp(1, 65)));
+      // That wait was AniList's own; the retry need not queue behind it.
+      _last = null;
     }
     if (res.statusCode == 404) return null;
     if (res.statusCode != 200) throw const CatalogUnavailable('upstream_error');
@@ -174,14 +214,22 @@ class AniListClient {
     MediaKind kind, {
     String? mood,
     int page = 1,
+    String? sort,
   }) async {
     final k = _kind(kind);
+    final order = sorts.contains(sort) ? sort! : sorts.first;
     final data = await _query(_discover, {
       'page': page,
       'type': k.type,
       'country': k.country,
       'notFormats': k.notFormats,
       'genres': moodGenres[mood],
+      // Newest-first would otherwise lead with announced, unreleased titles.
+      'notStatus': order == 'START_DATE_DESC'
+          ? const ['NOT_YET_RELEASED', 'CANCELLED']
+          : null,
+      // ID breaks ties so pages stay stable while scores move.
+      'sort': [order, 'ID'],
     });
     final p = data?['Page'] as Map?;
     return CatalogPageDto([
@@ -274,6 +322,39 @@ class AniListClient {
       for (final m in (p?['media'] as List?) ?? const []) normalize(m as Map),
     ];
   }
+
+  /// Community recommendations for each seed id, best rated first, in the
+  /// order given. Adult, novel and music entries never come back; neither
+  /// do entries the community voted down.
+  Future<List<List<CatalogItemDto>>> recommendations(List<int> ids) async {
+    final out = <List<CatalogItemDto>>[];
+    for (var s = 0; s < ids.length; s += recommendationBatch) {
+      final chunk = ids.skip(s).take(recommendationBatch).toList();
+      final data = await _query(_recommendations(chunk.length), {
+        for (var i = 0; i < chunk.length; i++) 'i$i': chunk[i],
+      });
+      for (var i = 0; i < chunk.length; i++) {
+        final nodes =
+            (((data?['r$i'] as Map?)?['recommendations'] as Map?)?['nodes']
+                as List?) ??
+            const [];
+        out.add(
+          [
+            for (final n in nodes.cast<Map<dynamic, dynamic>>())
+              if (n['mediaRecommendation'] is Map &&
+                  ((n['rating'] as num?) ?? 0) > 0)
+                normalize(n['mediaRecommendation'] as Map),
+          ].where(_recommendable).toList(),
+        );
+      }
+    }
+    return out;
+  }
+
+  static bool _recommendable(CatalogItemDto d) =>
+      d.json['adult'] != true &&
+      d.json['format'] != 'NOVEL' &&
+      d.json['format'] != 'MUSIC';
 
   /// The name of the account a sign-in token belongs to.
   Future<String?> viewerName(String token) async {

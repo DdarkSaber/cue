@@ -26,7 +26,18 @@ class ProfileSignals {
     this.evidenceStrength,
     this.weakHistoryIds = const {},
     this.kindRatings = const {},
+    this.tasteSeeds = const [],
+    this.becauseOf = const {},
   });
+
+  /// The profile's strongest liked titles, strongest first (see
+  /// [selectTasteSeeds]). Seeded retrieval asks providers about these.
+  final List<String> tasteSeeds;
+
+  /// Candidate title id -> ids of [tasteSeeds] whose provider "more like
+  /// this" lists include it, strongest seed first. Public edges joined with
+  /// this profile's likes in memory; never stored per person.
+  final Map<String, List<String>> becauseOf;
 
   final Set<String> excluded;
   final Set<String> excludedFranchises;
@@ -81,10 +92,21 @@ class SessionMood {
 }
 
 class RankedCard {
-  const RankedCard(this.title, this.score, this.reason);
+  const RankedCard(
+    this.title,
+    this.score,
+    this.reason, {
+    this.becauseOf = const [],
+  });
   final Title title;
   final double score;
   final String reason;
+
+  /// Catalog ids of the liked titles ("seeds") whose provider "more like
+  /// this" lists recommended this card, strongest seed first. Empty when the
+  /// card did not come from taste-seeded retrieval. Use it to show
+  /// "Because you liked `seed`"; [reason] already does when it fits.
+  final List<String> becauseOf;
 }
 
 /// Why the deck is empty, for an honest no-match message.
@@ -230,8 +252,15 @@ class Ranker {
         0.08 * lean +
         0.08 * (temporary?.lean(features) ?? 0) -
         (recentExposures.contains(t.id) ? 0.04 : 0) +
-        (preferShorter ? _lengthPreference(t) : 0);
+        (preferShorter ? _lengthPreference(t) : 0) +
+        seedBoost(s.becauseOf[t.id]?.length ?? 0);
   }
+
+  /// Taste-seeded boost: +0.04 when one liked title's "more like this"
+  /// list includes the candidate, +0.04 more per further liked seed, capped
+  /// at +0.12. Modest on purpose: agreement between several of your likes
+  /// counts, one list alone does not outrank taste and mood.
+  static double seedBoost(int seeds) => min(0.12, 0.04 * seeds);
 
   static double _lengthPreference(Title t) {
     // Episode/chapter counts cannot establish a film's runtime.
@@ -318,7 +347,9 @@ class Ranker {
             recentExposures: recentExposures,
           ) +
           _random.nextDouble() * 0.02;
-      scored.add(RankedCard(t, sc, ''));
+      scored.add(
+        RankedCard(t, sc, '', becauseOf: s.becauseOf[t.id] ?? const []),
+      );
     }
     scored.sort((a, b) {
       if (shortestFirst) {
@@ -340,6 +371,7 @@ class Ranker {
             c.title,
             c.score,
             reasonFor(c.title, s, f, titlesById: titlesById, now: _now()),
+            becauseOf: c.becauseOf,
           ),
       ];
     }
@@ -358,9 +390,11 @@ class Ranker {
             c.score,
             (temporary?.lean(c.title.features) ?? 0).abs() > 0.1
                 ? "Today's interest and direction; ratings unchanged."
-                : c.reason.isNotEmpty
+                // A seeded pick is explained by its seed, not as exploring.
+                : c.reason.isNotEmpty && c.becauseOf.isEmpty
                 ? c.reason.trim()
                 : reasonFor(c.title, s, f, titlesById: titlesById, now: _now()),
+            becauseOf: c.becauseOf,
           ),
       ];
     }
@@ -444,6 +478,7 @@ class Ranker {
           c.title,
           c.score,
           reasonFor(c.title, s, f, titlesById: titlesById, now: _now()),
+          becauseOf: c.becauseOf,
         ),
     ];
   }
@@ -544,6 +579,7 @@ class Ranker {
           varied.contains(c)
               ? ' Exploring another eligible theme or format.'
               : '',
+          becauseOf: c.becauseOf,
         ),
     ];
   }

@@ -185,4 +185,120 @@ void main() {
       expect(sent[0]['query'], contains('id_in'));
     },
   );
+
+  test(
+    'calls made at the same time queue one gap apart instead of bursting',
+    () async {
+      var now = DateTime(2026, 11, 1, 12);
+      final sleeps = <Duration>[];
+      final client = AniListClient(
+        client: MockClient((_) async => ok({'x-ratelimit-limit': '30'})),
+        sleep: (d) async => sleeps.add(d),
+        clock: () => now,
+      );
+      await client.discover(MediaKind.anime); // learns the limit
+      now = now.add(const Duration(seconds: 10));
+      await Future.wait([
+        for (var i = 0; i < 4; i++) client.discover(MediaKind.manhwa),
+      ]);
+      // The first goes at once; each later one waits one more gap.
+      expect(sleeps, hasLength(3));
+      expect(sleeps[1] - sleeps[0], greaterThanOrEqualTo(sleeps[0]));
+      expect(sleeps[2], greaterThan(const Duration(seconds: 6)));
+    },
+  );
+
+  test('a 429 slows later calls to the degraded 30 a minute', () async {
+    final now = DateTime(2026, 11, 1, 12);
+    final sleeps = <Duration>[];
+    var calls = 0;
+    final client = AniListClient(
+      client: MockClient(
+        (_) async => ++calls == 1
+            ? http.Response('{}', 429, headers: {'retry-after': '3'})
+            : ok({}),
+      ),
+      sleep: (d) async => sleeps.add(d),
+      clock: () => now,
+    );
+    await client.discover(MediaKind.anime);
+    expect(sleeps, [const Duration(seconds: 3)]);
+    await client.discover(MediaKind.anime);
+    expect(sleeps.last, greaterThanOrEqualTo(const Duration(seconds: 2)));
+  });
+
+  test(
+    'discovery pages through other orders with a stable tie-break',
+    () async {
+      final sent = <Map<String, dynamic>>[];
+      final client = AniListClient(
+        client: MockClient((req) async {
+          sent.add(jsonDecode(req.body) as Map<String, dynamic>);
+          return ok({});
+        }),
+      );
+      await client.discover(MediaKind.anime);
+      await client.discover(MediaKind.anime, sort: 'START_DATE_DESC', page: 3);
+      await client.discover(MediaKind.anime, sort: 'NOT_A_SORT');
+      final vars = [for (final s in sent) s['variables'] as Map];
+      expect(vars[0]['sort'], ['POPULARITY_DESC', 'ID']);
+      expect(vars[0]['notStatus'], isNull);
+      expect(vars[1]['sort'], ['START_DATE_DESC', 'ID']);
+      expect(vars[1]['page'], 3);
+      // Newest-first skips announced titles nobody can watch yet.
+      expect(vars[1]['notStatus'], contains('NOT_YET_RELEASED'));
+      expect(vars[2]['sort'], ['POPULARITY_DESC', 'ID']);
+      expect(vars[0]['notFormats'], ['MUSIC']);
+      expect(AniListClient.sorts, hasLength(5));
+    },
+  );
+
+  test('recommendations batch four seeds a request, by id only, and drop unsafe or voted-down entries', () async {
+    final sent = <Map<String, dynamic>>[];
+    Map<String, Object?> media(int id, {String format = 'TV'}) => {
+      'id': id,
+      'type': 'ANIME',
+      'format': format,
+      'title': {'romaji': 'Synthetic $id'},
+      'isAdult': id == 13,
+    };
+    final client = AniListClient(
+      client: MockClient((req) async {
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        sent.add(body);
+        final vars = body['variables'] as Map;
+        return http.Response(
+          jsonEncode({
+            'data': {
+              for (var i = 0; i < vars.length; i++)
+                'r$i': {
+                  'id': vars['i$i'],
+                  'recommendations': {
+                    'nodes': [
+                      {'rating': 40, 'mediaRecommendation': media(11)},
+                      {'rating': 5, 'mediaRecommendation': media(12)},
+                      {'rating': 9, 'mediaRecommendation': media(13)},
+                      {
+                        'rating': 9,
+                        'mediaRecommendation': media(14, format: 'MUSIC'),
+                      },
+                      {'rating': -2, 'mediaRecommendation': media(15)},
+                      {'rating': 3, 'mediaRecommendation': null},
+                    ],
+                  },
+                },
+            },
+          }),
+          200,
+        );
+      }),
+    );
+    final r = await client.recommendations([1, 2, 3, 4, 5]);
+    expect(sent, hasLength(2));
+    expect(sent[0]['variables'], {'i0': 1, 'i1': 2, 'i2': 3, 'i3': 4});
+    expect(sent[1]['variables'], {'i0': 5});
+    expect(sent[0]['query'], contains('RATING_DESC'));
+    expect(r, hasLength(5));
+    expect(r.first.map((d) => d.providerId), ['11', '12']);
+  });
 }

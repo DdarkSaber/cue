@@ -136,7 +136,7 @@ export async function discoverCinemeta(
   );
   return {
     items: items.map((m) => normalizeCinemeta(m, type)),
-    hasNext: items.length > 0 && page < 50,
+    hasNext: items.length > 0 && page < 500,
   };
 }
 

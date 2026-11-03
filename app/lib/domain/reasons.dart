@@ -45,6 +45,19 @@ String reasonFor(
     );
   }
 
+  // Taste-seeded: a provider's "more like this" list for a title you liked.
+  for (final seedId in s.becauseOf[t.id] ?? const <String>[]) {
+    final seed = titlesById[seedId];
+    if (seed == null || seed.id == t.id) continue;
+    const lead = 'Because you liked ';
+    const room = maxReasonLength - lead.length - 1;
+    var name = seed.displayTitle;
+    if (name.length > room) {
+      name = '${name.substring(0, room - 1).trimRight()}…';
+    }
+    return _fit('$lead$name.');
+  }
+
   // A highly rated title that shares at least two features.
   if (s.evidenceTitles > 0) {
     final features = t.features;

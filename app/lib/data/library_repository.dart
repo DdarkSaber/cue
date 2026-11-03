@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import '../domain/models/library.dart';
 import '../domain/models/title.dart';
 import '../domain/ranker.dart';
+import '../domain/recommendation_context.dart';
 import 'db/database.dart';
 import 'franchise_exclusion_repository.dart';
 import 'try_now_repository.dart';
@@ -100,7 +101,7 @@ class LibraryRepository {
       }
     }
 
-    return ProfileSignals(
+    final base = ProfileSignals(
       excluded: {for (final x in ex) x.titleId},
       excludedFranchises: await FranchiseExclusionRepository(db)
           .activeScopes(profileId),
@@ -126,6 +127,40 @@ class LibraryRepository {
       },
       kindRatings: kindRatings,
     );
+    final seeds = selectTasteSeeds(base);
+    return ProfileSignals(
+      excluded: base.excluded,
+      excludedFranchises: base.excludedFranchises,
+      deferred: base.deferred,
+      shortlisted: base.shortlisted,
+      library: base.library,
+      weights: base.weights,
+      evidenceTitles: base.evidenceTitles,
+      evidenceStrength: base.evidenceStrength,
+      weakHistoryIds: base.weakHistoryIds,
+      kindRatings: base.kindRatings,
+      tasteSeeds: seeds,
+      becauseOf: await _becauseOf(seeds),
+    );
+  }
+
+  /// Public "more like this" edges from these seeds, joined in memory.
+  Future<Map<String, List<String>>> _becauseOf(List<String> seeds) async {
+    if (seeds.isEmpty) return const {};
+    final rows = await (db.select(
+      db.catalogRecommendations,
+    )..where((r) => r.seedId.isIn(seeds))).get();
+    final order = {for (var i = 0; i < seeds.length; i++) seeds[i]: i};
+    rows.sort((a, b) {
+      final bySeed = order[a.seedId]!.compareTo(order[b.seedId]!);
+      return bySeed != 0 ? bySeed : a.rank.compareTo(b.rank);
+    });
+    final out = <String, List<String>>{};
+    for (final r in rows) {
+      final list = out.putIfAbsent(r.titleId, () => []);
+      if (!list.contains(r.seedId)) list.add(r.seedId);
+    }
+    return out;
   }
 
   /// Evidence titles are counted when weights are recomputed and stored

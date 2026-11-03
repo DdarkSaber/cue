@@ -227,6 +227,56 @@ List<InterestCluster> interestClusters(
   ];
 }
 
+/// How many liked titles seed taste-seeded retrieval and its reasons.
+const maxTasteSeeds = 24;
+
+/// The profile's strongest positive titles, strongest first: Favourite and
+/// Rewatched, then Would rewatch and Enjoyed, then Once was enough; ties go
+/// to the most recently finished. Without enough ratings, imported
+/// watching/completed history fills in (it is weak evidence, but it is what
+/// the person chose to watch). Okay, negative, planned and dropped titles
+/// never seed.
+List<String> selectTasteSeeds(
+  ProfileSignals signals, {
+  int limit = maxTasteSeeds,
+}) {
+  final rated =
+      signals.library.values
+          .where((e) => (e.rating?.weight ?? 0) >= 1.5)
+          .toList()
+        ..sort((a, b) {
+          final w = b.rating!.weight.compareTo(a.rating!.weight);
+          if (w != 0) return w;
+          final at = a.actualWatchedAt, bt = b.actualWatchedAt;
+          if (at != null && bt != null && at != bt) return bt.compareTo(at);
+          if ((at == null) != (bt == null)) return at == null ? 1 : -1;
+          return a.titleId.compareTo(b.titleId);
+        });
+  final history =
+      signals.library.values
+          .where(
+            (e) =>
+                e.rating == null &&
+                signals.weakHistoryIds.contains(e.titleId) &&
+                !signals.excluded.contains(e.titleId),
+          )
+          .toList()
+        ..sort((a, b) {
+          // Completed before watching, then most recently finished.
+          final c = (b.state == LibraryState.completed ? 1 : 0).compareTo(
+            a.state == LibraryState.completed ? 1 : 0,
+          );
+          if (c != 0) return c;
+          final at = a.actualWatchedAt, bt = b.actualWatchedAt;
+          if (at != null && bt != null && at != bt) return bt.compareTo(at);
+          if ((at == null) != (bt == null)) return at == null ? 1 : -1;
+          return a.titleId.compareTo(b.titleId);
+        });
+  return [
+    for (final e in [...rated, ...history]) e.titleId,
+  ].take(limit).toList();
+}
+
 class RetrievalRequest {
   const RetrievalRequest(this.kind, this.route, {this.mood});
   final MediaKind kind;
@@ -261,11 +311,21 @@ List<RetrievalRequest> retrievalPlan(
   ];
   final underexplored = List.of(rotated)
     ..sort((a, b) => (ratedKinds[a] ?? 0).compareTo(ratedKinds[b] ?? 0));
-  for (var i = 0; i < min(3, underexplored.length); i++) {
+  // The taste route goes to the kind the person rates most, so a big anime
+  // library gets taste-shaped anime pages, not only one broad page while
+  // the related routes all go to the kinds they barely use.
+  final favourite = underexplored.last;
+  final useFavourite =
+      underexplored.length > 1 && (ratedKinds[favourite] ?? 0) > 0;
+  final related = [
+    if (useFavourite) favourite,
+    ...underexplored.where((k) => !useFavourite || k != favourite),
+  ];
+  for (var i = 0; i < min(3, related.length); i++) {
     if (moods.isEmpty) break;
     requests.add(
       RetrievalRequest(
-        underexplored[i],
+        related[i],
         i == 0
             ? 'taste'
             : i == 1

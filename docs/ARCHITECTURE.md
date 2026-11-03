@@ -46,7 +46,10 @@ flowchart TD
   A -->|no| M[On-device mood]
   R --> M
   H --> M
-  T --> F[Fair enabled-kind broad pages plus related routes]
+  T --> F[Fair enabled-kind broad pages in several orders plus related routes]
+  C --> L[Strongest liked titles as seeds]
+  L --> F2[Provider more-like-this lists: AniList, TMDB]
+  F2 --> P
   S[Memory-only session direction and exploration] --> F
   F --> P[Growing public catalog cache]
   P --> E[Hard filters, history, shortlist, deferrals and explicit exclusions]

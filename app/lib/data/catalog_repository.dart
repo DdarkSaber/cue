@@ -7,6 +7,9 @@ import '../domain/title_names.dart';
 import 'catalog_gateway.dart';
 import 'db/database.dart';
 
+/// Where a discover route stands. [limited] is kept for callers that still
+/// handle it, but no page ceiling exists any more: routes are [more] until
+/// every provider order reported its final page.
 enum CatalogPageState { more, exhausted, limited, unavailable }
 
 class CatalogSearchResult {
@@ -381,54 +384,214 @@ class CatalogRepository {
     return (await q.getSingle()).read(c) ?? 0;
   }
 
-  /// Pulls the next discover page for a kind (and optional mood).
+  /// Requests one [fetchNext] call may make for a single route while pages
+  /// keep coming back mostly already known.
+  static const maxPagesPerFetch = 3;
+
+  /// New titles one [fetchNext] call is happy with before it stops digging.
+  static const freshTarget = 10;
+
+  /// Cursor key for a route: the mood plus the sort, for non-default sorts.
+  /// The default order keeps the bare mood key, so existing cursors carry on.
+  static String _routeKey(String? mood, String? sort, List<String?> sorts) =>
+      sort == null || sort == sorts.first
+      ? (mood ?? '')
+      : '${mood ?? ''}~$sort';
+
+  /// Pulls the next discover pages for a kind (and optional mood).
+  ///
+  /// Each provider order (AniList: popularity, trending, score, favourites,
+  /// newest) keeps its own cursor and they take turns, so a big watched
+  /// library that covers the popular pages does not starve supply. When a
+  /// page is mostly titles already cached (library, earlier swipes), the
+  /// call digs on, up to [maxPagesPerFetch] requests, until [freshTarget]
+  /// new titles arrive. There is no page ceiling: only a provider's final
+  /// page in every order proves exhaustion.
+  ///
   /// Returns how many items arrived; 0 when exhausted or unavailable.
   Future<int> fetchNext(MediaKind kind, {String? mood}) async {
     if (unavailableKinds.contains(kind)) return 0;
-    final next = await _nextPage(kind, mood);
-    if (next == 0 || next > 50) return 0;
-    final moodKey = mood ?? '';
-    final CatalogPageDto page;
-    try {
-      page = await gateway.discover(kind, mood: mood, page: next);
-    } on CatalogUnavailable catch (e) {
-      if (e.code == 'not_configured') unavailableKinds.add(kind);
-      rethrow;
-    }
-    await upsert(page.items);
-    await db
-        .into(db.catalogPages)
-        .insertOnConflictUpdate(
-          CatalogPagesCompanion.insert(
-            mediaKind: kind.name,
-            mood: Value(moodKey),
-            page: next,
-            hasNext: page.hasNext,
-            fetchedAt: _now(),
-          ),
+    final sorts = gateway.discoverSorts(kind);
+    var arrived = 0;
+    var fresh = 0;
+    for (var request = 0; request < maxPagesPerFetch; request++) {
+      final next = await _nextRoute(kind, mood, sorts);
+      if (next == null) break;
+      final CatalogPageDto page;
+      try {
+        page = await gateway.discover(
+          kind,
+          mood: mood,
+          page: next.page,
+          sort: next.sort,
         );
-    return page.items.length;
+      } on CatalogUnavailable catch (e) {
+        if (e.code == 'not_configured') unavailableKinds.add(kind);
+        // What already arrived counts; the failure shows on the next call.
+        if (request == 0) rethrow;
+        break;
+      }
+      final known = await _knownIds(page.items);
+      final newHere = page.items.length - known;
+      await upsert(page.items);
+      await db
+          .into(db.catalogPages)
+          .insertOnConflictUpdate(
+            CatalogPagesCompanion.insert(
+              mediaKind: kind.name,
+              mood: Value(next.key),
+              page: next.page,
+              hasNext: page.hasNext,
+              fetchedAt: _now(),
+            ),
+          );
+      arrived += page.items.length;
+      fresh += newHere;
+      // Dig on only when overlap with the cache, not a short page, is why
+      // this page added little.
+      if (fresh >= freshTarget || known <= newHere) break;
+    }
+    return arrived;
+  }
+
+  /// How many of these items are already cached under some identity.
+  Future<int> _knownIds(List<CatalogItemDto> items) async {
+    if (items.isEmpty) return 0;
+    final resolved = await resolveIds(items);
+    final ids = resolved.values.toSet().toList();
+    final rows =
+        await (db.selectOnly(db.catalogTitles)
+              ..addColumns([db.catalogTitles.id])
+              ..where(db.catalogTitles.id.isIn(ids)))
+            .get();
+    return rows.length;
   }
 
   Future<CatalogPageState> pageState(MediaKind kind, {String? mood}) async {
     if (unavailableKinds.contains(kind)) return CatalogPageState.unavailable;
-    final next = await _nextPage(kind, mood);
-    if (next == 0) return CatalogPageState.exhausted;
-    return next > 50 ? CatalogPageState.limited : CatalogPageState.more;
+    final next = await _nextRoute(kind, mood, gateway.discoverSorts(kind));
+    return next == null ? CatalogPageState.exhausted : CatalogPageState.more;
   }
 
-  Future<int> _nextPage(MediaKind kind, String? mood) async {
-    final moodKey = mood ?? '';
-    final pages =
+  /// The next page to pull for a kind and mood: the least-advanced order
+  /// that still has pages, the default order first on ties. Null when every
+  /// order reported its final page within the last seven days.
+  Future<({String? sort, String key, int page})?> _nextRoute(
+    MediaKind kind,
+    String? mood,
+    List<String?> sorts,
+  ) async {
+    final keys = {for (final s in sorts) s: _routeKey(mood, s, sorts)};
+    final rows =
         await (db.select(db.catalogPages)..where(
-              (p) => p.mediaKind.equals(kind.name) & p.mood.equals(moodKey),
+              (p) =>
+                  p.mediaKind.equals(kind.name) &
+                  p.mood.isIn(keys.values.toSet().toList()),
             ))
             .get();
     final stale = _now().subtract(const Duration(days: 7));
-    final fresh = pages.where((p) => p.fetchedAt.isAfter(stale)).toList()
-      ..sort((a, b) => a.page.compareTo(b.page));
-    if (fresh.isNotEmpty && !fresh.last.hasNext) return 0;
-    return fresh.isEmpty ? 1 : fresh.last.page + 1;
+    ({String? sort, String key, int page})? best;
+    for (final sort in sorts) {
+      final key = keys[sort]!;
+      final fresh =
+          rows
+              .where((p) => p.mood == key && p.fetchedAt.isAfter(stale))
+              .toList()
+            ..sort((a, b) => a.page.compareTo(b.page));
+      if (fresh.isNotEmpty && !fresh.last.hasNext) continue;
+      final page = fresh.isEmpty ? 1 : fresh.last.page + 1;
+      if (best == null || page < best.page) {
+        best = (sort: sort, key: key, page: page);
+      }
+    }
+    return best;
+  }
+
+  /// Marker rows in [CatalogPages] remember when a seed was last asked.
+  static const _seedMarker = '_seed';
+
+  /// Seeds asked about per call; AniList takes four per request.
+  static const maxSeedsPerFetch = 4;
+
+  /// Taste-seeded retrieval: asks providers what people who liked each
+  /// seed also liked, caches those titles and remembers the edges, so the
+  /// ranker can boost them and say "Because you liked ...". Seeds asked in
+  /// the last seven days are skipped. Only provider ids leave the device.
+  ///
+  /// [seedIds] are catalog ids, strongest first. Returns edges stored.
+  Future<int> fetchSeeded(List<String> seedIds) async {
+    if (seedIds.isEmpty) return 0;
+    final stale = _now().subtract(const Duration(days: 7));
+    final asked =
+        await (db.select(db.catalogPages)..where(
+              (p) =>
+                  p.mediaKind.equals(_seedMarker) &
+                  p.mood.isIn(seedIds) &
+                  p.fetchedAt.isBiggerThanValue(stale),
+            ))
+            .get();
+    final skip = {for (final p in asked) p.mood};
+    final identities = await (db.select(
+      db.catalogIdentities,
+    )..where((i) => i.titleId.isIn(seedIds))).get();
+    final refs = <String, SeedRef>{};
+    for (final id in seedIds) {
+      if (skip.contains(id) || refs.length >= maxSeedsPerFetch) continue;
+      final mine = identities.where((i) => i.titleId == id);
+      final ref =
+          mine
+              .where((i) => i.provider == 'anilist')
+              .map((i) => SeedRef('anilist', i.providerId))
+              .firstOrNull ??
+          mine
+              .where((i) => i.provider == 'tmdb')
+              .map((i) => SeedRef('tmdb', i.providerId, i.providerKind))
+              .firstOrNull;
+      if (ref != null) refs[id] = ref;
+    }
+    if (refs.isEmpty) return 0;
+    final results = await gateway.recommendations(refs.values.toList());
+    var stored = 0;
+    final now = _now();
+    final seeds = refs.keys.toList();
+    for (var i = 0; i < seeds.length && i < results.length; i++) {
+      final items = [
+        for (final d in results[i])
+          if (d.json['adult'] != true &&
+              d.json['format'] != 'NOVEL' &&
+              d.json['format'] != 'MUSIC')
+            d,
+      ];
+      final ids = await upsert(items);
+      await db.transaction(() async {
+        for (var r = 0; r < ids.length; r++) {
+          if (ids[r] == seeds[i]) continue;
+          await db
+              .into(db.catalogRecommendations)
+              .insertOnConflictUpdate(
+                CatalogRecommendationsCompanion.insert(
+                  seedId: seeds[i],
+                  titleId: ids[r],
+                  rank: r,
+                  fetchedAt: now,
+                ),
+              );
+          stored++;
+        }
+        await db
+            .into(db.catalogPages)
+            .insertOnConflictUpdate(
+              CatalogPagesCompanion.insert(
+                mediaKind: _seedMarker,
+                mood: Value(seeds[i]),
+                page: 1,
+                hasNext: false,
+                fetchedAt: now,
+              ),
+            );
+      });
+    }
+    return stored;
   }
 
   /// Full title (seasons, keywords) for the details sheet. Falls back to the

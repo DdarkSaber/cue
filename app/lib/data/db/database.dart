@@ -12,6 +12,7 @@ part 'database.g.dart';
     CatalogTitles,
     CatalogIdentities,
     CatalogPages,
+    CatalogRecommendations,
     WatchProviders,
     Profiles,
     ProfileSettings,
@@ -44,7 +45,7 @@ class CueDatabase extends _$CueDatabase {
   );
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -75,6 +76,7 @@ class CueDatabase extends _$CueDatabase {
       if (from < 5) {
         await m.addColumn(sourceObservations, sourceObservations.recordJson);
       }
+      if (from < 6) await m.createTable(catalogRecommendations);
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');

@@ -93,7 +93,7 @@ describe("input validation", () => {
     ["/catalog/discover?kind=podcast", ["kind"]],
     ["/catalog/discover?kind=anime&mood=angry", ["mood"]],
     ["/catalog/discover?kind=anime&page=0", ["page"]],
-    ["/catalog/discover?kind=anime&page=51", ["page"]],
+    ["/catalog/discover?kind=anime&page=501", ["page"]],
     ["/catalog/title/imdb/1", ["provider"]],
     ["/catalog/title/tvmaze/abc", ["id"]],
     ["/catalog/title/tvmaze/1234567890123", ["id"]],

@@ -619,6 +619,16 @@ class DeckController extends Notifier<DeckState> {
               },
             )
           : null;
+      // Taste-seeded retrieval: "more like this" for the strongest likes.
+      // A bonus route; its failure never blocks the broad refill below.
+      if (_wantRetrieval && signals.tasteSeeds.isNotEmpty) {
+        try {
+          await catalog.fetchSeeded(signals.tasteSeeds);
+        } on CatalogUnavailable {
+          // Retried on a later retrieval.
+        }
+        if (!ref.mounted) return;
+      }
       for (var round = 0; round < maxRefillRounds; round++) {
         final result = await _refill(refillKinds, routes: routes);
         refilled = true;

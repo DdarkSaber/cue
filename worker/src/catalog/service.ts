@@ -4,6 +4,7 @@ import {
   type TmdbType,
   discoverTmdb,
   providersTmdb,
+  recommendationsTmdb,
   searchTmdb,
   titleTmdb,
 } from "./tmdb";
@@ -144,6 +145,28 @@ export async function aliases(
     );
   }
   return out;
+}
+
+/**
+ * Titles a provider itself lists as "more like this", for taste-seeded
+ * retrieval. Only TMDB offers such a list; without a key the answer is an
+ * empty list marked unconfigured, so the app simply skips this route.
+ */
+export async function recommendations(
+  env: Env,
+  provider: CatalogProvider,
+  id: string,
+  type: TitleType,
+): Promise<{ items: CatalogItem[]; configured: boolean }> {
+  if (provider !== "tmdb" || !env.TMDB_API_KEY) return { items: [], configured: false };
+  const t: TmdbType = type === "series" ? "tv" : type;
+  const { value } = await cached<CatalogItem[]>(
+    env.CATALOG_CACHE,
+    `recommendations:${t}:${id}`,
+    TTL.title,
+    () => recommendationsTmdb(env.TMDB_API_KEY, id, t),
+  );
+  return { items: value, configured: true };
 }
 
 export function providers(env: Env, id: string, type: TitleType, region: string) {

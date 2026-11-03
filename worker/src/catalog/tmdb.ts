@@ -196,6 +196,32 @@ export async function discoverTmdb(
   };
 }
 
+/**
+ * TMDB's own "more like this" list for one title (first page, up to 20).
+ * Only the title id is sent. Animation, reality, talk and news TV is left
+ * out, as in discovery; anime comes from AniList.
+ */
+export async function recommendationsTmdb(
+  key: string | undefined,
+  id: string,
+  type: TmdbType,
+): Promise<CatalogItem[]> {
+  const body = (await tmdbRequest(key, `/${type}/${id}/recommendations`, {
+    page: 1,
+  })) as Row | null;
+  const excluded = new Set(TV_EXCLUDE.split(",").map(Number));
+  const results: Row[] = body?.results ?? [];
+  return results
+    .filter((r) => !r.adult)
+    .filter(
+      (r) =>
+        type === "movie" ||
+        !(r.genre_ids ?? []).some((g: number) => excluded.has(g)),
+    )
+    .slice(0, 20)
+    .map((r) => normalizeTmdb(r, type));
+}
+
 export async function titleTmdb(
   key: string | undefined,
   id: string,

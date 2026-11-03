@@ -60,14 +60,59 @@ movie runtime are not guessed.
 
 Cue ranks a growing cached sample. Each round includes one unfiltered broad
 route per enabled kind plus at most three supported related-mood routes,
-with a total cap of 12 requests. Enabled-kind order rotates. Missing kinds
-are refilled even if another kind fills the cache; unavailable formats are
-reported. A refill checks up to four rounds while fewer than 20 eligible
-candidates are cached. Swiping refills again as the deck runs low.
+with a total cap of 12 route slots. Enabled-kind order rotates. The first
+related ("taste") route goes to the kind you rate most, the others to the
+kinds you rate least. Missing kinds are refilled even if another kind fills
+the cache; unavailable formats are reported. A refill checks up to four
+rounds while fewer than 20 eligible candidates are cached. Swiping refills
+again as the deck runs low.
 
-AniList pages contain up to 50 titles. Cinemeta offsets advance by 50.
-TVmaze discovery samples four index pages with variable result counts.
-App page cursors stop at 50 per kind/mood and refresh after seven days.
+AniList discovery pages through five orders, each with its own cursor:
+popularity, trending, score, favourites and newest (newest skips announced
+and cancelled titles). Orders take turns, least-advanced first, so a big
+watched library that covers the popular pages does not exhaust supply.
+Screen sources have one order each.
+
+A route slot can make up to three requests: when a page is mostly titles
+already cached (your library, earlier swipes), it digs on until ten new
+titles arrive. A page that is short but new does not trigger more requests.
+
+There is no page ceiling. A route is exhausted only when every order has
+reported its final page; cursors refresh after seven days. AniList pages
+contain up to 50 titles. Cinemeta offsets advance by 50. TVmaze discovery
+samples four index pages with variable result counts. The Worker accepts
+pages up to 500 (TMDB's own limit).
+
+AniList calls are paced by the rate limit AniList reports. Calls made at
+once queue one gap apart rather than bursting. After a 429, Cue waits as
+long as Retry-After asks and never goes faster than 30 calls a minute again.
+Three refused retries are reported as busy, never as exhaustion.
+
+## Taste-seeded retrieval
+
+Seeds are your strongest liked titles, at most 24: Favourite and Rewatched,
+then Would rewatch and Enjoyed, then Once was enough, most recently finished
+first. Imported completed or watching history fills in without ratings.
+Okay, negative, planned and dropped titles never seed.
+
+On each retrieval, Cue asks about at most four seeds not asked in the last
+seven days:
+
+- AniList `Media.recommendations`, sorted `RATING_DESC`, 15 per seed, four
+  seeds per request. Entries with a non-positive community rating, adult
+  entries, novels and music are dropped.
+- TMDB `/recommendations` through the Worker, first page, for TMDB-backed
+  titles. Without a TMDB key the Worker answers an empty list and Cue skips
+  the route. Animation, reality, talk and news TV is left out.
+
+Only the seed's provider ID leaves the device. The returned titles join the
+public cache with a public edge (seed, title, rank). The edges hold no
+personal data; Cue joins them with the active library's seeds in memory.
+
+Hard filters and library exclusions still apply. A candidate recommended by
+one seed scores +0.04, plus 0.04 per further liked seed, capped at +0.12. Its
+reason reads "Because you liked [seed title]." The card's `becauseOf` field lists
+the seed catalog IDs, strongest first, for other surfaces.
 
 Hard filters and saved-history exclusions apply to every exact-match route and
 exploration slot. A bounded batch or network failure is not proof of exhaustion.

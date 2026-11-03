@@ -160,6 +160,27 @@ class MatchResponse {
   final List<CatalogItemDto> mal;
 }
 
+/// A liked title to ask a provider about: "what do people who liked this
+/// also like?". Only the provider id leaves the device.
+class SeedRef {
+  const SeedRef(this.provider, this.providerId, [this.providerKind]);
+  final String provider;
+  final String providerId;
+
+  /// TMDB's tv or movie; empty or null elsewhere.
+  final String? providerKind;
+
+  @override
+  bool operator ==(Object other) =>
+      other is SeedRef &&
+      other.provider == provider &&
+      other.providerId == providerId &&
+      (other.providerKind ?? '') == (providerKind ?? '');
+
+  @override
+  int get hashCode => Object.hash(provider, providerId, providerKind ?? '');
+}
+
 /// Which sign-in sources the Worker has client ids for.
 /// Tokens from a sign-in or a renewal. Only ever kept on the device.
 class OAuthTokens {
@@ -236,7 +257,22 @@ abstract class CatalogGateway {
     List<int> malManga = const [],
   });
 
-  Future<CatalogPageDto> discover(MediaKind kind, {String? mood, int page = 1});
+  /// One discover page. [sort] picks one of [discoverSorts] for the kind;
+  /// null is the provider's default order.
+  Future<CatalogPageDto> discover(
+    MediaKind kind, {
+    String? mood,
+    int page = 1,
+    String? sort,
+  });
+
+  /// Orders discovery can page through for a kind, each with its own
+  /// cursor. A single null means the provider has only its default order.
+  List<String?> discoverSorts(MediaKind kind);
+
+  /// Provider "more like this" lists, one per seed in order. Providers
+  /// without such a list (or without a key) answer an empty list.
+  Future<List<List<CatalogItemDto>>> recommendations(List<SeedRef> seeds);
   Future<CatalogItemDto?> title(String provider, String id, {String? type});
   Future<List<CatalogItemDto>> search(String query, {MediaKind? kind});
   Future<WatchProvidersDto> providers(
@@ -475,11 +511,32 @@ class HttpCatalogGateway implements CatalogGateway {
       CatalogItemDto(Map<String, dynamic>.from(i as Map)),
   ];
 
+  /// The Worker's sources have one order each.
+  @override
+  List<String?> discoverSorts(MediaKind kind) => const [null];
+
+  /// TMDB titles only; anything else, or a Worker without a TMDB key,
+  /// answers empty lists.
+  @override
+  Future<List<List<CatalogItemDto>>> recommendations(
+    List<SeedRef> seeds,
+  ) async => [
+    for (final seed in seeds)
+      seed.provider == 'tmdb'
+          ? _items(
+              await _get('/catalog/recommendations/tmdb/${seed.providerId}', {
+                'type': ?seed.providerKind,
+              }),
+            )
+          : const <CatalogItemDto>[],
+  ];
+
   @override
   Future<CatalogPageDto> discover(
     MediaKind kind, {
     String? mood,
     int page = 1,
+    String? sort,
   }) async {
     final body = await _get('/catalog/discover', {
       'kind': kind.name,
@@ -553,9 +610,64 @@ class HybridCatalogGateway implements CatalogGateway {
     MediaKind kind, {
     String? mood,
     int page = 1,
+    String? sort,
   }) => _ani(kind)
-      ? anilist.discover(kind, mood: mood, page: page)
+      ? anilist.discover(kind, mood: mood, page: page, sort: sort)
       : worker.discover(kind, mood: mood, page: page);
+
+  @override
+  List<String?> discoverSorts(MediaKind kind) =>
+      _ani(kind) ? AniListClient.sorts : worker.discoverSorts(kind);
+
+  /// AniList seeds go to AniList in a few batched requests; TMDB seeds go
+  /// to the Worker one by one. A failed source leaves its seeds empty only
+  /// when the other source succeeded; otherwise the failure is reported.
+  @override
+  Future<List<List<CatalogItemDto>>> recommendations(
+    List<SeedRef> seeds,
+  ) async {
+    final out = [for (final _ in seeds) <CatalogItemDto>[]];
+    final ani = [
+      for (var i = 0; i < seeds.length; i++)
+        if (seeds[i].provider == 'anilist' &&
+            int.tryParse(seeds[i].providerId) != null)
+          i,
+    ];
+    final screen = [
+      for (var i = 0; i < seeds.length; i++)
+        if (seeds[i].provider == 'tmdb') i,
+    ];
+    CatalogUnavailable? failure;
+    var succeeded = false;
+    if (ani.isNotEmpty) {
+      try {
+        final r = await anilist.recommendations([
+          for (final i in ani) int.parse(seeds[i].providerId),
+        ]);
+        for (var j = 0; j < ani.length && j < r.length; j++) {
+          out[ani[j]].addAll(r[j]);
+        }
+        succeeded = true;
+      } on CatalogUnavailable catch (e) {
+        failure = e;
+      }
+    }
+    if (screen.isNotEmpty) {
+      try {
+        final r = await worker.recommendations([
+          for (final i in screen) seeds[i],
+        ]);
+        for (var j = 0; j < screen.length && j < r.length; j++) {
+          out[screen[j]].addAll(r[j]);
+        }
+        succeeded = true;
+      } on CatalogUnavailable catch (e) {
+        failure ??= e;
+      }
+    }
+    if (failure != null && !succeeded) throw failure;
+    return out;
+  }
 
   @override
   Future<CatalogItemDto?> title(String provider, String id, {String? type}) =>

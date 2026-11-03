@@ -211,3 +211,47 @@ describe("key-free routes", () => {
     expect(calls[0]!.url.hostname).toBe("api.themoviedb.org");
   });
 });
+
+describe("TMDB more-like-this for taste-seeded retrieval", () => {
+  it("returns TMDB recommendations for one liked title, leaving out animation TV", async () => {
+    const calls = mockUpstream(
+      vi,
+      () =>
+        new Response(
+          JSON.stringify({
+            page: 1,
+            total_pages: 1,
+            results: [
+              { id: 7, name: "Synthetic Drama", origin_country: ["KR"], genre_ids: [18], vote_average: 8, vote_count: 10 },
+              { id: 8, name: "Synthetic Cartoon", origin_country: ["US"], genre_ids: [16, 35] },
+              { id: 9, name: "Synthetic Adult", origin_country: ["US"], genre_ids: [18], adult: true },
+            ],
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    const res = await call("/catalog/recommendations/tmdb/1399?type=tv", {}, fakeEnv({ TMDB_API_KEY: "k" }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { configured: boolean; items: { providerId: string; kind: string }[] };
+    expect(body.configured).toBe(true);
+    expect(body.items.map((i) => [i.providerId, i.kind])).toEqual([["7", "kdrama"]]);
+    expect(calls[0]!.url.pathname).toBe("/3/tv/1399/recommendations");
+    // Only the title id (and the key) travels upstream.
+    expect([...calls[0]!.url.searchParams.keys()].sort()).toEqual(["api_key", "page"]);
+  });
+
+  it("skips gracefully without a TMDB key or for providers without such a list", async () => {
+    const calls = mockUpstream(vi);
+    for (const path of ["/catalog/recommendations/tmdb/1399?type=movie", "/catalog/recommendations/tvmaze/5"]) {
+      const res = await call(path);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ items: [], configured: false });
+    }
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects anything but a numeric or IMDb id", async () => {
+    const res = await call("/catalog/recommendations/tmdb/abc");
+    expect(res.status).toBe(400);
+  });
+});
