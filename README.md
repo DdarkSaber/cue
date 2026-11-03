@@ -29,7 +29,11 @@ See the [feature guide](docs/FEATURES.md) for supported imports and controls.
 - Your library lives on your device. Optional sync uploads an encrypted copy;
   keep its recovery code safe.
 - Catalog lookups send title names or IDs, not your whole history. Optional AI
-  mood hints send your typed sentence only when enabled.
+  mood hints send your typed sentence only when enabled. Optional "AI picks
+  from my taste" (off by default) sends the names and years of up to 25 titles
+  you liked and up to 10 you disliked, plus your enabled formats, to an AI
+  service; never ratings, notes or dates. Every suggestion is checked against
+  the real catalog before you see it.
 - Technical diagnostics are **off by default** and exclude titles, history,
   search text, files, tokens and raw errors.
 - No ads, trackers, third-party analytics SDKs or remote fonts.

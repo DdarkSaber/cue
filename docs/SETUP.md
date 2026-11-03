@@ -75,8 +75,8 @@ Do not expose keys in public issues, URLs, logs or app bundles.
 | Name | Enables | Get it at |
 |---|---|---|
 | `MAL_CLIENT_ID` (var) + `MAL_CLIENT_SECRET` | MyAnimeList sign-in and username import | myanimelist.net/apiconfig |
-| `GROQ_API_KEY` | Smarter mood text | console.groq.com |
-| `GEMINI_API_KEY` | Smarter mood fallback | aistudio.google.com |
+| `GROQ_API_KEY` | Smarter mood text and AI taste picks | console.groq.com |
+| `GEMINI_API_KEY` | Mood and AI taste picks fallback | aistudio.google.com |
 | `TMDB_API_KEY` | Optional richer drama, series and movie metadata | themoviedb.org |
 
 Provider free tiers are subject to their own quotas and changes.

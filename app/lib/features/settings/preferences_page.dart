@@ -47,6 +47,13 @@ class PreferencesPage extends ConsumerWidget {
           value: s.smartMoodText,
           onChanged: (v) => change((x) => x.copyWith(smartMoodText: v)),
         ),
+        _toggle(
+          title: 'AI picks from my taste',
+          subtitle: 'Off by default. When on, the names (and years) of up to 25 titles you rated highly, saved or finished, and up to 10 you disliked, plus your enabled formats, are sent to an AI service (Groq or Google Gemini) to suggest more. Suggestions are checked against the real catalog. Ratings, notes and dates never leave this device.',
+          value: s.aiPicks,
+          onChanged: (v) =>
+              change((x) => x.copyWith(aiPicks: v, aiPicksPromptSeen: true)),
+        ),
         const CueSectionLabel('Content safety'),
         _toggle(
           title: 'Show adult-tagged titles',

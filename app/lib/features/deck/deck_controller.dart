@@ -3,9 +3,12 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import 'candidate_sources.dart';
 import '../../data/catalog_gateway.dart';
 import '../../data/catalog_repository.dart' show CatalogPageState;
+import '../../domain/ai_taste.dart' show AiPick;
 import '../../domain/decisions.dart';
+import '../../domain/models/settings.dart' show AppSettings;
 import '../../domain/models/deck_filters.dart';
 import '../../domain/models/decision.dart';
 import '../../domain/models/quick_mood.dart';
@@ -413,6 +416,9 @@ class DeckController extends Notifier<DeckState> {
 
     var signals = await library.signals(profileId);
     if (!ref.mounted) return;
+    for (final source in ref.read(candidateSourcesProvider)) {
+      source.refill(profileId, signals, _enabledKinds, settings);
+    }
     var pool = await _pool(filters, kinds, signals);
     if (!ref.mounted) return;
     final history = signals.library.values.toList()
@@ -610,29 +616,40 @@ class DeckController extends Notifier<DeckState> {
               ),
         )
         .isNotEmpty;
-    final dealt = ranker.deal(
+    List<RankedCard> dealFrom(List<Title> dealPool, int dealSize) =>
+        ranker.deal(
+          dealPool,
+          signals,
+          rankingFilters,
+          showAdult: settings.showAdult,
+          enabledKinds: _enabledKinds,
+          titlesById: byId,
+          includeRewatchesDefault: settings.includeRewatches,
+          session: _session,
+          target: target,
+          size: dealSize,
+          shortestFirst: lengthFallback,
+          temporary: _temporary.bias,
+          preferShorter: _temporary.preferShorter,
+          clusters: clusters,
+          recentExposures: exposures,
+          explorePreference: _temporary.effectiveExploration,
+          skip: {
+            if (keep != null) keep.title.id,
+            if (_skipCurrent && eligibleCount() > 1 && _visibleId != null)
+              _visibleId!,
+            if (unseenEligible) ..._temporary.shown,
+          },
+        );
+    final aiPicks = lengthFallback
+        ? const <String, AiPick>{}
+        : await _sourcePicks(profileId, settings);
+    if (!ref.mounted) return;
+    final dealt = dealWithPicks(
+      dealFrom,
       rankingPool,
-      signals,
-      rankingFilters,
-      showAdult: settings.showAdult,
-      enabledKinds: _enabledKinds,
-      titlesById: byId,
-      includeRewatchesDefault: settings.includeRewatches,
-      session: _session,
-      target: target,
+      aiPicks,
       size: keep == null ? Ranker.deckSize : Ranker.deckSize - 1,
-      shortestFirst: lengthFallback,
-      temporary: _temporary.bias,
-      preferShorter: _temporary.preferShorter,
-      clusters: clusters,
-      recentExposures: exposures,
-      explorePreference: _temporary.effectiveExploration,
-      skip: {
-        if (keep != null) keep.title.id,
-        if (_skipCurrent && eligibleCount() > 1 && _visibleId != null)
-          _visibleId!,
-        if (unseenEligible) ..._temporary.shown,
-      },
     );
     final cards = lengthFallback
         ? [
@@ -695,6 +712,14 @@ class DeckController extends Notifier<DeckState> {
       canUndo: canUndo,
     );
   }
+
+  Future<Map<String, AiPick>> _sourcePicks(
+    String profileId,
+    AppSettings settings,
+  ) async => {
+    for (final source in ref.read(candidateSourcesProvider))
+      ...await source.provenance(profileId, settings),
+  };
 
   Future<List<Title>> _pool(
     DeckFilters filters,

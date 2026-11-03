@@ -14,6 +14,8 @@ class AppSettings {
     this.includeRewatches = false,
     this.inviteDismissed = false,
     this.smartMoodText = false,
+    this.aiPicks = false,
+    this.aiPicksPromptSeen = false,
     this.displayName,
   });
 
@@ -31,6 +33,10 @@ class AppSettings {
 
   /// Opt-in: send the typed mood sentence to an AI service for hints.
   final bool smartMoodText;
+
+  /// Opt-in: send liked/disliked title names to an AI service for picks.
+  final bool aiPicks;
+  final bool aiPicksPromptSeen;
   final String? displayName;
 
   AppSettings copyWith({
@@ -43,6 +49,8 @@ class AppSettings {
     bool? includeRewatches,
     bool? inviteDismissed,
     bool? smartMoodText,
+    bool? aiPicks,
+    bool? aiPicksPromptSeen,
     String? displayName,
     bool clearDisplayName = false,
   }) => AppSettings(
@@ -55,6 +63,8 @@ class AppSettings {
     includeRewatches: includeRewatches ?? this.includeRewatches,
     inviteDismissed: inviteDismissed ?? this.inviteDismissed,
     smartMoodText: smartMoodText ?? this.smartMoodText,
+    aiPicks: aiPicks ?? this.aiPicks,
+    aiPicksPromptSeen: aiPicksPromptSeen ?? this.aiPicksPromptSeen,
     displayName: clearDisplayName ? null : (displayName ?? this.displayName),
   );
 
@@ -68,6 +78,8 @@ class AppSettings {
     'includeRewatches': '$includeRewatches',
     'inviteDismissed': '$inviteDismissed',
     'smartMoodText': '$smartMoodText',
+    'aiPicks': '$aiPicks',
+    'aiPicksPromptSeen': '$aiPicksPromptSeen',
   };
 
   static AppSettings fromEntries(
@@ -93,6 +105,8 @@ class AppSettings {
       includeRewatches: b('includeRewatches', false),
       inviteDismissed: b('inviteDismissed', false),
       smartMoodText: b('smartMoodText', false),
+      aiPicks: b('aiPicks', false),
+      aiPicksPromptSeen: b('aiPicksPromptSeen', false),
       displayName: displayName,
     );
   }
