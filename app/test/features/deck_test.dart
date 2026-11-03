@@ -26,16 +26,18 @@ Future<void> settle(WidgetTester t) async {
     final screen = find.byType(DeckScreen);
     if (i >= 5 && screen.evaluate().isNotEmpty) {
       final container = ProviderScope.containerOf(t.element(screen));
-      if (!container.read(deckControllerProvider).loading) break;
+      final deck = container.read(deckControllerProvider);
+      // Cached cards appear first; wait for the background refill too.
+      if (!deck.loading && !deck.refreshing) break;
     }
   }
   await t.pumpAndSettle();
   final screen = find.byType(DeckScreen);
   if (screen.evaluate().isNotEmpty) {
+    final deck = ProviderScope.containerOf(t.element(screen))
+        .read(deckControllerProvider);
     expect(
-      ProviderScope.containerOf(t.element(screen))
-          .read(deckControllerProvider)
-          .loading,
+      deck.loading || deck.refreshing,
       isFalse,
       reason: 'WASM candidate loading must finish before deck assertions.',
     );
@@ -161,12 +163,14 @@ void main({bool releasePersistenceOnly = false}) {
     expect(find.byTooltip('Undo last swipe'), findsOneWidget);
   });
 
-  testWidgets('offline with an empty cache explains instead of a blank', (
+  testWidgets('offline with an empty cache is a friendly retry, not a blank', (
     t,
   ) async {
     await pumpCue(t, gateway: FakeGateway(offline: true));
     await settle(t);
-    expect(find.textContaining('No stories cached yet'), findsOneWidget);
+    expect(find.textContaining("You're offline"), findsOneWidget);
+    expect(find.textContaining('try again on its own'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
   });
 
   testWidgets('offline after a first run still deals from the cache', (

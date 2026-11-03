@@ -81,8 +81,9 @@ and your current mood. It retrieves a bounded sample across enabled formats,
 rather than downloading the whole catalog. Hard filters and existing-library
 exclusions apply before ranking. The deck mixes familiar, adjacent and exploring
 picks; temporary More/Less and Try now interest do not become permanent ratings.
-If valid candidates run out, Cue offers recovery choices instead of silently
-relaxing your filters.
+Cached picks appear the moment the app opens. If exact matches run out, Cue
+deals the nearest titles with an honest label (for example "Outside your
+filter: Comedy") and a one-tap chip to keep or clear that filter.
 
 [Recommendation details](docs/RECOMMENDATIONS.md)
 
