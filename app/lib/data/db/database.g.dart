@@ -1903,6 +1903,323 @@ class CatalogPagesCompanion extends UpdateCompanion<CatalogPage> {
   }
 }
 
+class $CatalogRecommendationsTable extends CatalogRecommendations
+    with TableInfo<$CatalogRecommendationsTable, CatalogRecommendation> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CatalogRecommendationsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _seedIdMeta = const VerificationMeta('seedId');
+  @override
+  late final GeneratedColumn<String> seedId = GeneratedColumn<String>(
+    'seed_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleIdMeta = const VerificationMeta(
+    'titleId',
+  );
+  @override
+  late final GeneratedColumn<String> titleId = GeneratedColumn<String>(
+    'title_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _rankMeta = const VerificationMeta('rank');
+  @override
+  late final GeneratedColumn<int> rank = GeneratedColumn<int>(
+    'rank',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _fetchedAtMeta = const VerificationMeta(
+    'fetchedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> fetchedAt = GeneratedColumn<DateTime>(
+    'fetched_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [seedId, titleId, rank, fetchedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'catalog_recommendations';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CatalogRecommendation> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('seed_id')) {
+      context.handle(
+        _seedIdMeta,
+        seedId.isAcceptableOrUnknown(data['seed_id']!, _seedIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_seedIdMeta);
+    }
+    if (data.containsKey('title_id')) {
+      context.handle(
+        _titleIdMeta,
+        titleId.isAcceptableOrUnknown(data['title_id']!, _titleIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleIdMeta);
+    }
+    if (data.containsKey('rank')) {
+      context.handle(
+        _rankMeta,
+        rank.isAcceptableOrUnknown(data['rank']!, _rankMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_rankMeta);
+    }
+    if (data.containsKey('fetched_at')) {
+      context.handle(
+        _fetchedAtMeta,
+        fetchedAt.isAcceptableOrUnknown(data['fetched_at']!, _fetchedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_fetchedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {seedId, titleId};
+  @override
+  CatalogRecommendation map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CatalogRecommendation(
+      seedId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}seed_id'],
+      )!,
+      titleId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title_id'],
+      )!,
+      rank: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}rank'],
+      )!,
+      fetchedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}fetched_at'],
+      )!,
+    );
+  }
+
+  @override
+  $CatalogRecommendationsTable createAlias(String alias) {
+    return $CatalogRecommendationsTable(attachedDatabase, alias);
+  }
+}
+
+class CatalogRecommendation extends DataClass
+    implements Insertable<CatalogRecommendation> {
+  final String seedId;
+  final String titleId;
+
+  /// Position in the provider's list, 0 = best rated.
+  final int rank;
+  final DateTime fetchedAt;
+  const CatalogRecommendation({
+    required this.seedId,
+    required this.titleId,
+    required this.rank,
+    required this.fetchedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['seed_id'] = Variable<String>(seedId);
+    map['title_id'] = Variable<String>(titleId);
+    map['rank'] = Variable<int>(rank);
+    map['fetched_at'] = Variable<DateTime>(fetchedAt);
+    return map;
+  }
+
+  CatalogRecommendationsCompanion toCompanion(bool nullToAbsent) {
+    return CatalogRecommendationsCompanion(
+      seedId: Value(seedId),
+      titleId: Value(titleId),
+      rank: Value(rank),
+      fetchedAt: Value(fetchedAt),
+    );
+  }
+
+  factory CatalogRecommendation.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CatalogRecommendation(
+      seedId: serializer.fromJson<String>(json['seedId']),
+      titleId: serializer.fromJson<String>(json['titleId']),
+      rank: serializer.fromJson<int>(json['rank']),
+      fetchedAt: serializer.fromJson<DateTime>(json['fetchedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'seedId': serializer.toJson<String>(seedId),
+      'titleId': serializer.toJson<String>(titleId),
+      'rank': serializer.toJson<int>(rank),
+      'fetchedAt': serializer.toJson<DateTime>(fetchedAt),
+    };
+  }
+
+  CatalogRecommendation copyWith({
+    String? seedId,
+    String? titleId,
+    int? rank,
+    DateTime? fetchedAt,
+  }) => CatalogRecommendation(
+    seedId: seedId ?? this.seedId,
+    titleId: titleId ?? this.titleId,
+    rank: rank ?? this.rank,
+    fetchedAt: fetchedAt ?? this.fetchedAt,
+  );
+  CatalogRecommendation copyWithCompanion(
+    CatalogRecommendationsCompanion data,
+  ) {
+    return CatalogRecommendation(
+      seedId: data.seedId.present ? data.seedId.value : this.seedId,
+      titleId: data.titleId.present ? data.titleId.value : this.titleId,
+      rank: data.rank.present ? data.rank.value : this.rank,
+      fetchedAt: data.fetchedAt.present ? data.fetchedAt.value : this.fetchedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CatalogRecommendation(')
+          ..write('seedId: $seedId, ')
+          ..write('titleId: $titleId, ')
+          ..write('rank: $rank, ')
+          ..write('fetchedAt: $fetchedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(seedId, titleId, rank, fetchedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CatalogRecommendation &&
+          other.seedId == this.seedId &&
+          other.titleId == this.titleId &&
+          other.rank == this.rank &&
+          other.fetchedAt == this.fetchedAt);
+}
+
+class CatalogRecommendationsCompanion
+    extends UpdateCompanion<CatalogRecommendation> {
+  final Value<String> seedId;
+  final Value<String> titleId;
+  final Value<int> rank;
+  final Value<DateTime> fetchedAt;
+  final Value<int> rowid;
+  const CatalogRecommendationsCompanion({
+    this.seedId = const Value.absent(),
+    this.titleId = const Value.absent(),
+    this.rank = const Value.absent(),
+    this.fetchedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CatalogRecommendationsCompanion.insert({
+    required String seedId,
+    required String titleId,
+    required int rank,
+    required DateTime fetchedAt,
+    this.rowid = const Value.absent(),
+  }) : seedId = Value(seedId),
+       titleId = Value(titleId),
+       rank = Value(rank),
+       fetchedAt = Value(fetchedAt);
+  static Insertable<CatalogRecommendation> custom({
+    Expression<String>? seedId,
+    Expression<String>? titleId,
+    Expression<int>? rank,
+    Expression<DateTime>? fetchedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (seedId != null) 'seed_id': seedId,
+      if (titleId != null) 'title_id': titleId,
+      if (rank != null) 'rank': rank,
+      if (fetchedAt != null) 'fetched_at': fetchedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CatalogRecommendationsCompanion copyWith({
+    Value<String>? seedId,
+    Value<String>? titleId,
+    Value<int>? rank,
+    Value<DateTime>? fetchedAt,
+    Value<int>? rowid,
+  }) {
+    return CatalogRecommendationsCompanion(
+      seedId: seedId ?? this.seedId,
+      titleId: titleId ?? this.titleId,
+      rank: rank ?? this.rank,
+      fetchedAt: fetchedAt ?? this.fetchedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (seedId.present) {
+      map['seed_id'] = Variable<String>(seedId.value);
+    }
+    if (titleId.present) {
+      map['title_id'] = Variable<String>(titleId.value);
+    }
+    if (rank.present) {
+      map['rank'] = Variable<int>(rank.value);
+    }
+    if (fetchedAt.present) {
+      map['fetched_at'] = Variable<DateTime>(fetchedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CatalogRecommendationsCompanion(')
+          ..write('seedId: $seedId, ')
+          ..write('titleId: $titleId, ')
+          ..write('rank: $rank, ')
+          ..write('fetchedAt: $fetchedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $WatchProvidersTable extends WatchProviders
     with TableInfo<$WatchProvidersTable, WatchProvider> {
   @override
@@ -8252,6 +8569,8 @@ abstract class _$CueDatabase extends GeneratedDatabase {
   late final $CatalogIdentitiesTable catalogIdentities =
       $CatalogIdentitiesTable(this);
   late final $CatalogPagesTable catalogPages = $CatalogPagesTable(this);
+  late final $CatalogRecommendationsTable catalogRecommendations =
+      $CatalogRecommendationsTable(this);
   late final $WatchProvidersTable watchProviders = $WatchProvidersTable(this);
   late final $ProfilesTable profiles = $ProfilesTable(this);
   late final $ProfileSettingsTable profileSettings = $ProfileSettingsTable(
@@ -8279,6 +8598,7 @@ abstract class _$CueDatabase extends GeneratedDatabase {
     catalogTitles,
     catalogIdentities,
     catalogPages,
+    catalogRecommendations,
     watchProviders,
     profiles,
     profileSettings,
@@ -9561,6 +9881,218 @@ typedef $$CatalogPagesTableProcessedTableManager =
         BaseReferences<_$CueDatabase, $CatalogPagesTable, CatalogPage>,
       ),
       CatalogPage,
+      PrefetchHooks Function()
+    >;
+typedef $$CatalogRecommendationsTableCreateCompanionBuilder =
+    CatalogRecommendationsCompanion Function({
+      required String seedId,
+      required String titleId,
+      required int rank,
+      required DateTime fetchedAt,
+      Value<int> rowid,
+    });
+typedef $$CatalogRecommendationsTableUpdateCompanionBuilder =
+    CatalogRecommendationsCompanion Function({
+      Value<String> seedId,
+      Value<String> titleId,
+      Value<int> rank,
+      Value<DateTime> fetchedAt,
+      Value<int> rowid,
+    });
+
+class $$CatalogRecommendationsTableFilterComposer
+    extends Composer<_$CueDatabase, $CatalogRecommendationsTable> {
+  $$CatalogRecommendationsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get seedId => $composableBuilder(
+    column: $table.seedId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get titleId => $composableBuilder(
+    column: $table.titleId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get rank => $composableBuilder(
+    column: $table.rank,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get fetchedAt => $composableBuilder(
+    column: $table.fetchedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CatalogRecommendationsTableOrderingComposer
+    extends Composer<_$CueDatabase, $CatalogRecommendationsTable> {
+  $$CatalogRecommendationsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get seedId => $composableBuilder(
+    column: $table.seedId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get titleId => $composableBuilder(
+    column: $table.titleId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get rank => $composableBuilder(
+    column: $table.rank,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get fetchedAt => $composableBuilder(
+    column: $table.fetchedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CatalogRecommendationsTableAnnotationComposer
+    extends Composer<_$CueDatabase, $CatalogRecommendationsTable> {
+  $$CatalogRecommendationsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get seedId =>
+      $composableBuilder(column: $table.seedId, builder: (column) => column);
+
+  GeneratedColumn<String> get titleId =>
+      $composableBuilder(column: $table.titleId, builder: (column) => column);
+
+  GeneratedColumn<int> get rank =>
+      $composableBuilder(column: $table.rank, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get fetchedAt =>
+      $composableBuilder(column: $table.fetchedAt, builder: (column) => column);
+}
+
+class $$CatalogRecommendationsTableTableManager
+    extends
+        RootTableManager<
+          _$CueDatabase,
+          $CatalogRecommendationsTable,
+          CatalogRecommendation,
+          $$CatalogRecommendationsTableFilterComposer,
+          $$CatalogRecommendationsTableOrderingComposer,
+          $$CatalogRecommendationsTableAnnotationComposer,
+          $$CatalogRecommendationsTableCreateCompanionBuilder,
+          $$CatalogRecommendationsTableUpdateCompanionBuilder,
+          (
+            CatalogRecommendation,
+            BaseReferences<
+              _$CueDatabase,
+              $CatalogRecommendationsTable,
+              CatalogRecommendation
+            >,
+          ),
+          CatalogRecommendation,
+          PrefetchHooks Function()
+        > {
+  $$CatalogRecommendationsTableTableManager(
+    _$CueDatabase db,
+    $CatalogRecommendationsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CatalogRecommendationsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$CatalogRecommendationsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$CatalogRecommendationsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> seedId = const Value.absent(),
+                Value<String> titleId = const Value.absent(),
+                Value<int> rank = const Value.absent(),
+                Value<DateTime> fetchedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CatalogRecommendationsCompanion(
+                seedId: seedId,
+                titleId: titleId,
+                rank: rank,
+                fetchedAt: fetchedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String seedId,
+                required String titleId,
+                required int rank,
+                required DateTime fetchedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => CatalogRecommendationsCompanion.insert(
+                seedId: seedId,
+                titleId: titleId,
+                rank: rank,
+                fetchedAt: fetchedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<
+                    $CatalogRecommendationsTable,
+                    CatalogRecommendation
+                  >(table),
+                  BaseReferences<
+                    _$CueDatabase,
+                    $CatalogRecommendationsTable,
+                    CatalogRecommendation
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CatalogRecommendationsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$CueDatabase,
+      $CatalogRecommendationsTable,
+      CatalogRecommendation,
+      $$CatalogRecommendationsTableFilterComposer,
+      $$CatalogRecommendationsTableOrderingComposer,
+      $$CatalogRecommendationsTableAnnotationComposer,
+      $$CatalogRecommendationsTableCreateCompanionBuilder,
+      $$CatalogRecommendationsTableUpdateCompanionBuilder,
+      (
+        CatalogRecommendation,
+        BaseReferences<
+          _$CueDatabase,
+          $CatalogRecommendationsTable,
+          CatalogRecommendation
+        >,
+      ),
+      CatalogRecommendation,
       PrefetchHooks Function()
     >;
 typedef $$WatchProvidersTableCreateCompanionBuilder =
@@ -15796,6 +16328,11 @@ class $CueDatabaseManager {
       $$CatalogIdentitiesTableTableManager(_db, _db.catalogIdentities);
   $$CatalogPagesTableTableManager get catalogPages =>
       $$CatalogPagesTableTableManager(_db, _db.catalogPages);
+  $$CatalogRecommendationsTableTableManager get catalogRecommendations =>
+      $$CatalogRecommendationsTableTableManager(
+        _db,
+        _db.catalogRecommendations,
+      );
   $$WatchProvidersTableTableManager get watchProviders =>
       $$WatchProvidersTableTableManager(_db, _db.watchProviders);
   $$ProfilesTableTableManager get profiles =>

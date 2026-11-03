@@ -53,6 +53,7 @@ void main() {
     await v2.customSelect('SELECT 1').get();
     await v2.customStatement('DROP TABLE mood_states');
     await v2.customStatement('DROP TABLE mood_sessions');
+    await v2.customStatement('DROP TABLE catalog_recommendations');
     await v2.customStatement(
       'ALTER TABLE source_observations DROP COLUMN candidate_json',
     );
@@ -67,7 +68,10 @@ void main() {
         .customSelect("SELECT name FROM sqlite_master WHERE type = 'table'")
         .map((r) => r.read<String>('name'))
         .get();
-    expect(tables, containsAll(['mood_states', 'mood_sessions']));
+    expect(
+      tables,
+      containsAll(['mood_states', 'mood_sessions', 'catalog_recommendations']),
+    );
     final cols = await upgraded
         .customSelect('PRAGMA table_info(source_observations)')
         .map((r) => r.read<String>('name'))
