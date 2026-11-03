@@ -28,6 +28,34 @@ class CatalogSearchResult {
 
 /// Local catalog cache plus the Worker behind it. Everything the deck shows
 /// comes from the local tables, so the deck works offline after first run.
+/// A cap on provider requests shared by everything one refill cycle (or one
+/// filter set's background continuations) does. AniList allows about 30
+/// requests a minute, so an unbounded fan-out only queues behind the pacer.
+/// The first request of each route is claimed before any route digs deeper,
+/// so every route gets a look before one overlapping route spends the rest,
+/// and the budget closes early once [freshTarget] unseen titles arrived.
+class RequestBudget {
+  RequestBudget({this.limit = 12, this.freshTarget = 40});
+
+  /// Most discover/recommendation requests the budget allows.
+  final int limit;
+
+  /// Unseen titles after which no further request is worth making.
+  final int freshTarget;
+
+  int used = 0;
+  int fresh = 0;
+
+  bool get spent => used >= limit || fresh >= freshTarget;
+
+  /// Claims one request; false when the budget is spent.
+  bool take() {
+    if (spent) return false;
+    used++;
+    return true;
+  }
+}
+
 class CatalogRepository {
   CatalogRepository(this.db, this.gateway, {DateTime Function()? clock})
     : _now = clock ?? DateTime.now;
@@ -409,7 +437,11 @@ class CatalogRepository {
   /// page in every order proves exhaustion.
   ///
   /// Returns how many items arrived; 0 when exhausted or unavailable.
-  Future<int> fetchNext(MediaKind kind, {String? mood}) async {
+  Future<int> fetchNext(
+    MediaKind kind, {
+    String? mood,
+    RequestBudget? budget,
+  }) async {
     if (unavailableKinds.contains(kind)) return 0;
     final sorts = gateway.discoverSorts(kind);
     var arrived = 0;
@@ -417,6 +449,7 @@ class CatalogRepository {
     for (var request = 0; request < maxPagesPerFetch; request++) {
       final next = await _nextRoute(kind, mood, sorts);
       if (next == null) break;
+      if (budget != null && !budget.take()) break;
       final CatalogPageDto page;
       try {
         page = await gateway.discover(
@@ -447,6 +480,7 @@ class CatalogRepository {
           );
       arrived += page.items.length;
       fresh += newHere;
+      budget?.fresh += newHere;
       // Dig on only when overlap with the cache, not a short page, is why
       // this page added little.
       if (fresh >= freshTarget || known <= newHere) break;
@@ -519,7 +553,7 @@ class CatalogRepository {
   /// the last seven days are skipped. Only provider ids leave the device.
   ///
   /// [seedIds] are catalog ids, strongest first. Returns edges stored.
-  Future<int> fetchSeeded(List<String> seedIds) async {
+  Future<int> fetchSeeded(List<String> seedIds, {RequestBudget? budget}) async {
     if (seedIds.isEmpty) return 0;
     final stale = _now().subtract(const Duration(days: 7));
     final asked =
@@ -550,6 +584,7 @@ class CatalogRepository {
       if (ref != null) refs[id] = ref;
     }
     if (refs.isEmpty) return 0;
+    if (budget != null && !budget.take()) return 0;
     final results = await gateway.recommendations(refs.values.toList());
     var stored = 0;
     final now = _now();

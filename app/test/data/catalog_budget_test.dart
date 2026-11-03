@@ -124,4 +124,36 @@ void main() {
       expect(gateway.calls.last, 'discover:anime:-:5');
     },
   );
+
+  test(
+    'a shared request budget caps concurrent routes and closes early',
+    () async {
+      final db = memoryDb();
+      addTearDown(db.close);
+      final gateway = FakeGateway(
+        pages: {
+          for (final k in [MediaKind.anime, MediaKind.manga, MediaKind.manhwa])
+            k: [
+              for (var i = 0; i < 40; i++) [item(i + 1000 * k.index)],
+            ],
+        },
+      );
+      final catalog = CatalogRepository(db, gateway);
+      final budget = RequestBudget(limit: 5, freshTarget: 100);
+      await Future.wait([
+        for (final k in [MediaKind.anime, MediaKind.manga, MediaKind.manhwa])
+          for (var r = 0; r < 4; r++) catalog.fetchNext(k, budget: budget),
+      ]);
+      expect(gateway.calls, hasLength(5));
+      expect(budget.used, 5);
+
+      final small = RequestBudget(limit: 12, freshTarget: 2);
+      final before = gateway.calls.length;
+      await catalog.fetchNext(MediaKind.anime, budget: small);
+      await catalog.fetchNext(MediaKind.anime, budget: small);
+      // One fresh title per page: closes after two requests.
+      expect(gateway.calls.length - before, 2);
+      expect(small.spent, isTrue);
+    },
+  );
 }

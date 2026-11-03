@@ -77,6 +77,24 @@ A route slot can make up to three requests: when a page is mostly titles
 already cached (your library, earlier swipes), it digs on until ten new
 titles arrive. A page that is short but new does not trigger more requests.
 
+### Request budget
+
+Worst case without a cap is 12 route slots x 3 requests, plus background
+continuations, all queued behind a 30-a-minute limit. A single `RequestBudget`
+now bounds the work:
+
+- **12 provider requests per refill cycle** (all rounds, every route, and the
+  taste-seeded call, which counts as one request).
+- **12 more for each filter set's background continuations** (up to three
+  continuations share them). The share resets when exact matches fill the deck
+  or the filters change.
+- Every route's first request is claimed before any route digs deeper, so
+  routes that have not been tried come before extra pages from overlapping
+  ones.
+- The budget closes early once 40 unseen titles have arrived.
+
+At the paced rate 12 requests is about 24 seconds of AniList time.
+
 There is no page ceiling. A route is exhausted only when every order has
 reported its final page; cursors refresh after seven days. AniList pages
 contain up to 50 titles. Cinemeta offsets advance by 50. TVmaze discovery

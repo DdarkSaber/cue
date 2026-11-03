@@ -358,6 +358,30 @@ void main() {
     },
   );
 
+  testWidgets(
+    'a thin catalog never costs more than the refill and continuation budgets',
+    (t) async {
+      final db = memoryDb();
+      addTearDown(db.close);
+      // 80 pages that only ever repeat the same two titles: every route
+      // keeps wanting to dig, so only the budgets stop it.
+      final gateway = _anime([
+        for (var i = 0; i < 80; i++) [item(1), item(2)],
+      ]);
+      await pumpCue(t, db: db, gateway: gateway);
+      await settle(t);
+      await settle(t);
+      final discovers = gateway.calls.where((c) => c.startsWith('discover'));
+      expect(
+        discovers.length,
+        lessThanOrEqualTo(
+          DeckController.refillRequestBudget +
+              DeckController.continuationRequestBudget,
+        ),
+      );
+    },
+  );
+
   test('prefetch starts before the deck runs out', () {
     expect(DeckController.refillBelow, greaterThanOrEqualTo(8));
   });

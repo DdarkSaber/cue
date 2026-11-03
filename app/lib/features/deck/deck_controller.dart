@@ -5,7 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../data/catalog_gateway.dart';
-import '../../data/catalog_repository.dart' show CatalogPageState;
+import '../../data/catalog_repository.dart'
+    show CatalogPageState, RequestBudget;
 import '../../domain/decisions.dart';
 import '../../domain/models/deck_filters.dart';
 import '../../domain/models/decision.dart';
@@ -169,8 +170,17 @@ class DeckController extends Notifier<DeckState> {
   static const retryBase = Duration(seconds: 5);
   static const retryMax = Duration(minutes: 1);
 
+  /// Provider requests one refill cycle may make, and the separate share
+  /// background continuations of one filter set split between them.
+  static const refillRequestBudget = 12;
+  static const continuationRequestBudget = 12;
+
   int _continuations = 0;
   bool _continueNext = false;
+  bool _continuing = false;
+  RequestBudget _continuationBudget = RequestBudget(
+    limit: continuationRequestBudget,
+  );
   DeckFilters? _continuedFor;
   Timer? _retryTimer;
   int _retryAttempt = 0;
@@ -381,6 +391,7 @@ class DeckController extends Notifier<DeckState> {
       do {
         _again = false;
         final keep = keepTop || _continueNext;
+        _continuing = _continueNext;
         _continueNext = false;
         await _dealOnce(keepTop: keep);
       } while (_again);
@@ -494,6 +505,7 @@ class DeckController extends Notifier<DeckState> {
     if (_continuedFor != filters) {
       _continuations = 0;
       _continuedFor = filters;
+      _continuationBudget = RequestBudget(limit: continuationRequestBudget);
     }
 
     var signals = await library.signals(profileId);
@@ -588,6 +600,9 @@ class DeckController extends Notifier<DeckState> {
     }
 
     if (needsRefill) {
+      final budget = _continuing
+          ? _continuationBudget
+          : RequestBudget(limit: refillRequestBudget);
       final refillKinds =
           (_wantRetrieval || eligibleCount() < Ranker.deckSize * 2
                   ? kinds
@@ -623,14 +638,18 @@ class DeckController extends Notifier<DeckState> {
       // A bonus route; its failure never blocks the broad refill below.
       if (_wantRetrieval && signals.tasteSeeds.isNotEmpty) {
         try {
-          await catalog.fetchSeeded(signals.tasteSeeds);
+          await catalog.fetchSeeded(signals.tasteSeeds, budget: budget);
         } on CatalogUnavailable {
           // Retried on a later retrieval.
         }
         if (!ref.mounted) return;
       }
       for (var round = 0; round < maxRefillRounds; round++) {
-        final result = await _refill(refillKinds, routes: routes);
+        final result = await _refill(
+          refillKinds,
+          routes: routes,
+          budget: budget,
+        );
         refilled = true;
         notice = result.notice;
         catalogPending = result.pending;
@@ -714,7 +733,10 @@ class DeckController extends Notifier<DeckState> {
         !failed &&
         (next.isEmpty || composed.relaxed.isNotEmpty) &&
         _continuations < maxContinuations;
-    if (composed.relaxed.isEmpty && next.isNotEmpty) _continuations = 0;
+    if (composed.relaxed.isEmpty && next.isNotEmpty) {
+      _continuations = 0;
+      _continuationBudget = RequestBudget(limit: continuationRequestBudget);
+    }
     final isOffline = refilled ? offline : state.offline;
     if (refilled && !offline) {
       _retryAttempt = 0;
@@ -930,7 +952,11 @@ class DeckController extends Notifier<DeckState> {
   Future<
     ({String? notice, bool pending, bool failed, bool advanced, bool offline})
   >
-  _refill(Set<MediaKind> kinds, {List<RetrievalRequest>? routes}) async {
+  _refill(
+    Set<MediaKind> kinds, {
+    List<RetrievalRequest>? routes,
+    RequestBudget? budget,
+  }) async {
     final catalog = ref.read(catalogRepositoryProvider);
     var offline = false;
     var gotAny = false;
@@ -959,7 +985,11 @@ class DeckController extends Notifier<DeckState> {
             return;
           }
           try {
-            final n = await catalog.fetchNext(request.kind, mood: request.mood);
+            final n = await catalog.fetchNext(
+              request.kind,
+              mood: request.mood,
+              budget: budget,
+            );
             advanced = true;
             if (n > 0) gotAny = true;
             if (broad &&
