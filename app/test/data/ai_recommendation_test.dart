@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:cue/app/providers.dart';
 import 'package:cue/data/ai_recommendation_client.dart';
 import 'package:cue/data/ai_recommendation_repository.dart';
 import 'package:cue/data/catalog_gateway.dart';
@@ -12,6 +14,7 @@ import 'package:cue/domain/models/settings.dart';
 import 'package:cue/domain/models/title.dart';
 import 'package:cue/domain/ranker.dart';
 import 'package:cue/features/deck/candidate_sources.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -257,6 +260,59 @@ void main() {
       );
     });
 
+    test(
+      'forgetting deletes stored picks and beats an in-flight refresh',
+      () async {
+        gateway.matchCatalog['good one'] = [hit(30, 'Good One')];
+        client.out = [sug('Good One', 'Liked 1')];
+        final signals = await library.signals(pid);
+        expect(
+          await repo.refreshIfDue(pid, signals, {MediaKind.anime}),
+          isTrue,
+        );
+        expect(await profiles.rawSetting(pid, 'aiPicks.v1'), isNotNull);
+        await AiRecommendationRepository.forget(profiles, pid);
+        expect(await profiles.rawSetting(pid, 'aiPicks.v1'), isNull);
+        expect(await repo.picks(pid), isEmpty);
+
+        // An answer already on its way when the toggle went off is dropped.
+        final slow = _SlowClient();
+        final racing = AiRecommendationRepository(
+          client: slow,
+          catalog: catalog,
+          profiles: profiles,
+          clock: () => now,
+        );
+        final pending = racing.refreshIfDue(pid, signals, {MediaKind.anime});
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await AiRecommendationRepository.forget(profiles, pid);
+        slow.gate.complete([sug('Good One', 'Liked 1')]);
+        expect(await pending, isFalse);
+        expect(await profiles.rawSetting(pid, 'aiPicks.v1'), isNull);
+      },
+    );
+
+    test('turning the setting off deletes the stored picks', () async {
+      gateway.matchCatalog['good one'] = [hit(30, 'Good One')];
+      client.out = [sug('Good One', 'Liked 1')];
+      final signals = await library.signals(pid);
+      await repo.refreshIfDue(pid, signals, {MediaKind.anime});
+      final container = ProviderContainer(
+        overrides: [
+          profileRepositoryProvider.overrideWithValue(profiles),
+          profileIdProvider.overrideWith((ref) async => pid),
+        ],
+      );
+      addTearDown(container.dispose);
+      final settings = container.read(settingsProvider.notifier);
+      await container.read(settingsProvider.future);
+      await settings.change((x) => x.copyWith(aiPicks: true));
+      expect(await profiles.rawSetting(pid, 'aiPicks.v1'), isNotNull);
+      await settings.change((x) => x.copyWith(aiPicks: false));
+      expect(await profiles.rawSetting(pid, 'aiPicks.v1'), isNull);
+    });
+
     test('source is inert while the toggle is off', () async {
       final source = AiTasteSource(repo);
       final signals = await library.signals(pid);
@@ -294,6 +350,24 @@ void main() {
       expect(ai.first.reason, 'Because you loved Frieren: Quiet.');
     });
 
+    test(
+      'a card with a seed reason and an AI pick shows exactly one reason',
+      () {
+        final picks = {'a0': const AiPick('a0', 'Frieren', 'Quiet.')};
+        const seeded = RankedCard(
+          Title(id: 'a0', kind: MediaKind.anime, titleEn: 'A0'),
+          0.9,
+          'Because you liked Steins;Gate. Strong rating.',
+          becauseOf: ['seed1'],
+        );
+        final out = mixAiCards(const [], [seeded], picks, size: 10);
+        expect(out.single.reason, 'Because you loved Frieren: Quiet.');
+        expect(out.single.reason, isNot(contains('Because you liked')));
+        expect('Because you'.allMatches(out.single.reason), hasLength(1));
+        expect(out.single.becauseOf, ['seed1']);
+      },
+    );
+
     test('boost is bounded: a much weaker AI card does not jump the deck', () {
       final picks = {'a0': const AiPick('a0', 'X', 'y')};
       final out = mixAiCards(
@@ -317,6 +391,12 @@ void main() {
       expect(out, hasLength(2));
     });
   });
+}
+
+class _SlowClient implements AiRecommendationClient {
+  final gate = Completer<List<AiSuggestion>>();
+  @override
+  Future<List<AiSuggestion>> recommend(AiTasteProfile profile) => gate.future;
 }
 
 class _Throwing implements AiRecommendationClient {

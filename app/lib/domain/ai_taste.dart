@@ -115,7 +115,10 @@ List<RankedCard> mixAiCards(
       RankedCard(
         c.title,
         c.score + boost,
+        // The pick's own reason replaces any "Because you liked <seed>"
+        // line: a card shows exactly one reason.
         picks[c.title.id]?.reason ?? c.reason,
+        becauseOf: c.becauseOf,
       ),
   ];
   final out = <RankedCard>[];

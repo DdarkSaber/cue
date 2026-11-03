@@ -27,6 +27,17 @@ class AiRecommendationRepository {
   final DateTime Function() _now;
 
   static const _key = 'aiPicks.v1';
+
+  /// Bumped whenever picks are forgotten, so a refresh that was already in
+  /// flight when the toggle went off cannot store its answer afterwards.
+  static int _forgotten = 0;
+
+  /// Deletes the stored picks of [profileId] (the toggle went off).
+  static Future<void> forget(ProfileRepository profiles, String profileId) {
+    _forgotten++;
+    return profiles.setRawSetting(profileId, _key, null);
+  }
+
   static const minPositive = 5;
   static const refreshAfter = Duration(hours: 4);
   static const refreshAfterNewRatings = 5;
@@ -58,8 +69,7 @@ class AiRecommendationRepository {
   Future<Map<String, AiPick>> picks(String profileId) async =>
       (await _load(profileId)).picks;
 
-  Future<void> clear(String profileId) =>
-      profiles.setRawSetting(profileId, _key, null);
+  Future<void> clear(String profileId) => forget(profiles, profileId);
 
   static int ratedCount(ProfileSignals s) =>
       s.library.values.where((e) => e.rating != null).length;
@@ -76,6 +86,7 @@ class AiRecommendationRepository {
     Set<MediaKind> enabledKinds, {
     bool force = false,
   }) async {
+    final generation = _forgotten;
     final stored = await _load(profileId);
     final rated = ratedCount(signals);
     final due =
@@ -121,7 +132,7 @@ class AiRecommendationRepository {
       return false;
     }
     final resolved = await _resolve(suggestions, signals, titles, kinds);
-    if (resolved.isEmpty) return false;
+    if (resolved.isEmpty || generation != _forgotten) return false;
     await profiles.setRawSetting(
       profileId,
       _key,

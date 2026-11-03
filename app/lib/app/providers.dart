@@ -5,6 +5,8 @@ import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
+import '../data/ai_recommendation_repository.dart'
+    show AiRecommendationRepository;
 import '../data/anilist_client.dart';
 import '../data/backup_service.dart';
 import '../data/catalog_gateway.dart';
@@ -124,8 +126,13 @@ class SettingsController extends AsyncNotifier<AppSettings> {
     final repo = ref.read(profileRepositoryProvider);
     final saved = _pending.then((_) async {
       final id = await profile;
-      final next = edit(await repo.loadSettings(id));
+      final before = await repo.loadSettings(id);
+      final next = edit(before);
       await repo.saveSettings(id, next);
+      // Turning AI picks off also deletes the stored suggestions.
+      if (before.aiPicks && !next.aiPicks) {
+        await AiRecommendationRepository.forget(repo, id);
+      }
       if (ref.mounted && ref.read(profileIdProvider).value == id) {
         state = AsyncData(next);
       }
