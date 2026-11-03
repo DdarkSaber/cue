@@ -39,6 +39,10 @@ class AiRecommendationRepository {
   }
 
   static const minPositive = 5;
+
+  /// Most suggestions looked up per refresh. Lookups are batched through the
+  /// same paced AniList client as discovery (12 per request).
+  static const maxLookups = 30;
   static const refreshAfter = Duration(hours: 4);
   static const refreshAfterNewRatings = 5;
 
@@ -173,8 +177,9 @@ class AiRecommendationRepository {
     };
     final out = <AiPick>[];
     final seen = <String>{};
-    for (var i = 0; i < suggestions.length; i += ImportMatcher.batchSize) {
-      final chunk = suggestions.skip(i).take(ImportMatcher.batchSize).toList();
+    final wanted = suggestions.take(maxLookups).toList();
+    for (var i = 0; i < wanted.length; i += ImportMatcher.batchSize) {
+      final chunk = wanted.skip(i).take(ImportMatcher.batchSize).toList();
       final List<MatchedRecord> matched;
       try {
         matched = await matcher.match([

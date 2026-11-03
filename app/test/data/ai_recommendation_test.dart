@@ -313,6 +313,15 @@ void main() {
       expect(await profiles.rawSetting(pid, 'aiPicks.v1'), isNull);
     });
 
+    test('one refresh looks up at most 30 suggestions in batches', () async {
+      client.out = [for (var i = 0; i < 100; i++) sug('Nothing $i', 'Liked 1')];
+      final signals = await library.signals(pid);
+      await repo.refreshIfDue(pid, signals, {MediaKind.anime});
+      // 30 names at 12 per request is 3 batches (the fake logs one call each).
+      expect(gateway.matchCalls, inInclusiveRange(1, 6));
+      expect(AiRecommendationRepository.maxLookups, 30);
+    });
+
     test('source is inert while the toggle is off', () async {
       final source = AiTasteSource(repo);
       final signals = await library.signals(pid);

@@ -93,6 +93,11 @@ now bounds the work:
   ones.
 - The budget closes early once 100 unseen titles have arrived.
 
+AI picks sit outside this budget but are bounded on their own: a refresh runs
+at most once every four hours (or after five new ratings), looks up at most 30
+suggested names, in batches of 12 (about three AniList requests), through the
+same paced client.
+
 At the paced rate 12 requests is about 24 seconds of AniList time.
 
 There is no page ceiling. A route is exhausted only when every order has
