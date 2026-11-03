@@ -63,15 +63,49 @@ class FakeGateway implements CatalogGateway {
   final calls = <String>[];
   final searchResults = <String, List<Map<String, dynamic>>>{};
 
+  /// Extra discover orders per kind (AniList-style), each with its own
+  /// pages in [sortedPages] keyed `kind:SORT`. Kinds not listed have only
+  /// the default order, as the Worker's sources do.
+  final Map<MediaKind, List<String?>> sorts = {};
+  final Map<String, List<List<Map<String, dynamic>>>> sortedPages = {};
+
+  @override
+  List<String?> discoverSorts(MediaKind kind) => sorts[kind] ?? const [null];
+
+  /// "More like this" lists keyed `provider:id`; every ask is logged.
+  final recommendationLists = <String, List<Map<String, dynamic>>>{};
+  final recommendationCalls = <String>[];
+
+  @override
+  Future<List<List<CatalogItemDto>>> recommendations(
+    List<SeedRef> seeds,
+  ) async {
+    recommendationCalls.addAll([
+      for (final s in seeds) '${s.provider}:${s.providerId}',
+    ]);
+    if (offline) throw const CatalogUnavailable('offline');
+    return [
+      for (final s in seeds)
+        (recommendationLists['${s.provider}:${s.providerId}'] ?? const [])
+            .map(CatalogItemDto.new)
+            .toList(),
+    ];
+  }
+
   @override
   Future<CatalogPageDto> discover(
     MediaKind kind, {
     String? mood,
     int page = 1,
+    String? sort,
   }) async {
-    calls.add('discover:${kind.name}:${mood ?? '-'}:$page');
+    final order = sorts[kind];
+    final isDefault = sort == null || order == null || sort == order.first;
+    calls.add(
+      'discover:${kind.name}:${mood ?? '-'}:$page${isDefault ? '' : ':$sort'}',
+    );
     if (offline) throw const CatalogUnavailable('offline');
-    final list = pages[kind];
+    final list = isDefault ? pages[kind] : sortedPages['${kind.name}:$sort'];
     if (list == null) throw const CatalogUnavailable('not_configured');
     if (page > list.length) return const CatalogPageDto([], false);
     return CatalogPageDto(
