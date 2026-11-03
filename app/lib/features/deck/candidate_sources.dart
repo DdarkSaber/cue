@@ -137,9 +137,11 @@ class AiPicksPrompt extends ConsumerWidget {
     void answer(bool on) => ref
         .read(settingsProvider.notifier)
         .change((x) => x.copyWith(aiPicks: on, aiPicksPromptSeen: true));
+    // Short screens get a compact prompt: the deck column cannot scroll.
+    final compact = MediaQuery.sizeOf(context).height < 760;
     return Container(
       margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.fromLTRB(12, compact ? 6 : 12, 4, compact ? 0 : 4),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(CueRadius.chip),
         border: Border.all(color: CueColors.textMuted.withValues(alpha: 0.4)),
@@ -149,12 +151,18 @@ class AiPicksPrompt extends ConsumerWidget {
         children: [
           const Text(
             'Want picks that understand your taste?',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Cue can ask an AI service (Groq or Google Gemini) for ideas based on the names of titles you liked and disliked. Only those names are sent, never your ratings, notes or dates. Every idea is checked against the real catalog. Off unless you say yes; change it any time in Settings.',
-            style: TextStyle(fontSize: 13, color: CueColors.textMuted),
+          Text(
+            compact
+                ? 'Sends only the names of titles you liked or disliked to an AI service. Off unless you say yes.'
+                : 'Cue can ask an AI service (Groq or Google Gemini) for ideas based on the names of titles you liked and disliked. Only those names are sent, never your ratings, notes or dates. Every idea is checked against the real catalog. Off unless you say yes; change it any time in Settings.',
+            maxLines: compact ? 2 : null,
+            overflow: compact ? TextOverflow.ellipsis : null,
+            style: const TextStyle(fontSize: 13, color: CueColors.textMuted),
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
