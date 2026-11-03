@@ -58,9 +58,10 @@ class _SlowGateway extends FakeGateway {
     MediaKind kind, {
     String? mood,
     int page = 1,
+    String? sort,
   }) async {
     await gate.future;
-    return super.discover(kind, mood: mood, page: page);
+    return super.discover(kind, mood: mood, page: page, sort: sort);
   }
 }
 
