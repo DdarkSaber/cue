@@ -44,7 +44,10 @@ the documented debug-key fallback, not a store-ready release.
 The bounded architecture targets Cloudflare's free plan. Quotas and provider
 policies can change; handle unavailable/quota errors rather than assuming
 guaranteed capacity. Configure your own KV/D1 IDs and `ALLOWED_ORIGINS` in
-`worker/wrangler.toml`.
+`worker/wrangler.toml`. Production `ALLOWED_ORIGINS` must not list localhost; for
+`npm run dev` copy `worker/.dev.vars.example` to `worker/.dev.vars`, which adds the
+localhost web origins locally. Release Android builds enable R8 shrinking
+(`android/app/proguard-rules.pro`); tests use `@cloudflare/vitest-plugin`.
 
 ```sh
 cd worker

@@ -7,3 +7,32 @@
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Resource-Policy: same-origin
   X-Frame-Options: DENY
+
+# Entry points are not content-hashed: always revalidate so a deploy is picked up.
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/flutter_bootstrap.js
+  Cache-Control: no-cache
+/flutter_service_worker.js
+  Cache-Control: no-cache
+/main.dart.js
+  Cache-Control: no-cache
+/version.json
+  Cache-Control: no-cache
+/manifest.json
+  Cache-Control: no-cache
+# Large, rarely changing binaries and static art.
+/sqlite3.wasm
+  Cache-Control: public, max-age=604800
+/drift_worker.js
+  Cache-Control: public, max-age=604800
+/canvaskit/*
+  Cache-Control: public, max-age=604800
+/assets/*
+  Cache-Control: public, max-age=86400
+/icons/*
+  Cache-Control: public, max-age=604800
+/favicon.png
+  Cache-Control: public, max-age=604800

@@ -1,7 +1,11 @@
 {
     "name": "Cue",
     "short_name": "Cue",
-    "start_url": ".",
+    "id": "/",
+    "scope": "/",
+    "start_url": "/",
+    "lang": "en",
+    "categories": ["entertainment", "lifestyle"],
     "display": "standalone",
     "background_color": "#080A0D",
     "theme_color": "#080A0D",
