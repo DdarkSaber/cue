@@ -2,7 +2,13 @@ name: ci
 
 on:
   push:
+    branches: [main]
   pull_request:
+
+# A newer push to the same ref supersedes the run in flight.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -11,16 +17,18 @@ jobs:
   app:
     # Windows so golden images match the machine they were recorded on.
     runs-on: windows-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: app
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
           flutter-version: 3.47.9
           cache: true
+          pub-cache: true
       - run: flutter --disable-analytics
       - run: flutter pub get
       - run: dart format --output=none --set-exit-if-changed lib test
@@ -28,18 +36,19 @@ jobs:
       - run: dart run build_runner build --delete-conflicting-outputs
       - run: git diff --exit-code -- lib
       - run: flutter analyze
-      - run: flutter test
+      - run: flutter test --concurrency=2 --exclude-tags live
       - run: flutter build web --release --no-web-resources-cdn
       - run: flutter pub outdated
 
   worker:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: worker
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
