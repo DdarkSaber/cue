@@ -149,6 +149,8 @@ class SwipeDeckState extends State<SwipeDeck>
     if (_exiting) return;
     _exiting = true;
     _engine.reset();
+    // A firmer tick when the choice lands, whether swiped or tapped.
+    if (widget.haptics) unawaited(HapticFeedback.mediumImpact());
     final screen = MediaQuery.sizeOf(context);
     if (_reduce) {
       // Cross-fade only: no rotation, no fly-out.

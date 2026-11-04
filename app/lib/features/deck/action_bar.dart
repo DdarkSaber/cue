@@ -159,8 +159,14 @@ class _ActionItem extends StatelessWidget {
       ),
     );
     final hint = keyHint;
+    final described = Semantics(
+      hint: decision == Decision.notNow && enabled
+          ? 'Long press to choose how long to hide it'
+          : null,
+      child: button,
+    );
     return desktop && hint != null
-        ? Tooltip(message: '$label ($hint)', child: button)
-        : button;
+        ? Tooltip(message: '$label ($hint)', child: described)
+        : described;
   }
 }

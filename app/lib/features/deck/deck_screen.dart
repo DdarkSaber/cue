@@ -24,6 +24,7 @@ import 'loading_card.dart';
 import 'mood_rail.dart';
 import 'mood_read_chip.dart';
 import '../imports/import_job.dart';
+import '../onboarding/taste_quickstart.dart';
 import 'swipe_tutorial.dart';
 import 'poster.dart';
 import 'swipe_deck.dart';
@@ -56,9 +57,10 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => maybeShowSwipeTutorial(context, ref),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await maybeOfferTasteQuickstart(context, ref);
+      if (mounted) await maybeShowSwipeTutorial(context, ref);
+    });
   }
 
   @override
@@ -67,9 +69,15 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
     super.dispose();
   }
 
-  void _say(String text, {Decision? decision}) => setState(
-    () => _toast = ToastMessage(text, decision: decision, id: ++_toastId),
-  );
+  void _say(String text, {Decision? decision, VoidCallback? onUndo}) =>
+      setState(
+        () => _toast = ToastMessage(
+          text,
+          decision: decision,
+          id: ++_toastId,
+          onUndo: onUndo,
+        ),
+      );
 
   /// Every way in (swipe, button, key, screen reader) lands here.
   Future<void> _onSwipe(SwipeDirection dir) async {
@@ -81,6 +89,7 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
     _say(
       toastText(decision, reading: top.title.kind.isReading),
       decision: decision,
+      onUndo: () => unawaited(_undo()),
     );
     final defer = decision == Decision.notNow ? _pendingDefer : null;
     final reason = decision == Decision.notNow ? _pendingReason : null;
@@ -168,6 +177,16 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
       final top = ref.read(deckControllerProvider).top;
       if (top == null) return KeyEventResult.ignored;
       unawaited(_tryNow(top.title.id));
+      return KeyEventResult.handled;
+    }
+    if (e.logicalKey == LogicalKeyboardKey.keyU ||
+        (e.logicalKey == LogicalKeyboardKey.keyZ &&
+            (HardwareKeyboard.instance.isControlPressed ||
+                HardwareKeyboard.instance.isMetaPressed))) {
+      if (!ref.read(deckControllerProvider).canUndo) {
+        return KeyEventResult.ignored;
+      }
+      unawaited(_undo());
       return KeyEventResult.handled;
     }
     final dir = switch (e.logicalKey) {
@@ -303,6 +322,7 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
               const MoodRail(),
               const MoodReadChip(),
               const ImportJobBanner(),
+              const TasteHint(),
               const AiPicksPrompt(),
               if (deck.notice != null)
                 Padding(
@@ -365,22 +385,37 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
               if (desktop) ...[
                 const SizedBox(height: CueSpace.sm),
                 Center(
-                  child: TextButton.icon(
-                    onPressed: deck.canUndo ? _undo : null,
-                    icon: const CueIcon(CueIcons.undo, size: 16),
-                    label: const Text('Undo'),
-                    style: TextButton.styleFrom(
-                      minimumSize: const Size(
-                        CueSize.minTarget,
-                        CueSize.minTarget,
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    alignment: WrapAlignment.center,
+                    spacing: 18,
+                    children: [
+                      TextButton.icon(
+                        onPressed: deck.canUndo ? _undo : null,
+                        icon: const CueIcon(CueIcons.undo, size: 16),
+                        label: const Text('Undo (U)'),
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(
+                            CueSize.minTarget,
+                            CueSize.minTarget,
+                          ),
+                          foregroundColor: const Color(0xFFC1CEDD),
+                          disabledForegroundColor: const Color(0x66C1CEDD),
+                          textStyle: const TextStyle(
+                            fontFamily: cueFontFamily,
+                            fontSize: 12,
+                          ),
+                        ),
                       ),
-                      foregroundColor: const Color(0xFFC1CEDD),
-                      disabledForegroundColor: const Color(0x66C1CEDD),
-                      textStyle: const TextStyle(
-                        fontFamily: cueFontFamily,
-                        fontSize: 12,
+                      const Text(
+                        'Keys: arrows choose · Shift+Enter Try now · '
+                        'U undo · click card for details',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF9FADBD),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ],

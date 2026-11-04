@@ -16,10 +16,13 @@ String toastText(Decision d, {required bool reading}) => switch (d) {
 };
 
 class ToastMessage {
-  const ToastMessage(this.text, {this.decision, this.id = 0});
+  const ToastMessage(this.text, {this.decision, this.id = 0, this.onUndo});
   final String text;
   final Decision? decision;
   final int id;
+
+  /// When set the toast offers a tappable Undo.
+  final VoidCallback? onUndo;
 }
 
 /// Dark glass pill with the action's colour dot. Sits above the card's
@@ -43,9 +46,14 @@ class _DeckToastState extends State<DeckToast> {
     if (m != null && m.id != oldWidget.message?.id) {
       _timer?.cancel();
       setState(() => _shown = m);
-      _timer = Timer(const Duration(milliseconds: 2200), () {
-        if (mounted) setState(() => _shown = null);
-      });
+      _timer = Timer(
+        (widget.message?.onUndo != null
+            ? const Duration(milliseconds: 4200)
+            : const Duration(milliseconds: 2200)),
+        () {
+          if (mounted) setState(() => _shown = null);
+        },
+      );
     }
   }
 
@@ -60,6 +68,7 @@ class _DeckToastState extends State<DeckToast> {
     final m = _shown;
     final reduce = context.reduceMotion;
     return IgnorePointer(
+      ignoring: m?.onUndo == null,
       child: AnimatedSwitcher(
         duration: reduce ? Duration.zero : const Duration(milliseconds: 220),
         switchInCurve: const Cubic(0.2, 0.8, 0.2, 1),
@@ -118,6 +127,25 @@ class _DeckToastState extends State<DeckToast> {
                               ),
                             ),
                           ),
+                          if (m.onUndo != null)
+                            TextButton(
+                              onPressed: () {
+                                _timer?.cancel();
+                                setState(() => _shown = null);
+                                m.onUndo!();
+                              },
+                              style: TextButton.styleFrom(
+                                minimumSize: const Size(
+                                  CueSize.minTarget,
+                                  CueSize.minTarget,
+                                ),
+                                foregroundColor: CueColors.accent,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                ),
+                              ),
+                              child: const Text('Undo'),
+                            ),
                         ],
                       ),
                     ),

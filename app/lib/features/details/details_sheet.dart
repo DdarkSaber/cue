@@ -49,6 +49,18 @@ Future<Decision?> showDetailsSheet(
       : null,
 );
 
+/// Where a reason line came from, in plain words; null when the line
+/// already says it (or is a plain description of the work).
+String? reasonSource(String reason) {
+  if (reason.startsWith('Because you liked')) {
+    return 'From the catalog’s “more like this” links for a title you rated well.';
+  }
+  if (reason.contains('your imports')) {
+    return 'Based on imported history, which is not a confirmed like.';
+  }
+  return null;
+}
+
 class DetailsBody extends ConsumerStatefulWidget {
   const DetailsBody({super.key, required this.title, this.reason});
   final Title title;
@@ -113,14 +125,50 @@ class _DetailsBodyState extends ConsumerState<DetailsBody> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (widget.reason != null && widget.reason!.isNotEmpty)
+        if (widget.reason != null && widget.reason!.isNotEmpty) ...[
+          const CueSectionLabel('Why you are seeing this'),
           Text(
             widget.reason!,
             style: const TextStyle(fontSize: 15, color: Color(0xFFC1DEF7)),
           ),
+          if (reasonSource(widget.reason!) case final note?)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(note, style: muted.copyWith(fontSize: 13)),
+            ),
+        ],
         if (t.synopsis != null) ...[
           const CueSectionLabel('The story'),
           Text(t.synopsis!, style: const TextStyle(fontSize: 15, height: 1.55)),
+        ] else
+          const Padding(
+            padding: EdgeInsets.only(top: CueSpace.md),
+            child: Text(
+              'No synopsis from the catalog for this title.',
+              style: TextStyle(fontSize: 14, color: CueColors.textMuted),
+            ),
+          ),
+        if (t.genres.isNotEmpty || t.tags.isNotEmpty) ...[
+          const CueSectionLabel('Genres and themes'),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final g in {...t.genres, ...t.tags.take(8)})
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0x0AFFFFFF),
+                    borderRadius: BorderRadius.circular(CueRadius.chip),
+                    border: Border.all(color: CueColors.line),
+                  ),
+                  child: Text(g, style: const TextStyle(fontSize: 13)),
+                ),
+            ],
+          ),
         ],
         const CueSectionLabel('Details'),
         for (final (k, v) in facts)
@@ -150,28 +198,6 @@ class _DetailsBodyState extends ConsumerState<DetailsBody> {
                 style: const TextStyle(fontSize: 14),
               ),
             ),
-        ],
-        if (t.genres.isNotEmpty || t.tags.isNotEmpty) ...[
-          const CueSectionLabel('Genres and themes'),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final g in {...t.genres, ...t.tags.take(8)})
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0x0AFFFFFF),
-                    borderRadius: BorderRadius.circular(CueRadius.chip),
-                    border: Border.all(color: CueColors.line),
-                  ),
-                  child: Text(g, style: const TextStyle(fontSize: 13)),
-                ),
-            ],
-          ),
         ],
         // Shown only when a source actually lists services; without a TMDB
         // key there never is one, and an empty section looks broken.

@@ -91,12 +91,14 @@ void main() {
       await t.tap(find.text('Not now'));
       await t.pumpAndSettle();
       expect(find.byTooltip('Undo last swipe'), findsOneWidget);
-      expect(find.text('Undo'), findsNothing);
+      // The confirmation toast offers its own tappable Undo for a few seconds.
+      expect(find.text('Undo'), findsOneWidget);
     });
 
     testWidgets('desktop keeps a visible Undo under the actions', (t) async {
       await pumpCue(t, size: desktop);
-      expect(find.text('Undo'), findsOneWidget);
+      expect(find.text('Undo (U)'), findsOneWidget);
+      expect(find.textContaining('Shift+Enter Try now'), findsOneWidget);
       expect(find.byTooltip('Undo last swipe'), findsNothing);
     });
   });

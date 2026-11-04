@@ -26,6 +26,24 @@ Skip, dismissal and Haven't started do not assume consumption or liking.
 Optional follow-up prompts concern older unrated saved picks and respect
 dismissal. Rating Undo checks for newer edits.
 
+## First-run taste quickstart
+
+With fewer than five liked titles (Favourite, Enjoyed, Would rewatch, Rewatched
+or Will try), Cue offers a skippable "Pick a few you loved" screen once, and the
+deck keeps a quiet "Teach Cue your taste" hint until you have enough. It shows
+popular titles across your enabled formats (offline it falls back to the cached
+catalog) with a search box. Picks are saved as explicit Favourite ratings, so
+picks and "Because you liked X" work without an import. Skipping uploads and
+saves nothing.
+
+## Deck help
+
+Each decision shows a confirmation with a tappable Undo for a few seconds; Undo
+also sits in the header (phone) or under the actions (desktop). Keys on desktop:
+arrows decide, Shift+Enter Try now, U (or Ctrl/Cmd+Z) Undo. Choices give a short
+haptic tick on Android. Details lead with why the title was suggested, then the
+story, genres, facts and watch options, and scroll at 2x text on small screens.
+
 ## Imports and separate libraries
 
 Supported inputs include MyAnimeList XML, Netflix viewing activity,
