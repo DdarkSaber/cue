@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../features/deck/deck_screen.dart';
 import '../features/imports/import_screen.dart' deferred as importer;
 import '../features/library/library_screen.dart';
+import '../features/onboarding/taste_quickstart.dart';
 import '../features/settings/settings_screen.dart' deferred as settings;
 import '../features/shortlist/shortlist_screen.dart';
 import '../features/sync/sync_page.dart' deferred as sync;
@@ -23,6 +24,7 @@ abstract final class CueRoutes {
   static const library = '/library';
   static const settings = '/settings';
   static const importer = '/library/import';
+  static const taste = '/taste';
   static String libraryContents(String profileId) =>
       '/settings/library/${Uri.encodeComponent(profileId)}';
 }
@@ -30,6 +32,10 @@ abstract final class CueRoutes {
 GoRouter buildRouter({String initialLocation = CueRoutes.forYou}) => GoRouter(
   initialLocation: initialLocation,
   routes: [
+    GoRoute(
+      path: CueRoutes.taste,
+      builder: (_, _) => const TasteQuickstartScreen(),
+    ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, shell) => AppShell(navigationShell: shell),
       branches: [
