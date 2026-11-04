@@ -63,9 +63,14 @@ route per enabled kind plus at most three supported related-mood routes,
 with a total cap of 12 route slots. Enabled-kind order rotates. The first
 related ("taste") route goes to the kind you rate most, the others to the
 kinds you rate least. Missing kinds are refilled even if another kind fills
-the cache; unavailable formats are reported. A refill checks up to four
-rounds while fewer than 20 eligible candidates are cached. Swiping refills
-again as the deck runs low.
+the cache (at most once every two minutes); unavailable formats are reported.
+
+Retrieval is demand driven. A refill runs only when fewer than 30 unseen,
+eligible titles are cached for the current filters; with more than that,
+swiping makes no catalog request at all, however many cards are swiped.
+A refill checks up to four rounds until 30 are cached. Refills are
+single-flight: a cycle in progress is never started again, and a re-rank
+that is requested meanwhile waits for it.
 
 AniList discovery pages through five orders, each with its own cursor:
 popularity, trending, score, favourites and newest (newest skips announced
@@ -81,7 +86,7 @@ titles arrive. A page that is short but new does not trigger more requests.
 
 Worst case without a cap is 12 route slots x 3 requests, plus background
 continuations, all queued behind a 30-a-minute limit. A single `RequestBudget`
-now bounds the work:
+bounds each cycle, and one token bucket bounds the device:
 
 - **12 provider requests per refill cycle** (all rounds, every route, and the
   taste-seeded call, which counts as one request).
@@ -93,12 +98,19 @@ now bounds the work:
   ones.
 - The budget closes early once 100 unseen titles have arrived.
 
-AI picks sit outside this budget but are bounded on their own: a refresh runs
+All AniList traffic shares one bucket of **25 requests in any 60 seconds**
+(the limit is 30; the margin leaves room for 429 retries). When it is empty,
+the waiting request with the highest priority goes first: a deck refill, then
+taste seeds, then AI-pick name lookups. Imports, search and details count as
+deck priority.
+
+AI picks sit outside the per-cycle budget but are bounded on their own: a refresh runs
 at most once every four hours (or after five new ratings), looks up at most 30
 suggested names, in batches of 12 (about three AniList requests), through the
 same paced client.
 
-At the paced rate 12 requests is about 24 seconds of AniList time.
+At the paced rate 12 requests is about 24 seconds of AniList time, which is
+why a refill happens only when the cache runs thin, not on a swipe count.
 
 There is no page ceiling. A route is exhausted only when every order has
 reported its final page; cursors refresh after seven days. AniList pages
@@ -118,8 +130,9 @@ then Would rewatch and Enjoyed, then Once was enough, most recently finished
 first. Imported completed or watching history fills in without ratings.
 Okay, negative, planned and dropped titles never seed.
 
-On each retrieval, Cue asks about at most four seeds not asked in the last
-seven days:
+On each refill, and once after launch or a taste change even when the cache is
+deep (in the background, one request), Cue asks about at most four seeds not
+asked in the last seven days:
 
 - AniList `Media.recommendations`, sorted `RATING_DESC`, 15 per seed, four
   seeds per request. Entries with a non-positive community rating, adult
@@ -135,7 +148,14 @@ personal data; Cue joins them with the active library's seeds in memory.
 Hard filters and library exclusions still apply. A candidate recommended by
 one seed scores +0.04, plus 0.04 per further liked seed, capped at +0.12. Its
 reason reads "Because you liked [seed title]." The card's `becauseOf` field lists
-the seed catalog IDs, strongest first, for other surfaces.
+the seed catalog IDs, strongest first, for other surfaces. When a seeded fetch
+or an AI-picks refresh finishes and adds candidates, the cards not yet shown are
+re-ranked at once, with the card on screen kept, so the picks appear without a
+swipe.
+
+Recommendation edges are pruned at most once a day: rows are kept for the
+current top 24 seeds and for 90 days after they were fetched; older edges of
+seeds that are no longer top seeds are deleted.
 
 Hard filters and saved-history exclusions apply to every exact-match route and
 exploration slot. A bounded batch or network failure is not proof of exhaustion.
@@ -172,11 +192,24 @@ when hidden, and formats disabled in Settings. No titles are fabricated.
 Only when no eligible title is reachable at all (for example offline with an
 empty cache) does Cue show a non-card state: a friendly message with Try again
 and Choose from saved. Offline refills retry automatically (5 s doubling to a
-minute) and immediately when the app returns to the foreground.
+minute) and immediately when the app returns to the foreground. A deck of
+fewer than eight cards after a refused catalog (429 or a 5xx) retries on its
+own the same way, waiting at least as long as the provider's Retry-After (up to
+ten minutes). The retry stops when the screen closes or the filters change.
 
 On launch, the deck is ranked from the local cache with current taste and shown
 at once while the network refill runs; the card on screen is kept when the
 refill finishes.
+
+## Deal time with a large cache
+
+Hard exclusions run in the cache query, not after loading it: library,
+shortlist, Not now, Not interested, franchise exclusions, disabled formats,
+novels, music and hidden adult titles never leave the database. With no
+filters, at most 8,000 candidates load: 5,000 by best score and 3,000 most
+recently cached, in storage order when the cache is smaller. A filtered deck
+loads every match, so a narrow filter is never cut short. A cache of 20,000
+titles deals in the same time as one of 8,000.
 
 ## Familiar, adjacent and exploring picks
 

@@ -7,7 +7,7 @@ import '../../app/providers.dart';
 import 'candidate_sources.dart';
 import '../../data/catalog_gateway.dart';
 import '../../data/catalog_repository.dart'
-    show CatalogPageState, RequestBudget;
+    show CatalogPageState, CatalogRepository, RequestBudget;
 import '../../domain/ai_taste.dart' show AiPick;
 import '../../domain/decisions.dart';
 import '../../domain/models/settings.dart' show AppSettings;
@@ -166,6 +166,18 @@ class DeckController extends Notifier<DeckState> {
   static const refillBelow = 8;
   static const maxRefillRounds = 4;
 
+  /// The catalog is asked for more only when fewer than this many unseen,
+  /// eligible titles are cached for the current filters. Above it, swiping
+  /// never costs a provider request.
+  static const eligibleWatermark = 30;
+
+  /// A missing format (nothing eligible cached for it) is looked for again
+  /// no more often than this, so an empty format cannot ask on every swipe.
+  static const missingKindEvery = Duration(minutes: 2);
+
+  /// Longest wait a provider's Retry-After can add to the retry backoff.
+  static const retryAfterMax = Duration(minutes: 10);
+
   /// Background searches for exact matches while relaxed cards are shown.
   static const maxContinuations = 3;
 
@@ -187,6 +199,9 @@ class DeckController extends Notifier<DeckState> {
   DeckFilters? _continuedFor;
   Timer? _retryTimer;
   int _retryAttempt = 0;
+  bool _seeding = false;
+  DateTime? _missingKindAt;
+  bool _pruned = false;
 
   @override
   DeckState build() {
@@ -228,12 +243,16 @@ class DeckController extends Notifier<DeckState> {
 
   /// Retries an offline refill automatically with a capped backoff, so the
   /// deck recovers as soon as the connection does.
-  void _scheduleRetry() {
+  void _scheduleRetry({Duration? retryAfter}) {
     if (_retryTimer != null) return;
     final seconds = retryBase.inSeconds * (1 << _retryAttempt.clamp(0, 4));
-    final delay = Duration(seconds: seconds) > retryMax
+    var delay = Duration(seconds: seconds) > retryMax
         ? retryMax
         : Duration(seconds: seconds);
+    // A provider that said how long to wait is believed, within reason.
+    if (retryAfter != null && retryAfter > delay) {
+      delay = retryAfter > retryAfterMax ? retryAfterMax : retryAfter;
+    }
     _retryAttempt++;
     _retryTimer = Timer(delay, () {
       _retryTimer = null;
@@ -514,9 +533,23 @@ class DeckController extends Notifier<DeckState> {
     var signals = await library.signals(profileId);
     if (!ref.mounted) return;
     for (final source in ref.read(candidateSourcesProvider)) {
-      source.refill(profileId, signals, _enabledKinds, settings);
+      source.refill(
+        profileId,
+        signals,
+        _enabledKinds,
+        settings,
+        onAdded: _rerankUpcoming,
+      );
     }
-    var pool = await _pool(filters, kinds, signals);
+    if (!_pruned) {
+      _pruned = true;
+      unawaited(
+        catalog
+            .pruneRecommendations(signals.tasteSeeds.take(24))
+            .then<void>((_) {}, onError: (Object _) {}),
+      );
+    }
+    var pool = await _pool(filters, kinds, signals, settings);
     if (!ref.mounted) return;
     final history = signals.library.values.toList()
       ..sort(
@@ -536,17 +569,21 @@ class DeckController extends Notifier<DeckState> {
     var offline = false;
     var failed = false;
     var advanced = false;
+    var transient = false;
+    Duration? retryAfter;
 
-    int eligibleCount() => pool
+    int unseenCount() => pool
         .where(
-          (t) => ranker.eligible(
-            t,
-            signals,
-            filters,
-            showAdult: settings.showAdult,
-            enabledKinds: _enabledKinds,
-            includeRewatchesDefault: settings.includeRewatches,
-          ),
+          (t) =>
+              !_temporary.shown.contains(t.id) &&
+              ranker.eligible(
+                t,
+                signals,
+                filters,
+                showAdult: settings.showAdult,
+                enabledKinds: _enabledKinds,
+                includeRewatchesDefault: settings.includeRewatches,
+              ),
         )
         .length;
 
@@ -565,11 +602,25 @@ class DeckController extends Notifier<DeckState> {
         ))
           kind,
     };
-    final needsRefill =
-        !filters.isRevisit &&
-        (_wantRetrieval ||
-            eligibleCount() < Ranker.deckSize * 2 ||
-            (filters.activeCount == 0 && missingKinds.isNotEmpty));
+    // Demand driven: ask the catalog only when the cache is running thin for
+    // these filters, never on a swipe count.
+    final thin = unseenCount() < eligibleWatermark;
+    final missingDue =
+        filters.activeCount == 0 &&
+        missingKinds.isNotEmpty &&
+        (_missingKindAt == null ||
+            ref.read(clockProvider)().difference(_missingKindAt!) >=
+                missingKindEvery);
+    final needsRefill = !filters.isRevisit && (thin || missingDue);
+    if (needsRefill && !thin) {
+      _missingKindAt = ref.read(clockProvider)();
+    }
+    // Taste changed but the cache is deep: only the cheap seed lookup runs,
+    // in the background, and re-ranks the deck if it brings anything.
+    if (!needsRefill && _wantRetrieval && !filters.isRevisit) {
+      _seedInBackground(catalog, signals);
+      _wantRetrieval = false;
+    }
 
     // Instant open: deal from the cache now and look further meanwhile.
     if (needsRefill && state.cards.isEmpty) {
@@ -609,12 +660,10 @@ class DeckController extends Notifier<DeckState> {
       final budget = _continuing
           ? _continuationBudget
           : RequestBudget(limit: refillRequestBudget);
-      final refillKinds =
-          (_wantRetrieval || eligibleCount() < Ranker.deckSize * 2
-                  ? kinds
-                  : missingKinds)
-              .difference(filters.excludedKinds);
-      final routes = _wantRetrieval
+      final refillKinds = (thin ? kinds : missingKinds).difference(
+        filters.excludedKinds,
+      );
+      final routes = thin
           ? retrievalPlan(
               kinds.difference(filters.excludedKinds),
               [
@@ -642,11 +691,14 @@ class DeckController extends Notifier<DeckState> {
           : null;
       // Taste-seeded retrieval: "more like this" for the strongest likes.
       // A bonus route; its failure never blocks the broad refill below.
-      if (_wantRetrieval && signals.tasteSeeds.isNotEmpty) {
+      if (thin && signals.tasteSeeds.isNotEmpty && !_seeding) {
+        _seeding = true;
         try {
           await catalog.fetchSeeded(signals.tasteSeeds, budget: budget);
         } on CatalogUnavailable {
           // Retried on a later retrieval.
+        } finally {
+          _seeding = false;
         }
         if (!ref.mounted) return;
       }
@@ -662,17 +714,19 @@ class DeckController extends Notifier<DeckState> {
         offline = result.offline;
         failed = result.failed;
         advanced = result.advanced;
+        transient = result.transient;
+        retryAfter = result.retryAfter ?? retryAfter;
         if (!ref.mounted) return;
         signals = await library.signals(profileId);
         if (!ref.mounted) return;
-        pool = await _pool(filters, kinds, signals);
+        pool = await _pool(filters, kinds, signals, settings);
         if (!ref.mounted) return;
         if (ref.read(deckFiltersProvider) != filters ||
             await _profile != profileId) {
           _again = true;
           return;
         }
-        if (eligibleCount() >= Ranker.deckSize * 2 ||
+        if (unseenCount() >= eligibleWatermark ||
             !result.pending ||
             result.failed ||
             !result.advanced) {
@@ -743,6 +797,12 @@ class DeckController extends Notifier<DeckState> {
       _continuations = 0;
       _continuationBudget = RequestBudget(limit: continuationRequestBudget);
     }
+    // Nothing eligible is left; was anything cached at all? (The pool holds
+    // only dealable titles, so an empty one does not mean an empty cache.)
+    final cachedAny = next.isNotEmpty || pool.isNotEmpty
+        ? true
+        : await catalog.hasCached(kinds);
+    if (!ref.mounted) return;
     final isOffline = refilled ? offline : state.offline;
     // A refused catalog (429, upstream error) is not a recovery: keep the
     // backoff growing instead of asking again every five seconds.
@@ -751,8 +811,12 @@ class DeckController extends Notifier<DeckState> {
       _retryTimer?.cancel();
       _retryTimer = null;
     }
-    if (isOffline || (next.isEmpty && !searching && !filters.isRevisit)) {
-      _scheduleRetry();
+    // A thin deck after a refused catalog (429, 5xx) retries on its own.
+    final thinAfterRefusal = refilled && transient && next.length < refillBelow;
+    if (isOffline ||
+        thinAfterRefusal ||
+        (next.isEmpty && !searching && !filters.isRevisit)) {
+      _scheduleRetry(retryAfter: transient ? retryAfter : null);
     }
     state = state.copyWith(
       cards: next,
@@ -763,7 +827,13 @@ class DeckController extends Notifier<DeckState> {
       catalogPending: catalogPending,
       lengthFallback: composed.lengthFallback,
       emptyMessage: next.isEmpty && !searching
-          ? _emptyMessage(filters, pool, signals, offline: isOffline)
+          ? _emptyMessage(
+              filters,
+              pool,
+              signals,
+              offline: isOffline,
+              cachedAny: cachedAny,
+            )
           : null,
       clearEmpty: next.isNotEmpty || searching,
       notice: notices.isEmpty ? null : notices.join(' '),
@@ -784,6 +854,7 @@ class DeckController extends Notifier<DeckState> {
     List<Title> pool,
     ProfileSignals signals, {
     required bool offline,
+    required bool cachedAny,
   }) {
     if (filters.isRevisit) {
       return ref
@@ -798,11 +869,11 @@ class DeckController extends Notifier<DeckState> {
           .message;
     }
     if (offline) {
-      return pool.isEmpty
+      return !cachedAny
           ? "You're offline, and nothing is saved on this device yet. Cue will try again on its own as soon as you're back online."
           : "You're offline, and you've seen everything saved on this device. Cue will look for more as soon as you're back online.";
     }
-    return pool.isEmpty
+    return !cachedAny
         ? "Cue couldn't reach the catalog just now. It will keep trying, or you can try again."
         : "You've been through everything Cue has checked so far. It will keep looking, or you can try again.";
   }
@@ -828,6 +899,7 @@ class DeckController extends Notifier<DeckState> {
           (e) => e.rating != null || signals.weakHistoryIds.contains(e.titleId),
         )
         .map((e) => e.titleId)
+        .followedBy([...signals.shortlisted, ...signals.tasteSeeds])
         .where((id) => !byId.containsKey(id));
     for (final t in await catalog.titlesByIds(ratedIds)) {
       byId[t.id] = t;
@@ -922,7 +994,9 @@ class DeckController extends Notifier<DeckState> {
               );
       }
     }
-    final wide = filters.kinds.isEmpty ? pool : await catalog.pool(union);
+    final wide = filters.kinds.isEmpty
+        ? pool
+        : await _candidates(catalog, filters, union, signals, settings);
     if (!ref.mounted) return const LadderResult([], {});
     final ladder = runLadder(
       exact: exact,
@@ -953,8 +1027,9 @@ class DeckController extends Notifier<DeckState> {
   Future<List<Title>> _pool(
     DeckFilters filters,
     Set<MediaKind> kinds,
-    ProfileSignals signals,
-  ) async {
+    ProfileSignals signals, [
+    AppSettings? settings,
+  ]) async {
     final catalog = ref.read(catalogRepositoryProvider);
     if (filters.isRevisit) {
       final cutoff = DateTime.now().subtract(const Duration(days: 3 * 365));
@@ -967,12 +1042,70 @@ class DeckController extends Notifier<DeckState> {
           .map((e) => e.titleId);
       return catalog.titlesByIds(ids);
     }
-    return catalog.pool(kinds);
+    return _candidates(catalog, filters, kinds, signals, settings);
+  }
+
+  /// Dealable cached titles with the hard exclusions applied in the query.
+  /// Filters narrow the set themselves, so a filtered deal loads all of it.
+  Future<List<Title>> _candidates(
+    CatalogRepository catalog,
+    DeckFilters filters,
+    Set<MediaKind> kinds,
+    ProfileSignals signals,
+    AppSettings? settings,
+  ) {
+    final AppSettings live = settings ?? ref.read(currentSettingsProvider);
+    return catalog.candidatePool(
+      kinds,
+      excludeIds: {
+        ...signals.excluded,
+        ...signals.deferred,
+        ...signals.shortlisted,
+        ...signals.library.keys,
+      },
+      excludeFranchises: signals.excludedFranchises,
+      showAdult: live.showAdult,
+      limit: filters.activeCount == 0 ? CatalogRepository.candidateLimit : null,
+    );
+  }
+
+  /// Asks about taste seeds without blocking the deck; a result re-ranks it.
+  void _seedInBackground(CatalogRepository catalog, ProfileSignals signals) {
+    if (_seeding || signals.tasteSeeds.isEmpty) return;
+    _seeding = true;
+    unawaited(() async {
+      try {
+        final stored = await catalog.fetchSeeded(
+          signals.tasteSeeds,
+          budget: RequestBudget(limit: 1),
+        );
+        if (stored > 0) _rerankUpcoming();
+      } on Object {
+        // A refused or offline catalog is retried by a later lookup.
+      } finally {
+        _seeding = false;
+      }
+    }());
+  }
+
+  /// New candidates arrived (AI picks, seeded recommendations): rank the
+  /// cards not yet shown again. The top card stays where it is.
+  void _rerankUpcoming() {
+    if (!ref.mounted) return;
+    unawaited(_deal(keepTop: true));
   }
 
   /// One bounded pass; only a provider's final page proves exhaustion.
   Future<
-    ({String? notice, bool pending, bool failed, bool advanced, bool offline})
+    ({
+      String? notice,
+      bool pending,
+      bool failed,
+      bool advanced,
+      bool offline,
+      bool transient,
+      Duration? retryAfter,
+    })
   >
   _refill(
     Set<MediaKind> kinds, {
@@ -985,6 +1118,8 @@ class DeckController extends Notifier<DeckState> {
     var pending = false;
     var advanced = false;
     var limited = false;
+    var transient = false;
+    Duration? retryAfter;
     final failedKinds = <MediaKind>{
       ...catalog.unavailableKinds.intersection(kinds),
     };
@@ -1027,6 +1162,14 @@ class DeckController extends Notifier<DeckState> {
           } on CatalogUnavailable catch (e) {
             pending = true;
             if (e.code == 'offline') offline = true;
+            // Not-configured is permanent; anything else is worth retrying.
+            if (e.code != 'offline' && e.code != 'not_configured') {
+              transient = true;
+              final wait = e.retryAfter;
+              if (wait != null && (retryAfter == null || wait > retryAfter!)) {
+                retryAfter = wait;
+              }
+            }
             failedKinds.add(request.kind);
           }
         }(),
@@ -1043,6 +1186,8 @@ class DeckController extends Notifier<DeckState> {
       failed: failedKinds.isNotEmpty,
       advanced: advanced,
       offline: offline && !gotAny,
+      transient: transient,
+      retryAfter: retryAfter,
     );
   }
 
@@ -1148,10 +1293,10 @@ class DeckController extends Notifier<DeckState> {
       // Below [refillBelow] the deck prefetches in the background (the
       // catalog is checked when cached matches run thin), so the person
       // never swipes into an empty deck.
+      // Re-ranking is local and cheap. Whether the catalog is asked for
+      // more is decided by the deal itself from how much unseen, eligible
+      // supply is cached, never by how many swipes happened.
       if (state.cards.length < refillBelow || count % 3 == 0) {
-        if (state.cards.length < refillBelow ~/ 2 || count % 3 == 0) {
-          _wantRetrieval = true;
-        }
         unawaited(_deal(keepTop: true));
       }
       return result;

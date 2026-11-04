@@ -17,13 +17,15 @@ import '../../domain/ranker.dart';
 /// titles into the shared cache (the refill path) and may attach provenance
 /// to them. Hard filters in the ranker still apply to everything it adds.
 abstract class CandidateSource {
-  /// Best-effort, fire-and-forget refresh; must never throw.
+  /// Best-effort, fire-and-forget refresh; must never throw. [onAdded] runs
+  /// when the refresh later added candidates, so the deck can re-rank.
   void refill(
     String profileId,
     ProfileSignals signals,
     Set<MediaKind> kinds,
-    AppSettings settings,
-  );
+    AppSettings settings, {
+    void Function()? onAdded,
+  });
 
   /// Provenance for titles this source suggested, by title id.
   Future<Map<String, AiPick>> provenance(
@@ -43,14 +45,17 @@ class AiTasteSource implements CandidateSource {
     String profileId,
     ProfileSignals signals,
     Set<MediaKind> kinds,
-    AppSettings settings,
-  ) {
+    AppSettings settings, {
+    void Function()? onAdded,
+  }) {
     if (!settings.aiPicks || _busy) return;
     _busy = true;
     unawaited(
       repository
           .refreshIfDue(profileId, signals, kinds)
-          .then<void>((_) {}, onError: (Object _) {})
+          .then<void>((added) {
+            if (added) onAdded?.call();
+          }, onError: (Object _) {})
           .whenComplete(() => _busy = false),
     );
   }

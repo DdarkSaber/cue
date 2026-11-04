@@ -114,7 +114,10 @@ class WatchProvidersDto {
 
 /// Why a catalog call failed. Codes only; never request content.
 class CatalogUnavailable implements Exception {
-  const CatalogUnavailable(this.code);
+  const CatalogUnavailable(this.code, {this.retryAfter});
+
+  /// How long the provider asked us to wait, when it said so (Retry-After).
+  final Duration? retryAfter;
 
   /// offline, not_configured, rate_limited, upstream_error, bad_response...
   final String code;
@@ -296,6 +299,11 @@ class HttpCatalogGateway implements CatalogGateway {
   /// Web needs posters through the Worker so canvases can draw them.
   final bool proxyImages;
 
+  static Duration? _retryAfter(http.Response res) {
+    final s = int.tryParse(res.headers['retry-after'] ?? '');
+    return s == null || s < 0 ? null : Duration(seconds: s);
+  }
+
   Future<Object?> _get(String path, Map<String, String> query) async {
     final uri = Uri.parse('$base$path')
         .replace(queryParameters: query.isEmpty ? null : query);
@@ -316,7 +324,10 @@ class HttpCatalogGateway implements CatalogGateway {
     }
     if (res.statusCode != 200) {
       final code = body is Map ? body['error'] as String? : null;
-      throw CatalogUnavailable(code ?? 'http_${res.statusCode}');
+      throw CatalogUnavailable(
+        code ?? 'http_${res.statusCode}',
+        retryAfter: _retryAfter(res),
+      );
     }
     return body;
   }
@@ -340,7 +351,10 @@ class HttpCatalogGateway implements CatalogGateway {
     }
     if (res.statusCode != 200) {
       final code = body is Map ? body['error'] as String? : null;
-      throw CatalogUnavailable(code ?? 'http_${res.statusCode}');
+      throw CatalogUnavailable(
+        code ?? 'http_${res.statusCode}',
+        retryAfter: _retryAfter(res),
+      );
     }
     return body;
   }

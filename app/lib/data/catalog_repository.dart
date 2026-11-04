@@ -6,6 +6,7 @@ import '../domain/models/title.dart';
 import '../domain/title_names.dart';
 import 'catalog_gateway.dart';
 import 'db/database.dart';
+import 'request_priority.dart';
 
 /// Where a discover route stands. [limited] is kept for callers that still
 /// handle it, but no page ceiling exists any more: routes are [more] until
@@ -317,6 +318,104 @@ class CatalogRepository {
     return rows.map(Title.fromRow).toList();
   }
 
+  /// Titles one deal can rank. Past this many candidates, extra rows add
+  /// deal time but almost never change the ten cards chosen.
+  static const candidateLimit = 8000;
+
+  /// Cached titles that could be dealt, with the hard exclusions applied in
+  /// SQL so a 20k-title cache costs a deal no more than a fresh one: disabled
+  /// kinds, novels and music, hidden adult titles, [excludeIds] (library,
+  /// shortlist, not interested, set aside) and [excludeFranchises].
+  ///
+  /// Unless [limit] is null, at most that many rows load: the best scored and
+  /// the most recently cached share it. Callers narrowing with filters pass
+  /// null, since a small filtered set must not be cut by unrelated titles.
+  Future<List<Title>> candidatePool(
+    Iterable<MediaKind> kinds, {
+    Set<String> excludeIds = const {},
+    Set<String> excludeFranchises = const {},
+    bool showAdult = false,
+    int? limit = candidateLimit,
+  }) async {
+    final names = kinds.map((k) => k.name).toList();
+    // SQLite caps bound variables; a longer exclusion list is applied after.
+    final inSql = excludeIds.length <= 20000;
+    Expression<bool> where($CatalogTitlesTable t) {
+      Expression<bool> w =
+          t.mediaKind.isIn(names) &
+          (t.format.isNull() | t.format.isNotIn(const ['NOVEL', 'MUSIC']));
+      if (!showAdult) w = w & t.adult.equals(false);
+      if (inSql && excludeIds.isNotEmpty) {
+        w = w & t.id.isNotIn(excludeIds.toList());
+      }
+      if (excludeFranchises.isNotEmpty) {
+        w =
+            w &
+            (t.franchiseId.isNull() |
+                t.franchiseId.isNotIn(excludeFranchises.toList()));
+      }
+      return w;
+    }
+
+    Future<List<CatalogTitle>> load(
+      List<OrderClauseGenerator<$CatalogTitlesTable>> order,
+      int n,
+    ) =>
+        (db.select(db.catalogTitles)
+              ..where(where)
+              ..orderBy(order)
+              ..limit(n))
+            .get();
+
+    List<CatalogTitle> rows;
+    final matching = limit == null
+        ? 0
+        : (await (db.selectOnly(db.catalogTitles)
+                    ..addColumns([db.catalogTitles.id.count()])
+                    ..where(where(db.catalogTitles)))
+                  .getSingle())
+              .read(db.catalogTitles.id.count())!;
+    // Within the cap nothing is left out, and storage order is kept.
+    if (limit == null || matching <= limit) {
+      rows =
+          await (db.select(db.catalogTitles)
+                ..where(where)
+                // Storage order, whichever index the query planner picks.
+                ..orderBy([
+                  (_) => OrderingTerm(
+                    expression: const CustomExpression<int>('rowid'),
+                  ),
+                ]))
+              .get();
+    } else {
+      final byScore = await load([
+        (t) => OrderingTerm.desc(t.score),
+        (t) => OrderingTerm.desc(t.updatedAt),
+      ], (limit * 5) ~/ 8);
+      final byRecent = await load([
+        (t) => OrderingTerm.desc(t.updatedAt),
+      ], limit - (limit * 5) ~/ 8);
+      final seen = <String>{};
+      rows = [
+        for (final r in [...byScore, ...byRecent])
+          if (seen.add(r.id)) r,
+      ];
+    }
+    return [
+      for (final r in rows)
+        if (inSql || !excludeIds.contains(r.id)) Title.fromRow(r),
+    ];
+  }
+
+  /// Whether any title of these kinds is cached, however it is filtered.
+  Future<bool> hasCached(Iterable<MediaKind> kinds) async {
+    final c = db.catalogTitles.id.count();
+    final q = db.selectOnly(db.catalogTitles)
+      ..addColumns([c])
+      ..where(db.catalogTitles.mediaKind.isIn(kinds.map((k) => k.name)));
+    return ((await q.getSingle()).read(c) ?? 0) > 0;
+  }
+
   /// The same cached catalog that supplies the deck remains searchable offline.
   Future<CatalogSearchResult> search(String query) async {
     final q = query.trim();
@@ -585,7 +684,10 @@ class CatalogRepository {
     }
     if (refs.isEmpty) return 0;
     if (budget != null && !budget.take()) return 0;
-    final results = await gateway.recommendations(refs.values.toList());
+    final results = await withRequestPriority(
+      RequestPriority.seed,
+      () => gateway.recommendations(refs.values.toList()),
+    );
     var stored = 0;
     final now = _now();
     final seeds = refs.keys.toList();
@@ -632,6 +734,61 @@ class CatalogRepository {
       });
     }
     return stored;
+  }
+
+  /// Marker row remembering when [pruneRecommendations] last ran.
+  static const _maintenanceMarker = '_maintenance';
+  static const recommendationKeep = Duration(days: 90);
+  static const maintenanceEvery = Duration(days: 1);
+
+  /// Drops recommendation edges that can no longer matter: those of seeds
+  /// that are no longer a current top seed and were fetched over 90 days ago.
+  /// Cheap, and at most once a day unless [force]. Returns rows removed.
+  Future<int> pruneRecommendations(
+    Iterable<String> currentSeeds, {
+    bool force = false,
+  }) async {
+    final now = _now();
+    final marker =
+        await (db.select(db.catalogPages)..where(
+              (p) =>
+                  p.mediaKind.equals(_maintenanceMarker) &
+                  p.mood.equals('recommendations'),
+            ))
+            .getSingleOrNull();
+    if (!force &&
+        marker != null &&
+        now.difference(marker.fetchedAt) < maintenanceEvery) {
+      return 0;
+    }
+    final cutoff = now.subtract(recommendationKeep);
+    final seeds = currentSeeds.toList();
+    final removed =
+        await (db.delete(db.catalogRecommendations)..where(
+              (r) =>
+                  r.fetchedAt.isSmallerThanValue(cutoff) &
+                  r.seedId.isNotIn(seeds),
+            ))
+            .go();
+    await (db.delete(db.catalogPages)..where(
+          (p) =>
+              p.mediaKind.equals(_seedMarker) &
+              p.fetchedAt.isSmallerThanValue(cutoff) &
+              p.mood.isNotIn(seeds),
+        ))
+        .go();
+    await db
+        .into(db.catalogPages)
+        .insertOnConflictUpdate(
+          CatalogPagesCompanion.insert(
+            mediaKind: _maintenanceMarker,
+            mood: const Value('recommendations'),
+            page: 1,
+            hasNext: false,
+            fetchedAt: now,
+          ),
+        );
+    return removed;
   }
 
   /// Full title (seasons, keywords) for the details sheet. Falls back to the

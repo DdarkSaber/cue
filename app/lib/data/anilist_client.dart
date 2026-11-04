@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../domain/models/title.dart';
 import 'catalog_gateway.dart';
+import 'request_priority.dart';
 
 /// AniList, called directly from the device. AniList refuses requests from
 /// Cloudflare Workers, allows any browser origin (CORS) and needs no key,
@@ -15,12 +16,57 @@ class AniListClient {
     http.Client? client,
     Future<void> Function(Duration)? sleep,
     DateTime Function()? clock,
+    this.maxPerMinute = defaultMaxPerMinute,
   }) : _client = client ?? http.Client(),
        _sleep = sleep ?? Future<void>.delayed,
        _now = clock ?? DateTime.now;
   final http.Client _client;
   final Future<void> Function(Duration) _sleep;
   final DateTime Function() _now;
+
+  /// Requests this client lets through in any 60 seconds, shared by every
+  /// caller (deck refills, taste seeds, AI-pick lookups, imports). AniList's
+  /// own limit is 30; the margin leaves room for 429 retries and other apps.
+  static const defaultMaxPerMinute = 25;
+  static const _window = Duration(seconds: 60);
+  final int maxPerMinute;
+  final List<DateTime> _stamps = [];
+  final List<int> _waiting = [];
+
+  /// Takes one token from the shared budget, waiting for one when the minute
+  /// is spent. A waiting higher priority request goes first.
+  Future<void> _acquire() async {
+    final priority = currentRequestPriority.index;
+    var queued = false;
+    try {
+      while (true) {
+        final now = _now();
+        _stamps.removeWhere((s) => now.difference(s) >= _window);
+        final outranked = _waiting.any((p) => p < priority);
+        if (_stamps.length < maxPerMinute && !outranked) {
+          _stamps.add(now);
+          return;
+        }
+        if (!queued) {
+          _waiting.add(priority);
+          queued = true;
+        }
+        final full = _stamps.length >= maxPerMinute;
+        final wait = full
+            ? _stamps.first.add(_window).difference(now)
+            : const Duration(milliseconds: 50);
+        await _sleep(
+          wait > Duration.zero ? wait : const Duration(milliseconds: 50),
+        );
+        // A clock that did not move (tests) must not wedge the queue.
+        if (full && _stamps.length >= maxPerMinute && !_now().isAfter(now)) {
+          _stamps.removeAt(0);
+        }
+      }
+    } finally {
+      if (queued) _waiting.remove(priority);
+    }
+  }
 
   /// Minimum gap between calls. AniList currently allows 30 a minute; the
   /// gap follows whatever limit its response headers report.
@@ -157,6 +203,7 @@ class AniListClient {
     late http.Response res;
     // A 429 waits as long as AniList asks, then tries again (three times).
     for (var attempt = 0; ; attempt++) {
+      await _acquire();
       await _pace();
       try {
         res = await _client
@@ -181,8 +228,14 @@ class AniListClient {
       }
       if (res.statusCode != 429) break;
       if (_gap < _minGapAfter429) _gap = _minGapAfter429;
-      if (attempt >= 3) throw const CatalogUnavailable('rate_limited');
-      final after = int.tryParse(res.headers['retry-after'] ?? '') ?? 60;
+      final reported = int.tryParse(res.headers['retry-after'] ?? '');
+      if (attempt >= 3) {
+        throw CatalogUnavailable(
+          'rate_limited',
+          retryAfter: reported == null ? null : Duration(seconds: reported),
+        );
+      }
+      final after = reported ?? 60;
       // Without a readable header (some browsers hide it) assume the long wait.
       await _sleep(Duration(seconds: after.clamp(1, 65)));
       // That wait was AniList's own; the retry need not queue behind it.

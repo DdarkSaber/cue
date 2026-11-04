@@ -8,6 +8,7 @@ import '../imports/records.dart';
 import 'ai_recommendation_client.dart';
 import 'catalog_repository.dart';
 import 'profile_repository.dart';
+import 'request_priority.dart';
 
 /// Builds a compact taste profile, asks the opt-in AI route for suggestions,
 /// then keeps only those found in the real catalog. Resolved titles land in
@@ -196,15 +197,18 @@ class AiRecommendationRepository {
       final chunk = wanted.skip(i).take(ImportMatcher.batchSize).toList();
       final List<MatchedRecord> matched;
       try {
-        matched = await matcher.match([
-          for (var k = 0; k < chunk.length; k++)
-            NormalizedRecord(
-              sourceEntryKey: 'ai:${i + k}',
-              title: chunk[k].title,
-              kind: chunk[k].kind,
-              year: chunk[k].year,
-            ),
-        ]);
+        matched = await withRequestPriority(
+          RequestPriority.ai,
+          () => matcher.match([
+            for (var k = 0; k < chunk.length; k++)
+              NormalizedRecord(
+                sourceEntryKey: 'ai:${i + k}',
+                title: chunk[k].title,
+                kind: chunk[k].kind,
+                year: chunk[k].year,
+              ),
+          ]),
+        );
       } on Exception {
         break;
       }
