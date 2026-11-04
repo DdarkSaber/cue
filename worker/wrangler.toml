@@ -1,11 +1,11 @@
 name = "cue-worker"
 main = "src/index.ts"
-compatibility_date = "2026-08-15"
+compatibility_date = "2026-11-03"
 
 # Comma-separated app origins allowed by CORS. Native apps send no Origin.
 # Production origins are added at deploy time.
 [vars]
-ALLOWED_ORIGINS = "https://cue-next.cue-worker.workers.dev,http://localhost:7357,http://127.0.0.1:7357"
+ALLOWED_ORIGINS = "https://cue-next.cue-worker.workers.dev"
 # Public OAuth client id (it is visible in the sign-in URL). The secret is a wrangler secret.
 MAL_CLIENT_ID = "5910123f3d7045299259209ddff88344"
 
@@ -51,3 +51,7 @@ simple = { limit = 600, period = 60 }
 # Weekly: delete encrypted sync copies untouched for 180 days.
 [triggers]
 crons = ["0 3 * * SUN"]
+
+# Logs and traces in the Cloudflare dashboard.
+[observability]
+enabled = true
