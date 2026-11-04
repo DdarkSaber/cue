@@ -166,4 +166,22 @@ void main() {
       'Because you liked Synthetic 7.',
     );
   });
+
+  test(
+    'a seed with an empty answer is asked again after a day, not a week',
+    () async {
+      final db = memoryDb();
+      addTearDown(db.close);
+      var now = DateTime.utc(2026, 1, 1);
+      final gateway = FakeGateway();
+      final catalog = CatalogRepository(db, gateway, clock: () => now);
+      await catalog.upsert([CatalogItemDto(item(1))]);
+      await catalog.fetchSeeded(['anilist:1']);
+      await catalog.fetchSeeded(['anilist:1']);
+      expect(gateway.recommendationCalls, ['anilist:1']);
+      now = now.add(const Duration(days: 2));
+      await catalog.fetchSeeded(['anilist:1']);
+      expect(gateway.recommendationCalls, ['anilist:1', 'anilist:1']);
+    },
+  );
 }

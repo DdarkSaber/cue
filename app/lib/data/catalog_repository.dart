@@ -621,7 +621,12 @@ class CatalogRepository {
                 mood: Value(seeds[i]),
                 page: 1,
                 hasNext: false,
-                fetchedAt: now,
+                // An empty answer may be a half-failed batch (the hybrid
+                // gateway hides one provider failing), so ask again after
+                // a day rather than waiting out the whole week.
+                fetchedAt: items.isEmpty
+                    ? now.subtract(const Duration(days: 6))
+                    : now,
               ),
             );
       });
