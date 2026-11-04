@@ -22,6 +22,7 @@ import '../deck/deck_controller.dart';
 import '../imports/source_names.dart';
 import 'entry_sheet.dart';
 import 'add_title_sheet.dart';
+import 'library_view.dart';
 import 'review_sheet.dart';
 import 'rating_cards.dart';
 import '../../data/library_rating_service.dart';
@@ -78,7 +79,94 @@ class LibraryScreen extends ConsumerStatefulWidget {
 }
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
-  String _filter = '';
+  LibraryQuery _q = const LibraryQuery();
+  bool _selecting = false;
+  bool _filtersOpen = false;
+  final Set<String> _selected = {};
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  /// Saves [rating] on every row, keeping each entry's other fields.
+  Future<void> _rate(List<LibraryRow> rows, Rating? rating) async {
+    if (rows.isEmpty) return;
+    final id = await ref.read(profileIdProvider.future);
+    final repo = ref.read(libraryRepositoryProvider);
+    for (final (e, t) in rows) {
+      await repo.saveEntry(
+        id,
+        t.id,
+        state: e.state,
+        rating: rating,
+        rewatchMood: e.rewatchMood,
+        actualWatchedAt: e.actualWatchedAt,
+      );
+    }
+    await repo.recomputeWeights(id);
+    if (!mounted) return;
+    ref.read(libraryVersionProvider.notifier).bump();
+    final what = rows.length == 1
+        ? rows.first.$2.displayTitle
+        : '${rows.length} titles';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          rating == null
+              ? 'Cleared the rating on $what.'
+              : 'Rated $what ${rating.label}. Cue will use this for picks.',
+        ),
+      ),
+    );
+    if (_selecting) setState(_selected.clear);
+  }
+
+  Future<void> _removeRows(List<LibraryRow> rows) async {
+    if (rows.isEmpty) return;
+    final ok = await confirmAction(
+      context,
+      title: rows.length == 1
+          ? 'Remove ${rows.first.$2.displayTitle}?'
+          : 'Remove ${rows.length} titles?',
+      body: 'They leave this library and stop counting towards your taste. They may show up in suggestions again.',
+      confirmLabel: 'Remove',
+    );
+    if (!ok || !mounted) return;
+    final id = await ref.read(profileIdProvider.future);
+    final repo = ref.read(libraryRepositoryProvider);
+    for (final (_, t) in rows) {
+      await repo.removeEntry(id, t.id);
+    }
+    await repo.recomputeWeights(id);
+    if (!mounted) return;
+    ref.read(libraryVersionProvider.notifier).bump();
+    setState(() {
+      _selected.clear();
+      _selecting = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          rows.length == 1
+              ? 'Removed from your library.'
+              : 'Removed ${rows.length} titles from your library.',
+        ),
+      ),
+    );
+  }
+
+  int get _activeOptions =>
+      (_q.sort != LibrarySort.recent ? 1 : 0) +
+      (_q.kind != null ? 1 : 0) +
+      (_q.status != null ? 1 : 0);
+
+  void _clearFilters() {
+    _search.clear();
+    setState(() => _q = LibraryQuery(sort: _q.sort));
+  }
 
   Future<void> _openRatings({bool followUp = false}) async {
     final id = await ref.read(profileIdProvider.future);
@@ -120,16 +208,18 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         loading: () => const [LinearProgressIndicator(color: CueColors.accent)],
         error: (_, _) => const [Text('Your library could not be read.')],
         data: (d) => [
-          const AddTitleButton(),
-          const SizedBox(height: CueSpace.sm),
           Wrap(
             spacing: CueSpace.md,
             runSpacing: CueSpace.sm,
             children: [
-              CueSecondaryButton(
-                label: 'Rate your library',
-                onPressed: () => _openRatings(),
-              ),
+              const AddTitleButton(),
+              if (!d.isEmpty)
+                CueSecondaryButton(
+                  label: d.batches.any((b) => b.state == 'completed')
+                      ? 'Import more'
+                      : 'Import a list',
+                  onPressed: () => context.go(CueRoutes.importer),
+                ),
               CueSecondaryButton(
                 label: 'Review shortlist picks',
                 onPressed: () => _openRatings(followUp: true),
@@ -201,51 +291,46 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   ];
 
   List<Widget> _full(BuildContext context, LibraryData d) {
-    bool match(Title t) =>
-        _filter.isEmpty ||
-        t.displayTitle.toLowerCase().contains(_filter) ||
-        (t.altTitle?.toLowerCase().contains(_filter) ?? false);
+    final textOnly = _q.kind == null && _q.status == null;
+    bool text(Title t) => _q.matchesText(t);
     final cutoff = DateTime.now().subtract(const Duration(days: 3 * 365));
     final rewatch = d.entries
         .where((e) => e.$1.rating?.isRewatch ?? false)
         .length;
-    final longAgo = d.entries
+    final longAgoAll = d.entries
         .where((e) => e.$1.actualWatchedAt?.isBefore(cutoff) ?? false)
         .toList();
-    final active = d.entries
-        .where(
-          (e) =>
-              (e.$1.state == LibraryState.watching ||
-                  e.$1.state == LibraryState.reading ||
-                  e.$1.state == LibraryState.caughtUp ||
-                  e.$1.state == LibraryState.onHold) &&
-              match(e.$2),
-        )
-        .toList();
-    final done = d.entries
-        .where(
-          (e) =>
-              (e.$1.state == LibraryState.completed ||
-                  e.$1.state == LibraryState.seen ||
-                  e.$1.state == LibraryState.partial ||
-                  e.$1.state == LibraryState.dropped) &&
-              match(e.$2),
-        )
-        .toList();
-    final planned = d.entries
-        .where((e) => e.$1.state == LibraryState.planned && match(e.$2))
-        .toList();
-    final noStatus = d.entries
-        .where((e) => e.$1.state == LibraryState.none && match(e.$2))
-        .toList();
+    List<LibraryRow> inStates(Set<LibraryState> states) =>
+        _q.apply(d.entries.where((e) => states.contains(e.$1.state)));
+    final longAgo = _q.apply(longAgoAll);
+    final active = inStates({
+      LibraryState.watching,
+      LibraryState.reading,
+      LibraryState.caughtUp,
+      LibraryState.onHold,
+    });
+    final done = inStates({
+      LibraryState.completed,
+      LibraryState.seen,
+      LibraryState.partial,
+      LibraryState.dropped,
+    });
+    final planned = inStates({LibraryState.planned});
+    final noStatus = inStates({LibraryState.none});
+    final shown = [...active, ...done, ...planned, ...noStatus];
     final imported = d.batches.where((b) => b.state == 'completed').toList();
+    final kinds = {for (final e in d.entries) e.$2.kind}.toList()
+      ..sort((a, b) => a.label.compareTo(b.label));
+    final summary = TasteSummary.from(d.entries);
+    final needle = _q.text.toLowerCase();
+    final review = textOnly
+        ? d.review
+              .where((o) => o.rawTitle.toLowerCase().contains(needle))
+              .toList()
+        : <SourceObservation>[];
 
     return [
-      _RevisitTile(
-        rewatch: rewatch,
-        longAgo: longAgo.length,
-        onDeal: rewatch + longAgo.length == 0 ? null : _dealRevisit,
-      ),
+      _TasteCard(summary: summary, onRate: () => _openRatings()),
       const SizedBox(height: CueSpace.md),
       Text(
         imported.isEmpty
@@ -253,43 +338,159 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             : 'Your list is in: ${d.entries.length} titles, from ${imported.map((b) => importSourceName(b.sourceType)).toSet().join(', ')}.',
         style: const TextStyle(fontSize: 14, color: CueColors.textMuted),
       ),
-      const SizedBox(height: CueSpace.sm),
-      _TasteMeter(rated: d.entries.where((e) => e.$1.rating != null).length),
-      const SizedBox(height: 4),
-      const Text(
-        'Sources combine in this library; separate libraries stay separate. Browse or remove titles in Settings > This library.',
-        style: TextStyle(fontSize: 12, color: CueColors.textMuted),
-      ),
-      const SizedBox(height: CueSpace.sm),
-      Wrap(
-        spacing: CueSpace.md,
-        children: [
-          CueSecondaryButton(
-            label: imported.isEmpty ? 'Import a list' : 'Import more',
-            onPressed: () => context.go(CueRoutes.importer),
-          ),
-        ],
-      ),
       const SizedBox(height: CueSpace.md),
+      _RevisitTile(
+        rewatch: rewatch,
+        longAgo: longAgoAll.length,
+        onDeal: rewatch + longAgoAll.length == 0 ? null : _dealRevisit,
+      ),
+      const SizedBox(height: CueSpace.xs),
+      const CueSectionLabel('Your titles'),
       TextField(
-        decoration: const InputDecoration(
+        controller: _search,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
           hintText: 'Find in your library',
-          prefixIcon: Padding(
+          prefixIcon: const Padding(
             padding: EdgeInsets.all(12),
             child: CueIcon(CueIcons.library, size: 18),
           ),
+          suffixIcon: _q.text.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: 'Clear search',
+                  constraints: const BoxConstraints(
+                    minWidth: CueSize.minTarget,
+                    minHeight: CueSize.minTarget,
+                  ),
+                  icon: const CueIcon(CueIcons.close, size: 16),
+                  onPressed: () {
+                    _search.clear();
+                    setState(() => _q = _q.copyWith(text: ''));
+                  },
+                ),
         ),
-        onChanged: (v) => setState(() => _filter = v.trim().toLowerCase()),
+        onChanged: (v) => setState(() => _q = _q.copyWith(text: v.trim())),
       ),
-      if (d.review.isNotEmpty)
+      Align(
+        alignment: Alignment.centerLeft,
+        child: Semantics(
+          button: true,
+          expanded: _filtersOpen,
+          child: TextButton.icon(
+            onPressed: () => setState(() => _filtersOpen = !_filtersOpen),
+            style: _tapTarget,
+            icon: Icon(
+              _filtersOpen ? Icons.expand_less : Icons.expand_more,
+              size: 20,
+            ),
+            label: Text(
+              [
+                'Sort and filter',
+                if (_activeOptions > 0) '($_activeOptions)',
+              ].join(' '),
+            ),
+          ),
+        ),
+      ),
+      if (_filtersOpen) ...[
+        _ChipRow(
+          label: 'Sort by',
+          chips: [
+            for (final s in LibrarySort.values)
+              CueChoiceChip(
+                label: s.label,
+                selected: _q.sort == s,
+                onTap: () => setState(() => _q = _q.copyWith(sort: s)),
+              ),
+          ],
+        ),
+        if (kinds.length > 1)
+          _ChipRow(
+            label: 'Format',
+            chips: [
+              CueChoiceChip(
+                label: 'All',
+                selected: _q.kind == null,
+                onTap: () => setState(() => _q = _q.copyWith(clearKind: true)),
+              ),
+              for (final k in kinds)
+                CueChoiceChip(
+                  label: k.label,
+                  selected: _q.kind == k,
+                  onTap: () => setState(() => _q = _q.copyWith(kind: k)),
+                ),
+            ],
+          ),
+        _ChipRow(
+          label: 'Status',
+          chips: [
+            CueChoiceChip(
+              label: 'All',
+              selected: _q.status == null,
+              onTap: () => setState(() => _q = _q.copyWith(clearStatus: true)),
+            ),
+            for (final s in StatusFilter.values)
+              CueChoiceChip(
+                label: s.label,
+                selected: _q.status == s,
+                onTap: () => setState(() => _q = _q.copyWith(status: s)),
+              ),
+          ],
+        ),
+      ],
+      const SizedBox(height: CueSpace.xs),
+      Wrap(
+        spacing: CueSpace.md,
+        runSpacing: CueSpace.xs,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              _q.filtering
+                  ? '${shown.length} of ${d.entries.length} titles'
+                  : '${d.entries.length} titles',
+              style: const TextStyle(fontSize: 13, color: CueColors.textMuted),
+            ),
+          ),
+          if (_q.filtering)
+            TextButton(
+              onPressed: _clearFilters,
+              style: _tapTarget,
+              child: const Text('Clear filters'),
+            ),
+          TextButton(
+            onPressed: d.entries.isEmpty
+                ? null
+                : () => setState(() {
+                    _selecting = !_selecting;
+                    _selected.clear();
+                  }),
+            style: _tapTarget,
+            child: Text(_selecting ? 'Done selecting' : 'Select several'),
+          ),
+        ],
+      ),
+      if (_selecting)
+        _BulkBar(
+          count: _selected.length,
+          onSelectAll: () => setState(() {
+            _selected
+              ..clear()
+              ..addAll(shown.map((r) => r.$2.id));
+          }),
+          onRate: (r) => _rate(_pickedRows(d), r),
+          onRemove: () => _removeRows(_pickedRows(d)),
+        ),
+      if (d.entries.isNotEmpty && shown.isEmpty && longAgo.isEmpty)
+        _NoMatches(onClear: _clearFilters),
+      if (review.isNotEmpty)
         _Section(
           label: 'Needs review (${d.review.length})',
-          note: 'Saved on this device until you review or dismiss them. These titles are not yet recognised as history and may still appear in suggestions. Tap one to search and confirm its match.',
+          note: 'Titles Cue could not match on its own. They are saved on this device, are not yet recognised as history and may still appear in suggestions. Tap one to search and confirm its match.',
           children: [
-            for (final o in d.review.where(
-              (o) =>
-                  _filter.isEmpty || o.rawTitle.toLowerCase().contains(_filter),
-            ))
+            for (final o in review)
               CueListRow(
                 title: o.rawTitle,
                 subtitle: _maybe(o) == null ? 'Match it' : 'Maybe ${_maybe(o)}',
@@ -300,6 +501,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 alignment: Alignment.centerLeft,
                 child: TextButton(
                   onPressed: () => _acceptSimilar(d.review),
+                  style: _tapTarget,
                   child: Text(
                     'Accept all ${d.review.where((o) => o.candidateJson != null).length} suggested matches',
                   ),
@@ -309,6 +511,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               alignment: Alignment.centerLeft,
               child: TextButton(
                 onPressed: () => _dismissAll(context, d.review),
+                style: _tapTarget,
                 child: const Text('None of these are in my history'),
               ),
             ),
@@ -317,10 +520,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       if (longAgo.isNotEmpty)
         _Section(
           label: 'Watched 3+ years ago',
-          children: [
-            for (final e in longAgo.where((e) => match(e.$2)))
-              _entryRow(context, e),
-          ],
+          children: [for (final e in longAgo) _entryRow(context, e)],
         ),
       if (active.isNotEmpty)
         _Section(
@@ -343,12 +543,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           note: 'A rating does not set a watching or reading status. Your saved ratings remain here.',
           children: [for (final e in noStatus) _entryRow(context, e)],
         ),
-      if (d.hidden.isNotEmpty)
+      if (d.hidden.isNotEmpty && textOnly)
         _Section(
           label: 'Hidden from your deck',
           note: 'Restore brings a title back into recommendations.',
           children: [
-            for (final h in d.hidden.where((h) => match(h.$1)))
+            for (final h in d.hidden.where((h) => text(h.$1)))
               CueListRow(
                 title: h.$1.displayTitle,
                 subtitle: h.$2
@@ -367,13 +567,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               ),
           ],
         ),
-      if (d.decisions.isNotEmpty)
+      if (d.decisions.isNotEmpty && textOnly)
         _Section(
           label: 'Recent decisions',
           children: [
             for (final r
                 in d.decisions
-                    .where((r) => r.title != null && match(r.title!))
+                    .where((r) => r.title != null && text(r.title!))
                     .take(20))
               CueListRow(
                 title: r.title!.displayTitle,
@@ -383,14 +583,42 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               ),
           ],
         ),
+      const Padding(
+        padding: EdgeInsets.only(top: CueSpace.lg),
+        child: Text(
+          'Sources combine in this library; separate libraries stay separate. Browse or remove titles in Settings > This library.',
+          style: TextStyle(fontSize: 12, color: CueColors.textMuted),
+        ),
+      ),
     ];
   }
 
-  Widget _entryRow(BuildContext context, (LibraryEntry, Title) e) {
+  static const _tapTarget = ButtonStyle(
+    minimumSize: WidgetStatePropertyAll(
+      Size(CueSize.minTarget, CueSize.minTarget),
+    ),
+    foregroundColor: WidgetStatePropertyAll(CueColors.accent),
+  );
+
+  List<LibraryRow> _pickedRows(LibraryData d) => [
+    for (final r in d.entries)
+      if (_selected.contains(r.$2.id)) r,
+  ];
+
+  Widget _entryRow(BuildContext context, LibraryRow e) {
     final (entry, title) = e;
     final fresh = newChapters(entry, title);
-    return CueListRow(
+    final picked = _selected.contains(title.id);
+    final row = CueListRow(
       title: title.displayTitle,
+      leading: _selecting
+          ? ExcludeSemantics(
+              child: Icon(
+                picked ? Icons.check_box : Icons.check_box_outline_blank,
+                color: picked ? CueColors.accent : CueColors.textMuted,
+              ),
+            )
+          : null,
       subtitle: [
         title.kind.label,
         entry.state.label,
@@ -399,21 +627,46 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           '${entry.progressUnit ?? 'progress'} ${entry.progressValue!.round()}'
               '${entry.latestKnown != null ? ' of ${entry.latestKnown!.round()}' : ''}',
       ].join(' · '),
-      trailing: fresh == null
+      trailing: _selecting
           ? null
-          : Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: CueColors.accent.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(CueRadius.pill),
-              ),
-              child: Text(
-                fresh == 1 ? '1 new chapter' : '$fresh new chapters',
-                style: const TextStyle(fontSize: 12, color: CueColors.accent),
-              ),
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (fresh != null)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: CueColors.accent.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(CueRadius.pill),
+                      ),
+                      child: Text(
+                        fresh == 1 ? '1 new chapter' : '$fresh new chapters',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: CueColors.accent,
+                        ),
+                      ),
+                    ),
+                  ),
+                RatingMenuButton(
+                  title: title.displayTitle,
+                  current: entry.rating,
+                  onSelected: (r) => _rate([e], r),
+                ),
+              ],
             ),
-      onTap: () => showEntrySheet(context, title),
+      onTap: _selecting
+          ? () => setState(() {
+              picked ? _selected.remove(title.id) : _selected.add(title.id);
+            })
+          : () => showEntrySheet(context, title),
     );
+    return _selecting ? Semantics(selected: picked, child: row) : row;
   }
 
   static String _actionLabel(String action) => switch (action) {
@@ -454,9 +707,11 @@ class _RevisitTile extends StatelessWidget {
             spacing: 8,
             children: [
               CueIcon(CueIcons.repeat, size: 18, color: CueColors.accent),
-              Text(
-                'Revisit',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              Flexible(
+                child: Text(
+                  'Revisit',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
               ),
             ],
           ),
@@ -541,25 +796,296 @@ int? newChapters(LibraryEntry e, Title t) {
   return n > 0 ? n : null;
 }
 
-/// Distinguishes explicit preferences from weak imported-history evidence.
-class _TasteMeter extends StatelessWidget {
-  const _TasteMeter({required this.rated});
-  final int rated;
+/// A one-tap rating menu for a library row.
+class RatingMenuButton extends StatelessWidget {
+  const RatingMenuButton({
+    super.key,
+    required this.title,
+    required this.current,
+    required this.onSelected,
+  });
+
+  final String title;
+  final Rating? current;
+  final ValueChanged<Rating?> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      label: 'Taste: $rated explicit ratings. Preferences grow gradually.',
-      excludeSemantics: true,
+    return PopupMenuButton<Object>(
+      tooltip: current == null
+          ? 'Rate $title'
+          : 'Rated ${current!.label}. Change rating for $title',
+      constraints: const BoxConstraints(minWidth: 200),
+      color: CueColors.surfaceHigh,
+      icon: Icon(
+        current == null ? Icons.star_border_rounded : Icons.star_rounded,
+        color: current == null ? CueColors.textMuted : CueColors.accent,
+      ),
+      iconSize: 24,
+      style: const ButtonStyle(
+        minimumSize: WidgetStatePropertyAll(
+          Size(CueSize.minTarget, CueSize.minTarget),
+        ),
+      ),
+      onSelected: (v) => onSelected(v is Rating ? v : null),
+      itemBuilder: (_) => [
+        for (final r in Rating.values)
+          CheckedPopupMenuItem<Object>(
+            value: r,
+            checked: current == r,
+            height: CueSize.minTarget,
+            child: Text(r.label),
+          ),
+        const PopupMenuDivider(),
+        const PopupMenuItem<Object>(
+          value: 'clear',
+          height: CueSize.minTarget,
+          child: Text('No rating'),
+        ),
+      ],
+    );
+  }
+}
+
+/// A labelled, wrapping row of filter chips.
+class _ChipRow extends StatelessWidget {
+  const _ChipRow({required this.label, required this.chips});
+  final String label;
+  final List<Widget> chips;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: CueSpace.xs),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 2),
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 12, color: CueColors.textMuted),
+          ),
+        ),
+        Wrap(spacing: 8, runSpacing: 0, children: chips),
+      ],
+    ),
+  );
+}
+
+class _NoMatches extends StatelessWidget {
+  const _NoMatches({required this.onClear});
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: CueSpace.lg),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Nothing in your library matches that.',
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Try fewer filters, or import more of your history.',
+          style: TextStyle(fontSize: 14, color: CueColors.textMuted),
+        ),
+        const SizedBox(height: CueSpace.sm),
+        Wrap(
+          spacing: CueSpace.md,
+          runSpacing: CueSpace.sm,
+          children: [
+            CueSecondaryButton(label: 'Clear filters', onPressed: onClear),
+            CueSecondaryButton(
+              label: 'Import a list',
+              onPressed: () => context.go(CueRoutes.importer),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
+/// Actions for the titles ticked in "Select several".
+class _BulkBar extends StatelessWidget {
+  const _BulkBar({
+    required this.count,
+    required this.onSelectAll,
+    required this.onRate,
+    required this.onRemove,
+  });
+  final int count;
+  final VoidCallback onSelectAll;
+  final ValueChanged<Rating?> onRate;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: CueSpace.sm),
+      padding: const EdgeInsets.all(CueSpace.md),
+      decoration: BoxDecoration(
+        color: CueColors.surfaceHigh,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: CueColors.line),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Taste: $rated explicit ratings. Unrated imported watching, reading and completed titles are weak signals, not confirmed likes. Preferences grow gradually; ratings give clearer evidence.',
-            style: const TextStyle(fontSize: 13, color: CueColors.textMuted),
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              count == 0 ? 'Tap titles to select them.' : '$count selected',
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+          ),
+          const SizedBox(height: CueSpace.sm),
+          Wrap(
+            spacing: CueSpace.sm,
+            runSpacing: CueSpace.sm,
+            children: [
+              CueSecondaryButton(
+                label: 'Select all shown',
+                onPressed: onSelectAll,
+              ),
+              PopupMenuButton<Object>(
+                enabled: count > 0,
+                tooltip: 'Rate selected titles',
+                color: CueColors.surfaceHigh,
+                onSelected: (v) => onRate(v is Rating ? v : null),
+                itemBuilder: (_) => [
+                  for (final r in Rating.values)
+                    PopupMenuItem<Object>(
+                      value: r,
+                      height: CueSize.minTarget,
+                      child: Text(r.label),
+                    ),
+                  const PopupMenuItem<Object>(
+                    value: 'clear',
+                    height: CueSize.minTarget,
+                    child: Text('No rating'),
+                  ),
+                ],
+                child: Container(
+                  constraints: const BoxConstraints(
+                    minHeight: CueSize.minTarget,
+                    minWidth: CueSize.minTarget,
+                  ),
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(CueRadius.chip),
+                    border: Border.all(color: const Color(0x33FFFFFF)),
+                  ),
+                  child: Text(
+                    'Rate selected',
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: count > 0 ? CueColors.text : CueColors.textMuted,
+                    ),
+                  ),
+                ),
+              ),
+              CueSecondaryButton(
+                label: 'Remove selected',
+                destructive: true,
+                onPressed: count == 0 ? null : onRemove,
+              ),
+            ],
           ),
         ],
       ),
     );
   }
+}
+
+/// What Cue has learned from your ratings, and what to do to teach it more.
+class _TasteCard extends StatelessWidget {
+  const _TasteCard({required this.summary, required this.onRate});
+  final TasteSummary summary;
+  final VoidCallback onRate;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = summary;
+    final headline = s.rated == 0
+        ? 'Cue is still learning your taste'
+        : 'Your taste, from ${s.rated} rated ${s.rated == 1 ? 'title' : 'titles'}';
+    return Semantics(
+      container: true,
+      child: Container(
+        padding: const EdgeInsets.all(CueSpace.lg),
+        decoration: BoxDecoration(
+          color: CueColors.surfaceHigh,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: CueColors.line),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Semantics(
+              header: true,
+              child: Text(
+                headline,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(height: CueSpace.sm),
+            if (s.liked > 0) ...[
+              if (s.genres.isNotEmpty)
+                _fact('Genres you lean towards', s.genres.join(', ')),
+              if (s.kinds.isNotEmpty)
+                _fact(
+                  'Formats you rate well',
+                  s.kinds.map((k) => k.label).join(', '),
+                ),
+            ] else
+              const Text(
+                'Rate a few titles you know and Cue starts to favour what you like and steer away from what you did not.',
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.45,
+                  color: CueColors.textMuted,
+                ),
+              ),
+            const SizedBox(height: CueSpace.sm),
+            const Text(
+              'Recommendations follow your ratings first. Imported titles you did not rate are only weak hints, and your swipes on the deck add to it.',
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.45,
+                color: CueColors.textMuted,
+              ),
+            ),
+            const SizedBox(height: CueSpace.md),
+            CuePrimaryButton(label: 'Rate more titles', onPressed: onRate),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _fact(String label, String value) => Padding(
+    padding: const EdgeInsets.only(bottom: 4),
+    child: Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: '$label: ',
+            style: const TextStyle(color: CueColors.textMuted),
+          ),
+          TextSpan(
+            text: value,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+      style: const TextStyle(fontSize: 14, height: 1.4),
+    ),
+  );
 }

@@ -147,11 +147,15 @@ class _SourceRowState extends State<SourceRow> {
                           ),
                         ),
                       ),
-                      Text(
-                        widget.status,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: CueColors.textMuted,
+                      const SizedBox(width: CueSpace.sm),
+                      Flexible(
+                        child: Text(
+                          widget.status,
+                          textAlign: TextAlign.end,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: CueColors.textMuted,
+                          ),
                         ),
                       ),
                     ],

@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart' hide Title;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -16,6 +18,7 @@ import '../../domain/models/title.dart';
 import '../deck/deck_controller.dart';
 import '../deck/story_card.dart';
 import '../details/details_sheet.dart';
+import 'quick_rating_sheet.dart';
 
 final shortlistProvider = FutureProvider.autoDispose<List<Title>>((ref) async {
   ref.watch(libraryVersionProvider);
@@ -83,6 +86,14 @@ class _ShortlistScreenState extends ConsumerState<ShortlistScreen> {
           Decision.willTry => null,
         };
       });
+      if (d == Decision.watched && mounted) {
+        final rated = await showQuickRatingSheet(context, ref, t);
+        if (rated != null && mounted) {
+          setState(
+            () => _message = 'Rated ${rated.label}. Cue will use it for picks.',
+          );
+        }
+      }
     } on Object {
       _reportError();
     }
@@ -162,6 +173,23 @@ class _ShortlistScreenState extends ConsumerState<ShortlistScreen> {
     } on Object {
       _reportError();
     }
+  }
+
+  /// Chooses one title for tonight: from the Try now markers when there are
+  /// any, otherwise from everything saved.
+  void _pickTonight(List<Title> titles, Map<String, TryNowIntent> intents) {
+    if (titles.isEmpty) return;
+    final marked = titles.where((t) => intents[t.id]?.active == true).toList();
+    final pool = marked.isEmpty ? titles : marked;
+    final pick = pool[Random().nextInt(pool.length)];
+    final index = titles.indexWhere((t) => t.id == pick.id);
+    setState(() {
+      _tonightOnly = false;
+      _index = index < 0 ? 0 : index;
+      _message = marked.isEmpty
+          ? 'Tonight: ${pick.displayTitle}. Picked from your saved titles.'
+          : 'Tonight: ${pick.displayTitle}. Picked from your Try now titles.';
+    });
   }
 
   Future<void> _pickFromSaved(List<Title> titles) async {
@@ -246,20 +274,36 @@ class _ShortlistScreenState extends ConsumerState<ShortlistScreen> {
             kicker: 'Your shortlist',
             title: _tonightOnly ? "Tonight's picks" : 'Will try',
             children: [
-              const Text(
-                'Nothing here yet. Swipe right on a story, or tap Will try, and it waits here.',
-                style: TextStyle(
+              Text(
+                _tonightOnly && titles.isNotEmpty
+                    ? 'No titles are marked Try now yet. Open Saved options, choose a title and mark it Try now, and it waits here for tonight.'
+                    : 'Nothing saved yet. Swipe right on a story, or tap Will try, and it waits here. Already watched things? Import them in Library so Cue stops suggesting them.',
+                style: const TextStyle(
                   fontSize: 15,
                   height: 1.5,
                   color: CueColors.textMuted,
                 ),
               ),
               if (titles.isNotEmpty)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: CueSecondaryButton(
-                    label: 'Saved options',
-                    onPressed: () => _savedOptions(titles, null, false),
+                Padding(
+                  padding: const EdgeInsets.only(top: CueSpace.sm),
+                  child: Wrap(
+                    spacing: CueSpace.sm,
+                    runSpacing: CueSpace.sm,
+                    children: [
+                      if (_tonightOnly)
+                        CueSecondaryButton(
+                          label: 'Show all saved',
+                          onPressed: () => setState(() {
+                            _tonightOnly = false;
+                            _index = 0;
+                          }),
+                        ),
+                      CueSecondaryButton(
+                        label: 'Saved options',
+                        onPressed: () => _savedOptions(titles, null, false),
+                      ),
+                    ],
                   ),
                 ),
               if (_message != null) ...[
@@ -283,11 +327,23 @@ class _ShortlistScreenState extends ConsumerState<ShortlistScreen> {
         final i = _index.clamp(0, visible.length - 1);
         final t = visible[i];
         final desktop = context.cueLayout == CueLayout.desktop;
-        return Padding(
-          padding: EdgeInsets.only(top: desktop ? 80 : 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+        final card = ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: desktop ? 640 : 700),
+          child: StoryCard(
+            key: ValueKey(t.id),
+            title: t,
+            reason: 'On your Will try list.',
+            onDetails: () => showDetailsSheet(context, t, showActions: false),
+          ),
+        );
+        return LayoutBuilder(
+          builder: (context, box) {
+            // Large text or a short window: scroll instead of squeezing the
+            // card, so no control is ever clipped.
+            final compact =
+                MediaQuery.textScalerOf(context).scale(14) > 18 ||
+                box.maxHeight < 600;
+            final children = <Widget>[
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
                 child: Row(
@@ -308,29 +364,34 @@ class _ShortlistScreenState extends ConsumerState<ShortlistScreen> {
                   ],
                 ),
               ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: CueSecondaryButton(
-                  label: 'Saved options',
-                  onPressed: () =>
-                      _savedOptions(titles, t, intents[t.id]?.active == true),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: CueSpace.sm,
+                  runSpacing: CueSpace.sm,
+                  children: [
+                    if (titles.length > 1)
+                      CueSecondaryButton(
+                        label: 'Pick for tonight',
+                        onPressed: () => _pickTonight(titles, intents),
+                      ),
+                    CueSecondaryButton(
+                      label: 'Saved options',
+                      onPressed: () => _savedOptions(
+                        titles,
+                        t,
+                        intents[t.id]?.active == true,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 8),
-              Expanded(
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: desktop ? 640 : 700),
-                    child: StoryCard(
-                      key: ValueKey(t.id),
-                      title: t,
-                      reason: 'On your Will try list.',
-                      onDetails: () =>
-                          showDetailsSheet(context, t, showActions: false),
-                    ),
-                  ),
-                ),
-              ),
+              if (compact)
+                SizedBox(height: 440, child: Center(child: card))
+              else
+                Expanded(child: Center(child: card)),
               if (intents[t.id]?.active == true)
                 const Padding(
                   padding: EdgeInsets.only(top: 5),
@@ -426,8 +487,20 @@ class _ShortlistScreenState extends ConsumerState<ShortlistScreen> {
                   ),
                 ),
               ),
-            ],
-          ),
+            ];
+            return Padding(
+              padding: EdgeInsets.only(top: desktop ? 80 : 0),
+              child: compact
+                  ? ListView(
+                      padding: const EdgeInsets.only(bottom: CueSpace.xl),
+                      children: children,
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: children,
+                    ),
+            );
+          },
         );
       },
     );

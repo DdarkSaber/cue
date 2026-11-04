@@ -45,6 +45,42 @@ class SettingsScreen extends ConsumerWidget {
       kicker: 'Make yourself at home',
       title: 'Settings',
       children: [
+        const CueSectionLabel('Recommendations'),
+        CueGroup(
+          children: [
+            CueListRow(
+              title: 'Recommendation preferences',
+              subtitle: 'Formats, mood, content safety',
+              onTap: () => open('preferences'),
+            ),
+            CueListRow(
+              title: 'AI picks',
+              subtitle: s.aiPicks
+                  ? 'On. Some title names are sent to an AI service'
+                  : 'Off. Nothing is sent to an AI service',
+              onTap: () => open('preferences'),
+            ),
+            CueListRow(
+              title: 'Swipe actions',
+              subtitle: s.swipeMap.isStandard ? 'Standard' : 'Customised',
+              onTap: () => open('swipes'),
+            ),
+          ],
+        ),
+        const CueSectionLabel('Appearance'),
+        CueGroup(
+          children: [
+            CueListRow(
+              title: 'Appearance and accessibility',
+              subtitle: [
+                s.reduceMotion ? 'Less motion' : 'Full motion',
+                s.haptics ? 'haptics on' : 'haptics off',
+              ].join(', '),
+              onTap: () => open('appearance'),
+            ),
+          ],
+        ),
+        const CueSectionLabel('Library and sync'),
         CueGroup(
           children: [
             CueListRow(
@@ -58,33 +94,25 @@ class SettingsScreen extends ConsumerWidget {
               onTap: () => context.go(CueRoutes.importer),
             ),
             CueListRow(
-              title: 'Recommendation preferences',
-              subtitle: 'Formats, Revisit, content safety',
-              onTap: () => open('preferences'),
-            ),
-            CueListRow(
-              title: 'Swipe actions',
-              subtitle: s.swipeMap.isStandard ? 'Standard' : 'Customised',
-              onTap: () => open('swipes'),
-            ),
-            CueListRow(
-              title: 'Appearance and accessibility',
-              subtitle: [
-                s.reduceMotion ? 'Less motion' : 'Full motion',
-                s.haptics ? 'haptics on' : 'haptics off',
-              ].join(', '),
-              onTap: () => open('appearance'),
-            ),
-            CueListRow(
               title: 'Sync between devices',
               subtitle: 'Optional, end-to-end encrypted',
               onTap: () => open('sync'),
             ),
+          ],
+        ),
+        const CueSectionLabel('Privacy'),
+        CueGroup(
+          children: [
             CueListRow(
               title: 'Privacy and data',
               subtitle: 'What leaves the device, export, delete',
               onTap: () => open('privacy'),
             ),
+          ],
+        ),
+        const CueSectionLabel('About'),
+        CueGroup(
+          children: [
             CueListRow(
               title: 'About Cue',
               subtitle: 'Credits, licences, help',

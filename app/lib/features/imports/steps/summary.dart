@@ -26,7 +26,19 @@ class _Summary extends StatelessWidget {
             ),
           ],
           const SizedBox(height: CueSpace.lg),
-          CuePrimaryButton(label: 'Back to For you', onPressed: onDone),
+          Wrap(
+            spacing: CueSpace.md,
+            runSpacing: CueSpace.sm,
+            children: [
+              CuePrimaryButton(label: 'Back to For you', onPressed: onDone),
+              CueSecondaryButton(
+                label: s.review > 0
+                    ? 'Review ${s.review} in Library'
+                    : 'Rate titles in Library',
+                onPressed: () => context.go(CueRoutes.library),
+              ),
+            ],
+          ),
         ],
       ),
     );

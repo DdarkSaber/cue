@@ -39,21 +39,8 @@ class PreferencesPage extends ConsumerWidget {
           'New suggestions exclude every title in this library, including planned titles. Choose Revisit on the deck for titles marked to rewatch, or watched 3+ years ago.',
           style: TextStyle(fontSize: 13, color: CueColors.textMuted),
         ),
-        const CueSectionLabel('Live mood'),
+        const CueSectionLabel('Franchises'),
         const FranchiseExclusionsSection(),
-        _toggle(
-          title: 'Smarter mood text',
-          subtitle: 'Off by default. When on, the sentence you type in Tell me is sent to an AI service (Groq or Google Gemini) to suggest genres. Nothing else is sent. Mood learning itself always stays on this device.',
-          value: s.smartMoodText,
-          onChanged: (v) => change((x) => x.copyWith(smartMoodText: v)),
-        ),
-        _toggle(
-          title: 'AI picks from my taste',
-          subtitle: 'Off by default. When on, the names (and years) of up to 25 titles you rated highly, saved or finished, and up to 10 you disliked, plus your enabled formats, are sent to an AI service (Groq or Google Gemini) to suggest more. Suggestions are checked against the real catalog. Ratings, notes and dates never leave this device.',
-          value: s.aiPicks,
-          onChanged: (v) =>
-              change((x) => x.copyWith(aiPicks: v, aiPicksPromptSeen: true)),
-        ),
         const CueSectionLabel('Content safety'),
         _toggle(
           title: 'Show adult-tagged titles',
@@ -73,6 +60,42 @@ class PreferencesPage extends ConsumerWidget {
             }
             change((x) => x.copyWith(showAdult: v));
           },
+        ),
+        const CueSectionLabel('AI picks (optional)'),
+        Container(
+          padding: const EdgeInsets.all(CueSpace.md),
+          decoration: BoxDecoration(
+            color: CueColors.surfaceHigh,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: CueColors.line),
+          ),
+          child: const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Cue works fully without AI. Both switches below are off until you turn them on.',
+                style: TextStyle(fontSize: 14, height: 1.5),
+              ),
+              SizedBox(height: CueSpace.sm),
+              Text(
+                'What is sent: only the text described under each switch, to Groq or Google Gemini. What is never sent: your ratings, notes, dates, imports or account details. AI suggestions are checked against the real catalog before you see them.',
+                style: _body,
+              ),
+            ],
+          ),
+        ),
+        _toggle(
+          title: 'Smarter mood text',
+          subtitle: 'Off by default. When on, the sentence you type in Tell me is sent to an AI service (Groq or Google Gemini) to suggest genres. Nothing else is sent. Mood learning itself always stays on this device.',
+          value: s.smartMoodText,
+          onChanged: (v) => change((x) => x.copyWith(smartMoodText: v)),
+        ),
+        _toggle(
+          title: 'AI picks from my taste',
+          subtitle: 'Off by default. When on, the names (and years) of up to 25 titles you rated highly, saved or finished, and up to 10 you disliked, plus your enabled formats, are sent to an AI service (Groq or Google Gemini) to suggest more. Suggestions are checked against the real catalog. Ratings, notes and dates never leave this device.',
+          value: s.aiPicks,
+          onChanged: (v) =>
+              change((x) => x.copyWith(aiPicks: v, aiPicksPromptSeen: true)),
         ),
       ],
     );

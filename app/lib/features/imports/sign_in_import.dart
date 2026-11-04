@@ -307,21 +307,25 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
                           ),
                         ),
                       ),
-                      Text(
-                        _token != null
-                            ? (_account != null
-                                  ? 'Signed in as $_account'
-                                  : 'Signed in')
-                            : _config != null && !configured
-                            ? (usernameWorks ? 'Username' : 'Not set up yet')
-                            : p.byUsername
-                            ? (signInAvailable
-                                  ? 'Sign in or username'
-                                  : 'Username')
-                            : 'Sign in',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: CueColors.textMuted,
+                      const SizedBox(width: CueSpace.sm),
+                      Flexible(
+                        child: Text(
+                          _token != null
+                              ? (_account != null
+                                    ? 'Signed in as $_account'
+                                    : 'Signed in')
+                              : _config != null && !configured
+                              ? (usernameWorks ? 'Username' : 'Not set up yet')
+                              : p.byUsername
+                              ? (signInAvailable
+                                    ? 'Sign in or username'
+                                    : 'Username')
+                              : 'Sign in',
+                          textAlign: TextAlign.end,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: CueColors.textMuted,
+                          ),
                         ),
                       ),
                     ],

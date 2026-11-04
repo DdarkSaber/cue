@@ -111,6 +111,32 @@ Details offers local correction/review shortcuts and known-trait direction.
 Rating or review correction cannot repair provider artwork, synopsis or genres,
 and uploads no correction report.
 
+## Library, Will try and Settings usability
+
+Library opens with a Your taste card: how many titles you rated, the genres
+and formats you rate well, and a Rate more titles button. It states what
+drives recommendations: ratings first, unrated imports only as weak hints.
+Below it, search, Sort and filter (Recent, Rating, Title A-Z; format; In
+progress, Finished, Planned, Not rated) and a one-tap star on each row to
+rate in place. Select several rates or removes many titles at once (Remove
+asks first). An empty library or an empty filter result points to Import or
+the deck.
+
+Will try offers Pick for tonight (from Try now titles when any exist, else
+all saved titles). Marking Watched or Read it asks how it was; skipping
+changes nothing, answering stores a rating that feeds taste. The page
+scrolls at large text sizes instead of clipping controls. Order is the
+saved order with Try now titles first; there is no manual drag reordering.
+
+Import shows "Step 1 of 3" with plain names (Pick your list, Matching your
+titles, Check and confirm), says progress is saved and resumes, explains that
+unmatched titles go to Library under Needs review and are not counted as
+watched, and gives actionable file errors.
+
+Settings groups rows as Recommendations, Appearance, Library and sync,
+Privacy and About. All AI features (AI picks, Smarter mood text) sit under
+one opt-in section with a privacy explainer; both are off by default.
+
 ## Scope
 
 Working platforms are Android and web, with deck, local mood, imports/Undo,

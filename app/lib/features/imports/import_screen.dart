@@ -84,13 +84,17 @@ class ImportScreenState extends ConsumerState<ImportScreen> {
       if (file == null) return;
       final size = await file.length();
       if (size != null && size > ImportLimits.maxFileBytes) {
-        setState(() => _error = 'Files up to 20 MB can be imported.');
+        setState(
+          () => _error = 'That file is over 20 MB, the most Cue can import. Export a smaller list or split it, then try again.',
+        );
         return;
       }
       bytes = await file.readAsBytes();
       name = file.name;
     } on Object {
-      setState(() => _error = 'Could not open that file.');
+      setState(
+        () => _error = 'Could not open that file. Check it is still on this device, then try again.',
+      );
       return;
     }
     await readBytes(bytes, name);
@@ -163,7 +167,7 @@ class ImportScreenState extends ConsumerState<ImportScreen> {
   Future<void> _stage(ParsedImport parsed) async {
     if (parsed.records.isEmpty) {
       setState(() {
-        _error = 'Cue read the file but found no titles in it.';
+        _error = 'Cue read the file but found no titles in it. Check it has a Title column, or choose a different export.';
         _step = _Step.choose;
       });
       return;
@@ -268,7 +272,8 @@ class ImportScreenState extends ConsumerState<ImportScreen> {
         label: _parsing
             ? 'Reading your file…'
             : 'Matching ${_progress.$1} of ${_progress.$2} against the catalog…'
-                  '${_progress.$2 > 150 ? '\nAnime and comic lookups are limited to about 30 a minute, so a big list takes a couple of minutes. You can leave this screen and keep swiping; the deck shows the progress.' : ''}',
+                  '${_progress.$2 > 150 ? '\nAnime and comic lookups are limited to about 30 a minute, so a big list takes a couple of minutes. You can leave this screen and keep swiping; the deck shows the progress.' : ''}'
+                  '\nProgress is saved on this device. If the app closes or you go offline, open Import again and matching carries on from where it stopped.',
         value: _progress.$2 == 0 ? null : _progress.$1 / _progress.$2,
       ),
       _Step.preview => _Preview(
@@ -332,6 +337,7 @@ class ImportScreenState extends ConsumerState<ImportScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  _StepHeader(step: _step),
                   body,
                   if (job.error != null) ...[
                     if (_step != _Step.choose) Text(job.error!, style: _muted),
@@ -348,6 +354,59 @@ class ImportScreenState extends ConsumerState<ImportScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// "Step 2 of 3" with a plain-language name, so the flow is never a mystery.
+class _StepHeader extends StatelessWidget {
+  const _StepHeader({required this.step});
+  final _Step step;
+
+  @override
+  Widget build(BuildContext context) {
+    final (n, name) = switch (step) {
+      _Step.choose => (1, 'Pick your list'),
+      _Step.mapColumns => (1, 'Tell Cue which column is which'),
+      _Step.matching => (2, 'Matching your titles'),
+      _Step.preview => (3, 'Check and confirm'),
+      _Step.committing => (3, 'Adding to your library'),
+      _Step.summary => (3, 'All done'),
+    };
+    return Padding(
+      padding: const EdgeInsets.only(bottom: CueSpace.md),
+      child: Semantics(
+        header: true,
+        label: 'Step $n of 3: $name',
+        excludeSemantics: true,
+        child: Row(
+          children: [
+            for (var i = 1; i <= 3; i++)
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Container(
+                  width: 22,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: i <= n ? CueColors.accent : CueColors.line,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            const SizedBox(width: CueSpace.sm),
+            Expanded(
+              child: Text(
+                'Step $n of 3 \u00b7 $name',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFA7B5C5),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

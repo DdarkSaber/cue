@@ -14,16 +14,13 @@ class AddTitleButton extends StatelessWidget {
   const AddTitleButton({super.key});
 
   @override
-  Widget build(BuildContext context) => Align(
-    alignment: Alignment.centerLeft,
-    child: CueSecondaryButton(
-      label: 'Add a title',
-      onPressed: () => showCueSheet<void>(
-        context,
-        kicker: 'Library',
-        title: 'Add a title',
-        body: (_) => const _AddTitleBody(),
-      ),
+  Widget build(BuildContext context) => CueSecondaryButton(
+    label: 'Add a title',
+    onPressed: () => showCueSheet<void>(
+      context,
+      kicker: 'Library',
+      title: 'Add a title',
+      body: (_) => const _AddTitleBody(),
     ),
   );
 }

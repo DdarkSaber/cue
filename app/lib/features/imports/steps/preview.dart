@@ -33,6 +33,14 @@ class _Preview extends StatelessWidget {
           '${staged.readyUpdates} already in your library, ${staged.needsReview} need review.',
           style: const TextStyle(fontSize: 16, height: 1.5),
         ),
+        if (staged.needsReview > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'The ${staged.needsReview} that need review could not be matched with confidence. They are not counted as watched. Importing keeps them in Library under Needs review, where you can match or dismiss each one.',
+              style: _muted,
+            ),
+          ),
         if (p.skipped > 0)
           Padding(
             padding: const EdgeInsets.only(top: 6),
