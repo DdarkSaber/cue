@@ -9,6 +9,8 @@ import { MAX_SYNC_BYTES } from "./sync/store";
 import { MAX_DIAGNOSTICS_BYTES } from "./diagnostics/schemas";
 
 export const MAX_BODY_BYTES = 8 * 1024;
+/** /ai/* bodies hold up to 35 titles plus a sentence; multibyte titles need headroom. */
+export const MAX_AI_BODY_BYTES = 16 * 1024;
 
 export function allowedOrigins(raw: string | undefined): Set<string> {
   return new Set(
@@ -58,6 +60,10 @@ const smallBody = bodyLimit({
   maxSize: MAX_BODY_BYTES,
   onError: (c) => fail(c, 413, "payload_too_large"),
 });
+const aiBodyLimit = bodyLimit({
+  maxSize: MAX_AI_BODY_BYTES,
+  onError: (c) => fail(c, 413, "payload_too_large"),
+});
 const syncBodyLimit = bodyLimit({
   maxSize: MAX_SYNC_BYTES,
   onError: (c) => fail(c, 413, "payload_too_large"),
@@ -79,6 +85,7 @@ const diagnosticsBodyLimit: MiddlewareHandler<AppEnv> = (c, next) => {
 /** Diagnostics are additionally capped at 6 KB; sync uploads allow 2 MB. */
 export const bodyCap: MiddlewareHandler<AppEnv> = (c, next) =>
   c.req.path.startsWith("/sync/") ? syncBodyLimit(c, next)
+    : c.req.path.startsWith("/ai/") ? aiBodyLimit(c, next)
     : c.req.path === "/diagnostics" || c.req.path.startsWith("/diagnostics/") ? diagnosticsBodyLimit(c, next)
       : smallBody(c, next);
 
@@ -89,7 +96,9 @@ export const rateLimit: MiddlewareHandler<AppEnv> = async (c, next) => {
       ? c.env.IMAGE_LIMITER
       : c.req.path === "/ai/mood" || c.req.path === "/ai/recommend"
         ? (c.env.AI_LIMITER ?? c.env.RATE_LIMITER)
-        : c.env.RATE_LIMITER;
+        : c.req.path === "/catalog/match" || c.req.path === "/catalog/aliases"
+          ? (c.env.HEAVY_LIMITER ?? c.env.RATE_LIMITER)
+          : c.env.RATE_LIMITER;
   if (!limiter) return fail(c, 503, "unavailable");
   const key = c.req.header("CF-Connecting-IP") ?? "unknown";
   const { success } = await limiter.limit({ key });

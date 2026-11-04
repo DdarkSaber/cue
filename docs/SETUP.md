@@ -80,6 +80,20 @@ Do not expose keys in public issues, URLs, logs or app bundles.
 | `TMDB_API_KEY` | Optional richer drama, series and movie metadata | themoviedb.org |
 
 Provider free tiers are subject to their own quotas and changes.
+Without `GROQ_API_KEY` and `GEMINI_API_KEY` the AI routes answer 503
+`not_configured`. `GROQ_MODEL` and `GEMINI_MODEL` (plain vars) override the
+default models if one is retired.
+
+### Abuse limits (wrangler.toml)
+
+Rate-limit bindings are per IP per minute and are created on deploy:
+`RATE_LIMITER` (120), `AI_LIMITER` (10, `/ai/*`), `HEAVY_LIMITER` (20,
+`/catalog/match` and `/catalog/aliases`) and `IMAGE_LIMITER` (600). A missing
+optional limiter falls back to `RATE_LIMITER`. AI calls are also capped at 500 a
+day across all users (KV counter); cache hits do not count. If the KV store
+cannot count (for example its daily write quota), AI answers 503 rather than
+spending uncounted. Upstream providers are retried once for GETs, and a host or
+AI provider that keeps failing is skipped for 30 seconds per Worker instance.
 For MyAnimeList, register both `https://<your-site>/auth.html` and
 `cue://oauth/mal` as redirect URLs.
 

@@ -204,8 +204,8 @@ describe("CORS and origins", () => {
 
 describe("request size cap", () => {
   it(`rejects bodies over ${MAX_BODY_BYTES} bytes with 413`, async () => {
-    const res = await postJson("/ai/mood", {
-      text: "x",
+    const res = await postJson("/catalog/match", {
+      items: [],
       pad: "y".repeat(MAX_BODY_BYTES),
     });
     expect(res.status).toBe(413);
@@ -310,7 +310,7 @@ describe("hardening added after the security review", () => {
         else ctrl.close();
       },
     });
-    const res = await call("/ai/mood", {
+    const res = await call("/catalog/match", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,

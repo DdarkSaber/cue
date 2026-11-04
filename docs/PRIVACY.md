@@ -77,7 +77,9 @@ Groq or Google Gemini, only: up to 25 liked titles (name, format, year and, for
 explicit ratings, a 0-10 number), up to 10 disliked titles (name, format), your
 enabled formats and no other library data. Ratings dates, notes, ids, sync
 codes and import sources are never sent. The Worker does not log titles and
-caches the answer for a few hours under a hash of the profile. Suggestions
+caches the answer for a few hours under a hash of the profile. Titles are sent
+as quoted data, not instructions, and only suggestions that cite one of your
+liked titles are returned. Suggestions
 are matched against the real catalog; unmatched, ambiguous, already-owned,
 disliked, novel and music results are dropped. Turning it off stops all
 requests and deletes the picks stored on the device.

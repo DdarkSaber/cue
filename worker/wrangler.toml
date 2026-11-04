@@ -27,11 +27,17 @@ name = "RATE_LIMITER"
 namespace_id = "1001"
 simple = { limit = 120, period = 60 }
 
-# /ai/mood spends free AI quota: 10 a minute per IP.
+# /ai/mood and /ai/recommend spend free AI quota: 10 a minute per IP.
 [[ratelimits]]
 name = "AI_LIMITER"
 namespace_id = "1003"
 simple = { limit = 10, period = 60 }
+
+# /catalog/match and /catalog/aliases fan out to many providers per request.
+[[ratelimits]]
+name = "HEAVY_LIMITER"
+namespace_id = "1004"
+simple = { limit = 20, period = 60 }
 
 # Posters on the web app load in bursts; a separate, looser limit.
 [[ratelimits]]
@@ -40,7 +46,7 @@ namespace_id = "1002"
 simple = { limit = 600, period = 60 }
 
 # Secrets (set with `wrangler secret put`, never committed):
-#   TMDB_API_KEY (M1), MAL_CLIENT_SECRET (M6), GEMINI/GROQ keys (M7)
+#   TMDB_API_KEY (M1), MAL_CLIENT_SECRET (M6), GROQ_API_KEY, GEMINI_API_KEY (M7); optional GROQ_MODEL, GEMINI_MODEL vars
 
 # Weekly: delete encrypted sync copies untouched for 180 days.
 [triggers]

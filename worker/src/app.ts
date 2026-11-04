@@ -3,12 +3,13 @@ import { Hono } from "hono";
 import { proxyImage } from "./catalog/image";
 import * as catalog from "./catalog/service";
 import { NotConfiguredError, UpstreamError } from "./catalog/types";
-import type { AppEnv } from "./env";
+import type { AppEnv, Env } from "./env";
 import * as lists from "./imports/lists";
 import { same, sha256Hex, SyncStore } from "./sync/store";
 import { diagnosticsBody, diagnosticsId, diagnosticsToken } from "./diagnostics/schemas";
 import { DiagnosticsStore } from "./diagnostics/store";
-import { moodHints, underDailyCap } from "./ai/mood";
+import { aiAvailable, moodHints, underDailyCap } from "./ai/mood";
+import { shared } from "./resilience";
 import {
   cachedRecommendations,
   hasAiKeys,
@@ -55,6 +56,24 @@ import { check, jsonBody } from "./validate";
  * validate their input and answer 501.
  */
 export function createApp() {
+  type Ctx = Parameters<typeof fail>[0];
+  // Every provider is failing right now: answer fast instead of waiting on timeouts.
+  const aiDown = (c: Ctx) => {
+    c.header("Retry-After", "30");
+    return fail(c, 503, "unavailable");
+  };
+  const spendAi = async (env: Env): Promise<"ok" | "cap" | "store"> => {
+    try {
+      return (await underDailyCap(env.CATALOG_CACHE)) ? "ok" : "cap";
+    } catch {
+      return "store";
+    }
+  };
+  const aiRefused = (c: Ctx, why: "cap" | "store") => {
+    c.header("Retry-After", why === "cap" ? "3600" : "60");
+    return why === "cap" ? fail(c, 429, "rate_limited") : fail(c, 503, "unavailable");
+  };
+
   const app = new Hono<AppEnv>();
 
   app.use(
@@ -69,7 +88,10 @@ export function createApp() {
 
   // Public catalog data: shared caches may keep it briefly.
   const publicJson = (c: Parameters<typeof fail>[0], body: unknown) => {
-    c.header("Cache-Control", "public, max-age=3600");
+    // Empty answers (a gap, a missing key) are revalidated soon, not for an hour.
+    const b = body as { items?: unknown[]; configured?: boolean } | null;
+    const empty = Array.isArray(b?.items) && b.items.length === 0;
+    c.header("Cache-Control", empty || b?.configured === false ? "public, max-age=60" : "public, max-age=3600");
     return c.json(body as object);
   };
 
@@ -291,10 +313,9 @@ export function createApp() {
     const b = check(c, moodBody, await jsonBody(c));
     if (!b.ok) return b.res;
     if (!(c.env.GROQ_API_KEY || c.env.GEMINI_API_KEY)) return fail(c, 503, "not_configured");
-    if (!(await underDailyCap(c.env.CATALOG_CACHE))) {
-      c.header("Retry-After", "3600");
-      return fail(c, 429, "rate_limited");
-    }
+    if (!aiAvailable(c.env)) return aiDown(c);
+    const cap = await spendAi(c.env);
+    if (cap !== "ok") return aiRefused(c, cap);
     return c.json(await moodHints(c.env, b.data.text, b.data.allowed));
   });
 
@@ -306,13 +327,16 @@ export function createApp() {
     const key = await profileKey(b.data);
     const hit = await cachedRecommendations(c.env.CATALOG_CACHE, key);
     if (hit) return c.json(hit);
-    if (!(await underDailyCap(c.env.CATALOG_CACHE))) {
-      c.header("Retry-After", "3600");
-      return fail(c, 429, "rate_limited");
-    }
-    const out = await recommend(c.env, b.data);
-    await storeRecommendations(c.env.CATALOG_CACHE, key, out);
-    return c.json(out);
+    if (!aiAvailable(c.env)) return aiDown(c);
+    // Identical in-flight requests share one provider call and one cap unit.
+    const out = await shared(key, async () => {
+      const cap = await spendAi(c.env);
+      if (cap !== "ok") return cap;
+      const fresh = await recommend(c.env, b.data);
+      await storeRecommendations(c.env.CATALOG_CACHE, key, fresh);
+      return fresh;
+    });
+    return typeof out === "string" ? aiRefused(c, out) : c.json(out);
   });
 
   app.notFound((c) => fail(c, 404, "not_found"));

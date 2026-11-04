@@ -10,6 +10,8 @@ declare global {
       IMAGE_LIMITER: RateLimit;
       /** Stricter per-IP limit for /ai/mood, which spends free AI quota. */
       AI_LIMITER?: RateLimit;
+      /** Stricter per-IP limit for /catalog/match and /catalog/aliases (many upstream calls per request). */
+      HEAVY_LIMITER?: RateLimit;
       ALLOWED_ORIGINS: string;
       /** Secret. Without it, TMDB-backed kinds answer 503 not_configured. */
       TMDB_API_KEY?: string;
