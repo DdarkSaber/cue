@@ -744,7 +744,9 @@ class DeckController extends Notifier<DeckState> {
       _continuationBudget = RequestBudget(limit: continuationRequestBudget);
     }
     final isOffline = refilled ? offline : state.offline;
-    if (refilled && !offline) {
+    // A refused catalog (429, upstream error) is not a recovery: keep the
+    // backoff growing instead of asking again every five seconds.
+    if (refilled && !offline && !failed) {
       _retryAttempt = 0;
       _retryTimer?.cancel();
       _retryTimer = null;
