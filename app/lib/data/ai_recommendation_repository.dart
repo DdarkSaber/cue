@@ -46,6 +46,12 @@ class AiRecommendationRepository {
   static const refreshAfter = Duration(hours: 4);
   static const refreshAfterNewRatings = 5;
 
+  /// After an attempt that stored nothing (offline, no AI keys, nothing
+  /// resolved) the next try waits this long, so every deal does not repeat
+  /// the request.
+  static const retryAfterFailure = Duration(minutes: 15);
+  final _lastFailure = <String, DateTime>{};
+
   Future<({DateTime? at, int evidence, Map<String, AiPick> picks})> _load(
     String profileId,
   ) async {
@@ -129,6 +135,13 @@ class AiRecommendationRepository {
       kinds: kinds,
     );
 
+    final failedAt = _lastFailure[profileId];
+    if (!force &&
+        failedAt != null &&
+        _now().difference(failedAt) < retryAfterFailure) {
+      return false;
+    }
+    _lastFailure[profileId] = _now();
     final List<AiSuggestion> suggestions;
     try {
       suggestions = await client.recommend(profile);
@@ -137,6 +150,7 @@ class AiRecommendationRepository {
     }
     final resolved = await _resolve(suggestions, signals, titles, kinds);
     if (resolved.isEmpty || generation != _forgotten) return false;
+    _lastFailure.remove(profileId);
     await profiles.setRawSetting(
       profileId,
       _key,

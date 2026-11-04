@@ -293,6 +293,22 @@ void main() {
       },
     );
 
+    test('a failed attempt is not repeated on every deal', () async {
+      final signals = await library.signals(pid);
+      Future<bool> tryNow() =>
+          repo.refreshIfDue(pid, signals, {MediaKind.anime});
+      // Nothing resolves: no picks stored, so the profile stays due.
+      client.out = [sug('Nobody Knows', 'Liked 1')];
+      expect(await tryNow(), isFalse);
+      expect(await tryNow(), isFalse);
+      expect(client.profiles, hasLength(1));
+      now = now.add(AiRecommendationRepository.retryAfterFailure);
+      gateway.matchCatalog['new one'] = [hit(20, 'New One')];
+      client.out = [sug('New One', 'Liked 1')];
+      expect(await tryNow(), isTrue);
+      expect(client.profiles, hasLength(2));
+    });
+
     test('turning the setting off deletes the stored picks', () async {
       gateway.matchCatalog['good one'] = [hit(30, 'Good One')];
       client.out = [sug('Good One', 'Liked 1')];
