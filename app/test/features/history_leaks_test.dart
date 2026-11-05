@@ -258,6 +258,8 @@ void main() {
     expect(eligible(comic('hiatus', 20), s), isFalse);
     expect(eligible(comic('hiatus', null), s), isFalse);
     expect(eligible(comic('finished', 20), s), isFalse);
+    expect(eligible(comic('hiatus', 45), s), isFalse);
+    expect(eligible(comic('hiatus', 50), s), isTrue);
     expect(eligible(comic('hiatus', 300), s), isTrue);
     expect(eligible(comic('finished', 120), s), isTrue);
     expect(eligible(comic('ongoing', 20), s), isTrue);
