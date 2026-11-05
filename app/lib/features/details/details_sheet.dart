@@ -224,6 +224,8 @@ class _DetailsBodyState extends ConsumerState<DetailsBody> {
     'finished' => 'Finished',
     'airing' => 'Airing',
     'ongoing' => 'Ongoing',
+    'hiatus' => 'On hiatus',
+    'cancelled' => 'Cancelled',
     _ => 'Unknown',
   };
 
