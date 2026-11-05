@@ -20,7 +20,11 @@ second list. Saved options includes a card picker and a two-title factual
 comparison. Unknown metadata stays unknown; Cue does not invent a winner.
 Saved titles remain excluded from ordinary discovery.
 
-Optional Rate your library cards offer Loved, Enjoyed, One-time and Dropped.
+Optional Rate your library is a full-screen deck of your own titles' story
+cards: swipe up Loved, right Enjoyed, down One-time, left Dropped (or use the
+buttons or arrow keys), with Skip, Undo, a progress count and an exit button
+at the top. Shortlist follow-ups use the same deck: up Loved, right Enjoyed,
+left Not for me, down Haven't started.
 They are explicit answers, not automatic ratings for imported history.
 Skip, dismissal and Haven't started do not assume consumption or liking.
 Optional follow-up prompts concern older unrated saved picks and respect

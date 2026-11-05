@@ -17,22 +17,32 @@ import 'story_card.dart';
 
 /// The top card plus the next one peeking below, with the swipe gesture.
 /// Decisions are reported as directions; the swipe map turns them into
-/// decisions.
+/// decisions. Other decks (rating your library) pass [choices] instead, so
+/// they share the same gesture, stamps, haptics and reduced motion.
 class SwipeDeck extends StatefulWidget {
   const SwipeDeck({
     super.key,
     required this.cards,
-    required this.swipeMap,
+    this.swipeMap = SwipeMap.standard,
     required this.onSwipe,
     required this.onDetails,
     this.enabled = true,
     this.reduceMotion = false,
     this.haptics = true,
     this.onTryNow,
+    this.choices,
+    this.cardLabel = 'Recommendation',
   });
 
   final List<RankedCard> cards;
   final SwipeMap swipeMap;
+
+  /// When set, what each direction means instead of the swipe map's
+  /// decisions: drives the stamp and the screen-reader actions.
+  final Map<SwipeDirection, SwipeChoice>? choices;
+
+  /// Screen-reader prefix before the card's title.
+  final String cardLabel;
   final void Function(SwipeDirection) onSwipe;
   final VoidCallback onDetails;
   final bool enabled;
@@ -314,6 +324,8 @@ class SwipeDeckState extends State<SwipeDeck>
                               child: _CardSemantics(
                                 card: top,
                                 swipeMap: widget.swipeMap,
+                                choices: widget.choices,
+                                cardLabel: widget.cardLabel,
                                 onSwipe: swipe,
                                 onDetails: widget.onDetails,
                                 onTryNow: widget.onTryNow == null
@@ -341,8 +353,12 @@ class SwipeDeckState extends State<SwipeDeck>
                             ),
                             if (preview != null && progress > 0)
                               _Stamp(
-                                decision: widget.swipeMap.decisionFor(preview),
-                                reading: top.title.kind.isReading,
+                                choice:
+                                    widget.choices?[preview] ??
+                                    SwipeChoice.decision(
+                                      widget.swipeMap.decisionFor(preview),
+                                      reading: top.title.kind.isReading,
+                                    ),
                                 direction: preview,
                                 opacity: Curves.easeOut.transform(
                                   (progress * 1.3).clamp(0, 1),
@@ -367,6 +383,8 @@ class _CardSemantics extends StatelessWidget {
   const _CardSemantics({
     required this.card,
     required this.swipeMap,
+    required this.choices,
+    required this.cardLabel,
     required this.onSwipe,
     required this.onDetails,
     required this.onTryNow,
@@ -375,6 +393,8 @@ class _CardSemantics extends StatelessWidget {
 
   final RankedCard card;
   final SwipeMap swipeMap;
+  final Map<SwipeDirection, SwipeChoice>? choices;
+  final String cardLabel;
   final Future<void> Function(SwipeDirection) onSwipe;
   final VoidCallback onDetails;
   final VoidCallback? onTryNow;
@@ -388,13 +408,18 @@ class _CardSemantics extends StatelessWidget {
         : <CustomSemanticsAction, VoidCallback>{
             const CustomSemanticsAction(label: 'Try now'): onTryNow!,
           };
+    final choices = this.choices;
     return Semantics(
       container: true,
-      label: 'Recommendation: ${card.title.displayTitle}. ${card.reason}',
+      label: '$cardLabel: ${card.title.displayTitle}. ${card.reason}',
       customSemanticsActions: {
-        for (final d in Decision.values)
-          CustomSemanticsAction(label: d.labelFor(reading: reading)): () =>
-              onSwipe(swipeMap.directionFor(d)),
+        if (choices != null)
+          for (final MapEntry(key: dir, value: choice) in choices.entries)
+            CustomSemanticsAction(label: choice.label): () => onSwipe(dir)
+        else
+          for (final d in Decision.values)
+            CustomSemanticsAction(label: d.labelFor(reading: reading)): () =>
+                onSwipe(swipeMap.directionFor(d)),
         ...?tryNowActions,
         const CustomSemanticsAction(label: 'Open details'): onDetails,
       },
@@ -405,20 +430,18 @@ class _CardSemantics extends StatelessWidget {
 
 class _Stamp extends StatelessWidget {
   const _Stamp({
-    required this.decision,
-    required this.reading,
+    required this.choice,
     required this.direction,
     required this.opacity,
   });
 
-  final Decision decision;
-  final bool reading;
+  final SwipeChoice choice;
   final SwipeDirection direction;
   final double opacity;
 
   @override
   Widget build(BuildContext context) {
-    final style = DecisionStyle.of(decision);
+    final style = choice.style;
     final align = switch (direction) {
       SwipeDirection.right => const Alignment(-0.8, -0.72),
       SwipeDirection.left => const Alignment(0.8, -0.72),
@@ -454,7 +477,7 @@ class _Stamp extends StatelessWidget {
                   strokeWidth: 2,
                 ),
                 Text(
-                  decision.labelFor(reading: reading),
+                  choice.label,
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,

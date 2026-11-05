@@ -6,18 +6,26 @@ import '../../app/tokens.dart';
 /// Card-shaped loading state (no blocking welcome screen), and the same
 /// shape for empty and offline messages.
 class LoadingCard extends StatelessWidget {
-  const LoadingCard({super.key, this.message, this.action});
+  const LoadingCard({
+    super.key,
+    this.message,
+    this.action,
+    this.loadingLabel = 'Loading recommendations',
+  });
 
   /// When set, the card explains why it is empty instead of loading.
   final String? message;
   final Widget? action;
+
+  /// Read out while [message] is null.
+  final String loadingLabel;
 
   @override
   Widget build(BuildContext context) {
     final desktop = context.cueLayout == CueLayout.desktop;
     final radius = desktop ? CueRadius.cardDesktop : CueRadius.cardPhone;
     return Semantics(
-      label: message ?? 'Loading recommendations',
+      label: message ?? loadingLabel,
       container: true,
       liveRegion: true,
       child: DecoratedBox(
@@ -46,25 +54,28 @@ class LoadingCard extends StatelessWidget {
                 ? const _Bars()
                 : ExcludeSemantics(
                     excluding: false,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 420),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            message!,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              height: 1.5,
-                              color: CueColors.text,
+                    // Scrolls only when large text outgrows a short card.
+                    child: SingleChildScrollView(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 420),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              message!,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                height: 1.5,
+                                color: CueColors.text,
+                              ),
                             ),
-                          ),
-                          if (action != null) ...[
-                            const SizedBox(height: CueSpace.lg),
-                            action!,
+                            if (action != null) ...[
+                              const SizedBox(height: CueSpace.lg),
+                              action!,
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                     ),
                   ),

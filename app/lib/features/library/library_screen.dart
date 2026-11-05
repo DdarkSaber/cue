@@ -24,8 +24,7 @@ import 'entry_sheet.dart';
 import 'add_title_sheet.dart';
 import 'library_view.dart';
 import 'review_sheet.dart';
-import 'rating_cards.dart';
-import '../../data/library_rating_service.dart';
+import 'rating_deck.dart';
 
 /// Everything the Library route shows, loaded in one go.
 class LibraryData {
@@ -168,30 +167,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     setState(() => _q = LibraryQuery(sort: _q.sort));
   }
 
-  Future<void> _openRatings({bool followUp = false}) async {
-    final id = await ref.read(profileIdProvider.future);
-    if (!mounted) return;
-    final service = LibraryRatingService(
-      ref.read(databaseProvider),
-      ref.read(libraryRepositoryProvider),
-      ref.read(recommendationRepositoryProvider),
-      clock: ref.read(clockProvider),
-    );
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => LibraryRatingCards(
-        service: service,
-        profileId: id,
-        followUp: followUp,
-        onChanged: () {
-          if (!mounted) return;
-          ref.read(libraryVersionProvider.notifier).bump();
-          ref.read(decisionVersionProvider.notifier).bump();
-        },
-      ),
-    );
-  }
+  Future<void> _openRatings({bool followUp = false}) =>
+      openLibraryRating(context, ref, followUp: followUp);
 
   void _dealRevisit() {
     ref.read(deckFiltersProvider.notifier).setMood(QuickMood.revisit);

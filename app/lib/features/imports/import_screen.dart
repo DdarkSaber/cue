@@ -18,6 +18,7 @@ import '../../imports/detect.dart';
 import '../../imports/import_service.dart';
 import '../../imports/matcher.dart';
 import '../../imports/records.dart';
+import '../library/rating_deck.dart';
 import 'import_job.dart';
 import 'sign_in_import.dart';
 import 'source_names.dart';
