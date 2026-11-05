@@ -205,6 +205,13 @@ class ImportScreenState extends ConsumerState<ImportScreen> {
     });
   }
 
+  /// Jumps straight to the summary step, for widget tests of its buttons.
+  @visibleForTesting
+  void debugShowSummary(ImportSummary summary) => setState(() {
+    _summary = summary;
+    _step = _Step.summary;
+  });
+
   /// The importer lives in the Library tab's stack. Going straight to For you
   /// would leave it parked there, so Library would reopen on the summary:
   /// reset the stack to the Library list first, then switch tabs.

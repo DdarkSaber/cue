@@ -518,6 +518,31 @@ void main() {
       },
     );
 
+    testWidgets('Library "Rate more titles" opens the full-screen deck', (
+      t,
+    ) async {
+      await t.runAsync(() => seed(ids: ['a', 'b']));
+      await t.pumpWidget(
+        scope(const MaterialApp(home: Scaffold(body: LibraryScreen()))),
+      );
+      await settle(t);
+      final rate = find.text('Rate more titles');
+      await t.ensureVisible(rate);
+      await t.pumpAndSettle();
+      await t.tap(rate);
+      await settle(t);
+      expect(find.byType(LibraryRatingDeck), findsOneWidget);
+      expect(find.text('Rate your library'), findsOneWidget);
+      expect(find.text('1 of 2'), findsOneWidget);
+      final id = topId(t);
+      await swipe(t, 'down');
+      expect(await ratingOf(t, id), Rating.once.code);
+      await t.tap(find.byTooltip('Exit rating'));
+      await settle(t);
+      expect(find.byType(LibraryRatingDeck), findsNothing);
+      expect(find.byType(LibraryScreen), findsOneWidget);
+    });
+
     testWidgets(
       'large text rating buttons retain accessible labelled tap targets',
       (t) async {
