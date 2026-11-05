@@ -114,10 +114,10 @@ class _DetailsBodyState extends ConsumerState<DetailsBody> {
       if (t.titleNative != null) ('Native title', t.titleNative!),
       ('Year', t.year?.toString() ?? 'Unknown'),
       ('Status', _status(t)),
-      if (t.kind.isReading)
-        ('Chapters', t.chapters?.toString() ?? 'Unknown')
+      if (t.lengthLabel case final length?)
+        ('Length', length)
       else if (t.kind != MediaKind.movie)
-        ('Episodes', t.episodes?.toString() ?? 'Unknown'),
+        ('Length', 'Unknown'),
       if (t.country != null) ('Country', t.country!),
       if (t.score != null) ('Catalog score', '${t.score} / 100'),
     ];
