@@ -156,7 +156,10 @@ export function createApp() {
   app.post("/catalog/mal-search", async (c) => {
     const b = check(c, malSearchBody, await jsonBody(c));
     if (!b.ok) return b.res;
-    const results = await catalog.malSearch(c.env, b.data.items.map((i) => i.q), b.data.kind);
+    const results = await catalog.malSearch(
+      c.env,
+      b.data.items.map((i) => ({ q: i.q, type: i.kind ?? b.data.kind })),
+    );
     return c.json({ results });
   });
 

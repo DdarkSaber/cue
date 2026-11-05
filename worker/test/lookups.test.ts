@@ -89,6 +89,17 @@ describe("MAL title search", () => {
     expect(q.endsWith("word")).toBe(true);
   });
 
+  it("each name may pick its own list; the body's kind is the default", async () => {
+    const calls = mockUpstream(vi, () => Response.json({ data: [] }));
+    const res = await postJson(
+      "/catalog/mal-search",
+      { items: [{ q: "First Name" }, { q: "Second Name", kind: "manga" }] },
+      malEnv(),
+    );
+    expect(res.status).toBe(200);
+    expect(calls.map((c) => c.url.pathname).sort()).toEqual(["/v2/anime", "/v2/manga"]);
+  });
+
   it("one failing name leaves that name empty, not the batch", async () => {
     mockUpstream(vi, (url) =>
       url.searchParams.get("q") === "Bad Name" ? new Response("no", { status: 500 }) : Response.json({ data: [node(1)] }),
@@ -112,7 +123,7 @@ describe("MAL title search", () => {
     const nine = Array.from({ length: 9 }, (_, i) => ({ q: `t${i}` }));
     expect((await postJson("/catalog/mal-search", { items: nine, kind: "anime" }, env)).status).toBe(400);
     expect((await postJson("/catalog/mal-search", { items: [{ q: "x" }], kind: "kdrama" }, env)).status).toBe(400);
-    expect((await postJson("/catalog/mal-search", { items: [{ q: "x" }] }, env)).status).toBe(400);
+    expect((await postJson("/catalog/mal-search", { items: [{ q: "x", kind: "movie" }] }, env)).status).toBe(400);
     expect((await call("/catalog/mal-search", {}, env)).status).toBe(404);
   });
 

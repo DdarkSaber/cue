@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../domain/models/title.dart';
 import 'anilist_client.dart';
+import 'request_pacer.dart';
 
 /// A catalog title as the Worker sends it.
 class CatalogItemDto {
@@ -66,6 +67,19 @@ class AliasCandidateDto {
             ? CatalogItemDto(Map<String, dynamic>.from(j['item'] as Map))
             : null,
       );
+}
+
+/// A Wikipedia article for a name: its canonical title and the other names
+/// that redirect to it (romanized, original, older licensed titles).
+class WikiNameDto {
+  const WikiNameDto(this.title, [this.names = const []]);
+  final String title;
+  final List<String> names;
+
+  factory WikiNameDto.fromJson(Map<String, dynamic> j) => WikiNameDto(
+    '${j['title'] ?? ''}',
+    [for (final n in (j['names'] as List?) ?? const []) '$n'],
+  );
 }
 
 class CatalogPageDto {
@@ -150,6 +164,13 @@ class MatchQuery {
   final bool adult;
 }
 
+/// One name for MyAnimeList's search, in its anime or its comics list.
+class MalQuery {
+  const MalQuery(this.q, {required this.anime});
+  final String q;
+  final bool anime;
+}
+
 class MatchResponse {
   const MatchResponse(this.results, this.mal, {this.failed = const {}});
 
@@ -213,6 +234,18 @@ abstract class CatalogGateway {
   Future<List<List<AliasCandidateDto>>> aliases(
     List<String> names, {
     String source = 'mangadex',
+  });
+
+  /// MyAnimeList's own title search, up to 8 names per call: the second
+  /// opinion when AniList finds nothing. Each name searches the anime list
+  /// or the comics list. Adult entries and novels are left out.
+  Future<List<List<CatalogItemDto>>> malSearch(List<MalQuery> items);
+
+  /// Wikipedia's canonical title (and redirecting names) for up to 8 names
+  /// no catalog recognised. [kind] steers the search to the right article.
+  Future<List<List<WikiNameDto>>> canonicalNames(
+    List<String> names, {
+    MediaKind? kind,
   });
 
   /// Titles by AniList id, 50 per call.
@@ -289,12 +322,28 @@ abstract class CatalogGateway {
 }
 
 /// Talks to the Cue Worker. Fixed endpoints only; 8 s client timeout.
+/// Import lookups are paced under the Worker's per-minute limits.
 class HttpCatalogGateway implements CatalogGateway {
-  HttpCatalogGateway(this.base, {http.Client? client, this.proxyImages = false})
-    : _client = client ?? http.Client();
+  HttpCatalogGateway(
+    this.base, {
+    http.Client? client,
+    this.proxyImages = false,
+    RequestPacer? heavyPacer,
+    RequestPacer? lookupPacer,
+  }) : _client = client ?? http.Client(),
+       _heavy = heavyPacer ?? RequestPacer(maxPerMinute: heavyPerMinute),
+       _lookup = lookupPacer ?? RequestPacer(maxPerMinute: lookupPerMinute);
 
   final String base;
   final http.Client _client;
+
+  /// /catalog/match and /catalog/aliases share the Worker's limit of 20 a
+  /// minute; /catalog/mal-search and /catalog/names share 30. A margin
+  /// stays free for other requests from the same network.
+  static const heavyPerMinute = 18;
+  static const lookupPerMinute = 27;
+  final RequestPacer _heavy;
+  final RequestPacer _lookup;
 
   /// Web needs posters through the Worker so canvases can draw them.
   final bool proxyImages;
@@ -359,26 +408,80 @@ class HttpCatalogGateway implements CatalogGateway {
     return body;
   }
 
+  static Map<String, String> _q(String n) => {
+    'q': n.length > 160 ? n.substring(0, 160) : n,
+  };
+
   @override
   Future<List<List<AliasCandidateDto>>> aliases(
     List<String> names, {
     String source = 'mangadex',
   }) async {
-    final req = http.Request('POST', Uri.parse('$base/catalog/aliases'))
-      ..headers['Content-Type'] = 'application/json'
-      ..body = jsonEncode({
-        'items': [
-          for (final n in names.take(8))
-            {'q': n.length > 160 ? n.substring(0, 160) : n},
-        ],
-        'source': source,
-      });
-    final b = await _send(req) as Map;
+    if (names.isEmpty) return const [];
+    final b = await _heavy.run(
+      () => _send(
+        http.Request('POST', Uri.parse('$base/catalog/aliases'))
+          ..headers['Content-Type'] = 'application/json'
+          ..body = jsonEncode({
+            'items': [for (final n in names.take(8)) _q(n)],
+            'source': source,
+          }),
+      ),
+    ) as Map;
     return [
       for (final r in (b['results'] as List?) ?? const [])
         [
           for (final c in (r as List))
             AliasCandidateDto.fromJson(Map<String, dynamic>.from(c as Map)),
+        ],
+    ];
+  }
+
+  @override
+  Future<List<List<CatalogItemDto>>> malSearch(List<MalQuery> items) async {
+    if (items.isEmpty) return const [];
+    final b = await _lookup.run(
+      () => _send(
+        http.Request('POST', Uri.parse('$base/catalog/mal-search'))
+          ..headers['Content-Type'] = 'application/json'
+          ..body = jsonEncode({
+            'items': [
+              for (final i in items.take(8))
+                {..._q(i.q), 'kind': i.anime ? 'anime' : 'manga'},
+            ],
+          }),
+      ),
+    );
+    return [
+      for (final r in ((b as Map?)?['results'] as List?) ?? const [])
+        [
+          for (final i in (r as List))
+            CatalogItemDto(Map<String, dynamic>.from(i as Map)),
+        ],
+    ];
+  }
+
+  @override
+  Future<List<List<WikiNameDto>>> canonicalNames(
+    List<String> names, {
+    MediaKind? kind,
+  }) async {
+    if (names.isEmpty) return const [];
+    final b = await _lookup.run(
+      () => _send(
+        http.Request('POST', Uri.parse('$base/catalog/names'))
+          ..headers['Content-Type'] = 'application/json'
+          ..body = jsonEncode({
+            'items': [for (final n in names.take(8)) _q(n)],
+            if (kind != null && kind != MediaKind.unknown) 'kind': kind.name,
+          }),
+      ),
+    );
+    return [
+      for (final r in ((b as Map?)?['results'] as List?) ?? const [])
+        [
+          for (final w in (r as List))
+            WikiNameDto.fromJson(Map<String, dynamic>.from(w as Map)),
         ],
     ];
   }
@@ -480,7 +583,13 @@ class HttpCatalogGateway implements CatalogGateway {
     List<MatchQuery> items, {
     List<int> malAnime = const [],
     List<int> malManga = const [],
-  }) async {
+  }) => _heavy.run(() => _match(items, malAnime, malManga));
+
+  Future<MatchResponse> _match(
+    List<MatchQuery> items,
+    List<int> malAnime,
+    List<int> malManga,
+  ) async {
     final uri = Uri.parse('$base/catalog/match');
     final http.Response res;
     try {
@@ -508,7 +617,17 @@ class HttpCatalogGateway implements CatalogGateway {
       throw const CatalogUnavailable('offline');
     }
     if (res.statusCode != 200) {
-      throw CatalogUnavailable('http_${res.statusCode}');
+      Object? err;
+      try {
+        err = jsonDecode(utf8.decode(res.bodyBytes));
+      } on FormatException {
+        err = null;
+      }
+      final code = err is Map ? err['error'] as String? : null;
+      throw CatalogUnavailable(
+        code ?? 'http_${res.statusCode}',
+        retryAfter: _retryAfter(res),
+      );
     }
     final body = jsonDecode(utf8.decode(res.bodyBytes)) as Map;
     List<CatalogItemDto> list(Object? l) => [
@@ -889,6 +1008,16 @@ class HybridCatalogGateway implements CatalogGateway {
     List<int> ids, {
     required bool anime,
   }) => anilist.byIds(ids, anime: anime);
+
+  @override
+  Future<List<List<CatalogItemDto>>> malSearch(List<MalQuery> items) =>
+      worker.malSearch(items);
+
+  @override
+  Future<List<List<WikiNameDto>>> canonicalNames(
+    List<String> names, {
+    MediaKind? kind,
+  }) => worker.canonicalNames(names, kind: kind);
 
   @override
   Future<OAuthConfigDto> oauthConfig() => worker.oauthConfig();

@@ -7,6 +7,8 @@
 Your library lives in local SQLite. Library/history uploads require optional
 encrypted sync. AI text, AI taste picks and technical diagnostics are separate opt-ins.
 Catalog lookups send title names or IDs, never your whole history.
+Import titles that AniList cannot place are looked up, by name only, in
+MyAnimeList and Wikipedia through the Worker, which does not log them.
 Provider sign-in uses the provider's page; Cue does not see passwords.
 Tokens stay on the device.
 

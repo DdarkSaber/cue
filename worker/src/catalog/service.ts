@@ -171,19 +171,21 @@ const LOOKUP_TTL = 7 * 24 * 60 * 60;
  * Runs one cached lookup per name, four at a time. A failed lookup is an
  * empty list for that name, so one bad title never sinks a batch.
  */
-async function perName<T>(
+async function perName<Q extends { q: string }, T>(
   env: Env,
-  queries: string[],
-  keyOf: (norm: string) => string,
-  load: (q: string) => Promise<T[]>,
+  queries: Q[],
+  keyOf: (norm: string, query: Q) => string,
+  load: (query: Q) => Promise<T[]>,
 ): Promise<T[][]> {
   const out: T[][] = queries.map(() => []);
   for (let s = 0; s < queries.length; s += 4) {
     await Promise.all(
-      queries.slice(s, s + 4).map(async (q, j) => {
+      queries.slice(s, s + 4).map(async (query, j) => {
         try {
-          const norm = q.toLowerCase().replace(/\s+/g, " ").trim();
-          const { value } = await cached<T[]>(env.CATALOG_CACHE, keyOf(norm), LOOKUP_TTL, () => load(q));
+          const norm = query.q.toLowerCase().replace(/\s+/g, " ").trim();
+          const { value } = await cached<T[]>(env.CATALOG_CACHE, keyOf(norm, query), LOOKUP_TTL, () =>
+            load(query),
+          );
           out[s + j] = value;
         } catch (e) {
           // A missing key is the whole route's answer, not one name's.
@@ -197,11 +199,20 @@ async function perName<T>(
 
 /**
  * MyAnimeList title search for imports: the second opinion after AniList.
- * Anime or comics (MAL keeps manga, manhwa and manhua in one list).
+ * Each name searches anime or comics (MAL keeps manga, manhwa and manhua in
+ * one list).
  */
-export function malSearch(env: Env, queries: string[], type: "anime" | "manga"): Promise<MalSearchItem[][]> {
+export function malSearch(
+  env: Env,
+  queries: { q: string; type: "anime" | "manga" }[],
+): Promise<MalSearchItem[][]> {
   if (!env.MAL_CLIENT_ID) throw new NotConfiguredError("mal");
-  return perName(env, queries, (n) => `malsearch:${type}:${n}`, (q) => searchMal(env.MAL_CLIENT_ID, q, type));
+  return perName(
+    env,
+    queries,
+    (n, { type }) => `malsearch:${type}:${n}`,
+    ({ q, type }) => searchMal(env.MAL_CLIENT_ID, q, type),
+  );
 }
 
 /**
@@ -209,7 +220,12 @@ export function malSearch(env: Env, queries: string[], type: "anime" | "manga"):
  * can ask AniList and MAL again with the title an article uses.
  */
 export function names(env: Env, queries: string[], kind: MediaKind | undefined): Promise<WikiName[][]> {
-  return perName(env, queries, (n) => `wiki:${kind ?? "-"}:${n}`, (q) => wikiNames(q, kind));
+  return perName(
+    env,
+    queries.map((q) => ({ q })),
+    (n) => `wiki:${kind ?? "-"}:${n}`,
+    ({ q }) => wikiNames(q, kind),
+  );
 }
 
 /**

@@ -120,13 +120,18 @@ export const aliasBody = z.object({
   source: z.enum(["mangadex", "mangaupdates"]).default("mangadex"),
 });
 
-/** MyAnimeList title search for imports: at most 8 names of one type. */
+/**
+ * MyAnimeList title search for imports: at most 8 names. Each name searches
+ * the anime or the comics (manga) list; `kind` is the default for names that
+ * do not say.
+ */
+const malList = z.enum(["anime", "manga"]);
 export const malSearchBody = z.object({
   items: z
-    .array(z.object({ q: z.string().trim().min(1).max(160) }))
+    .array(z.object({ q: z.string().trim().min(1).max(160), kind: malList.optional() }))
     .min(1)
     .max(8),
-  kind: z.enum(["anime", "manga"]),
+  kind: malList.default("anime"),
 });
 
 /** Canonical-name lookups (Wikipedia) for imports: at most 8 names. */
