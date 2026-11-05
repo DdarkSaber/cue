@@ -34,8 +34,10 @@ import {
   aliasBody,
   imageQuery,
   listProvider,
+  malSearchBody,
   matchBody,
   moodBody,
+  namesBody,
   oauthBody,
   oauthParams,
   refreshBody,
@@ -147,6 +149,22 @@ export function createApp() {
     const b = check(c, aliasBody, await jsonBody(c));
     if (!b.ok) return b.res;
     const results = await catalog.aliases(c.env, b.data.items.map((i) => i.q), b.data.source);
+    return c.json({ results });
+  });
+
+  // MyAnimeList search for import titles AniList could not place. Names only; never logged.
+  app.post("/catalog/mal-search", async (c) => {
+    const b = check(c, malSearchBody, await jsonBody(c));
+    if (!b.ok) return b.res;
+    const results = await catalog.malSearch(c.env, b.data.items.map((i) => i.q), b.data.kind);
+    return c.json({ results });
+  });
+
+  // Canonical names from Wikipedia for titles no catalog recognised. Names only; never logged.
+  app.post("/catalog/names", async (c) => {
+    const b = check(c, namesBody, await jsonBody(c));
+    if (!b.ok) return b.res;
+    const results = await catalog.names(c.env, b.data.items.map((i) => i.q), b.data.kind);
     return c.json({ results });
   });
 

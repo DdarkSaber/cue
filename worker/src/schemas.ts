@@ -120,6 +120,24 @@ export const aliasBody = z.object({
   source: z.enum(["mangadex", "mangaupdates"]).default("mangadex"),
 });
 
+/** MyAnimeList title search for imports: at most 8 names of one type. */
+export const malSearchBody = z.object({
+  items: z
+    .array(z.object({ q: z.string().trim().min(1).max(160) }))
+    .min(1)
+    .max(8),
+  kind: z.enum(["anime", "manga"]),
+});
+
+/** Canonical-name lookups (Wikipedia) for imports: at most 8 names. */
+export const namesBody = z.object({
+  items: z
+    .array(z.object({ q: z.string().trim().min(1).max(160) }))
+    .min(1)
+    .max(8),
+  kind: mediaKind.optional(),
+});
+
 /** Usernames on MAL and AniList: letters, digits, underscore, hyphen. */
 export const userParams = z.object({
   name: z.string().regex(/^[A-Za-z0-9_-]{2,32}$/),

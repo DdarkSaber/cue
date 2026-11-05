@@ -91,7 +91,9 @@ default models if one is retired.
 
 Rate-limit bindings are per IP per minute and are created on deploy:
 `RATE_LIMITER` (120), `AI_LIMITER` (10, `/ai/*`), `HEAVY_LIMITER` (20,
-`/catalog/match` and `/catalog/aliases`) and `IMAGE_LIMITER` (600). A missing
+`/catalog/match` and `/catalog/aliases`), `LOOKUP_LIMITER` (30,
+`/catalog/mal-search` and `/catalog/names`) and `IMAGE_LIMITER` (600). The app
+paces itself under these limits during imports and waits out a `Retry-After`. A missing
 optional limiter falls back to `RATE_LIMITER`. AI calls are also capped at 500 a
 day across all users (KV counter); cache hits do not count. If the KV store
 cannot count (for example its daily write quota), AI answers 503 rather than
