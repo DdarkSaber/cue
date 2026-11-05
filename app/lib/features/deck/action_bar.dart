@@ -39,46 +39,91 @@ class ActionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final desktop = context.cueLayout == CueLayout.desktop;
-    final items = [
+    return _bar(desktop, [
       for (final a in actionOrder)
-        Flexible(
-          child: _ActionItem(
-            decision: a,
-            label: a.labelFor(reading: reading),
-            desktop: desktop,
-            keyHint: keyHints[a],
-            onPressed: onAction == null ? null : () => onAction!(a),
-            onLongPress: onAction == null || onLongAction == null
-                ? null
-                : () => onLongAction!(a),
-          ),
+        _ActionItem(
+          label: a.labelFor(reading: reading),
+          style: DecisionStyle.of(a),
+          primary: a == Decision.willTry,
+          hint: a == Decision.notNow
+              ? 'Long press to choose how long to hide it'
+              : null,
+          desktop: desktop,
+          keyHint: keyHints[a],
+          onPressed: onAction == null ? null : () => onAction!(a),
+          onLongPress: onAction == null || onLongAction == null
+              ? null
+              : () => onLongAction!(a),
         ),
-    ];
-    return Row(
-      mainAxisAlignment: desktop
-          ? MainAxisAlignment.center
-          : MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: desktop
-          ? CrossAxisAlignment.center
-          : CrossAxisAlignment.start,
-      spacing: desktop ? 34 : CueSpace.xs,
-      children: items,
-    );
+    ]);
   }
 }
 
+/// One button in a [ChoiceBar].
+class ChoiceBarItem {
+  const ChoiceBarItem({required this.choice, this.onPressed, this.keyHint});
+
+  final SwipeChoice choice;
+
+  /// Null while there is no card to act on.
+  final VoidCallback? onPressed;
+
+  /// The key for the choice on desktop, shown as a tooltip ("→").
+  final String? keyHint;
+}
+
+/// The action bar's buttons for any other swipe deck, in the given order.
+class ChoiceBar extends StatelessWidget {
+  const ChoiceBar({super.key, required this.items});
+
+  final List<ChoiceBarItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final desktop = context.cueLayout == CueLayout.desktop;
+    return _bar(desktop, [
+      for (final item in items)
+        _ActionItem(
+          label: item.choice.label,
+          style: item.choice.style,
+          primary: item.choice.primary,
+          desktop: desktop,
+          keyHint: item.keyHint,
+          onPressed: item.onPressed,
+        ),
+    ]);
+  }
+}
+
+Widget _bar(bool desktop, List<Widget> items) => Row(
+  mainAxisAlignment: desktop
+      ? MainAxisAlignment.center
+      : MainAxisAlignment.spaceBetween,
+  crossAxisAlignment: desktop
+      ? CrossAxisAlignment.center
+      : CrossAxisAlignment.start,
+  spacing: desktop ? 34 : CueSpace.xs,
+  children: [for (final item in items) Flexible(child: item)],
+);
+
 class _ActionItem extends StatelessWidget {
   const _ActionItem({
-    required this.decision,
     required this.label,
+    required this.style,
+    required this.primary,
     required this.desktop,
     required this.onPressed,
     this.onLongPress,
     this.keyHint,
+    this.hint,
   });
 
-  final Decision decision;
   final String label;
+  final DecisionStyle style;
+  final bool primary;
+
+  /// Screen-reader hint while enabled (Not now's long press).
+  final String? hint;
   final bool desktop;
   final VoidCallback? onPressed;
   final VoidCallback? onLongPress;
@@ -86,8 +131,6 @@ class _ActionItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primary = decision == Decision.willTry;
-    final style = DecisionStyle.of(decision);
     final enabled = onPressed != null;
     final circle = desktop && !primary ? 42.0 : 48.0;
     final icon = Container(
@@ -158,15 +201,10 @@ class _ActionItem extends StatelessWidget {
         ),
       ),
     );
-    final hint = keyHint;
-    final described = Semantics(
-      hint: decision == Decision.notNow && enabled
-          ? 'Long press to choose how long to hide it'
-          : null,
-      child: button,
-    );
-    return desktop && hint != null
-        ? Tooltip(message: '$label ($hint)', child: described)
+    final key = keyHint;
+    final described = Semantics(hint: enabled ? hint : null, child: button);
+    return desktop && key != null
+        ? Tooltip(message: '$label ($key)', child: described)
         : described;
   }
 }

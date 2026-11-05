@@ -31,12 +31,23 @@ class _Summary extends StatelessWidget {
             runSpacing: CueSpace.sm,
             children: [
               CuePrimaryButton(label: 'Back to For you', onPressed: onDone),
-              CueSecondaryButton(
-                label: s.review > 0
-                    ? 'Review ${s.review} in Library'
-                    : 'Rate titles in Library',
-                onPressed: () => context.go(CueRoutes.library),
-              ),
+              if (s.review > 0)
+                CueSecondaryButton(
+                  label: 'Review ${s.review} in Library',
+                  onPressed: () => context.go(CueRoutes.library),
+                )
+              else
+                Consumer(
+                  builder: (context, ref, _) => CueSecondaryButton(
+                    label: 'Rate titles in Library',
+                    onPressed: () async {
+                      // The same rating deck as Library; leaving it lands
+                      // in Library with the new ratings.
+                      await openLibraryRating(context, ref);
+                      if (context.mounted) context.go(CueRoutes.library);
+                    },
+                  ),
+                ),
             ],
           ),
         ],
