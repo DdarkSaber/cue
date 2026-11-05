@@ -113,13 +113,38 @@ class _LibrarySettingsPageState extends ConsumerState<LibrarySettingsPage> {
         !settings.hasError &&
         !_savingName;
     return _Detail(
-      title: 'This library',
+      title: 'Library',
       children: [
         const Text(
           'Lives only on this device. No account is needed.',
           style: _body,
         ),
+        const CueSectionLabel('Import'),
+        CueGroup(
+          children: [
+            CueListRow(
+              title: 'Import a list',
+              subtitle: 'Bring titles from another app or a file',
+              onTap: () => context.go(CueRoutes.importer),
+            ),
+            CueListRow(
+              title: 'Past imports',
+              subtitle: 'See or undo what you brought in',
+              onTap: () => context.go(CueRoutes.importer),
+            ),
+          ],
+        ),
         const _LibraryContents(),
+        if (active != null)
+          CueGroup(
+            children: [
+              CueListRow(
+                title: 'Browse titles',
+                subtitle: 'See and remove titles in the library in use',
+                onTap: () => context.go(CueRoutes.libraryContents(active)),
+              ),
+            ],
+          ),
         const CueSectionLabel('Name (optional)'),
         Row(
           spacing: CueSpace.sm,
