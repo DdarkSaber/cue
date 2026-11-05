@@ -10,9 +10,22 @@ import '../../domain/models/title.dart';
 /// browser cache via the Worker proxy on web.
 ImageProvider? posterProvider(WidgetRef ref, String? url) {
   if (url == null) return null;
-  final resolved = ref.read(catalogGatewayProvider).imageUrl(url);
-  return kIsWeb ? NetworkImage(resolved) : CachedNetworkImageProvider(resolved);
+  return ref.read(posterImagesProvider)(url);
 }
+
+/// Turns a poster URL into an image provider. Tests swap in in-memory
+/// images so nothing reaches the network.
+final posterImagesProvider = Provider<ImageProvider Function(String url)>((
+  ref,
+) {
+  final gateway = ref.watch(catalogGatewayProvider);
+  return (url) {
+    final resolved = gateway.imageUrl(url);
+    return kIsWeb
+        ? NetworkImage(resolved)
+        : CachedNetworkImageProvider(resolved);
+  };
+});
 
 /// Decodes the next posters ahead of time so a swipe never waits on them.
 void predecodePosters(

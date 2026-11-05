@@ -409,6 +409,28 @@ class CatalogRepository {
     ];
   }
 
+  /// Up to [limit] distinct poster URLs of cached titles, in random order:
+  /// decoration for loading screens. Adult titles stay out unless
+  /// [showAdult]. One table scan sorted by SQLite's random(), no joins.
+  Future<List<String>> randomPosters({
+    int limit = 32,
+    bool showAdult = false,
+  }) async {
+    final t = db.catalogTitles;
+    Expression<bool> w = t.posterUrl.isNotNull() & t.posterUrl.equals('').not();
+    if (!showAdult) w = w & t.adult.equals(false);
+    final q = db.selectOnly(t)
+      ..addColumns([t.posterUrl])
+      ..where(w)
+      ..orderBy([OrderingTerm.random()])
+      ..limit(limit);
+    final seen = <String>{};
+    return [
+      for (final r in await q.get())
+        if (seen.add(r.read(t.posterUrl)!)) r.read(t.posterUrl)!,
+    ];
+  }
+
   /// Whether any title of these kinds is cached, however it is filtered.
   Future<bool> hasCached(Iterable<MediaKind> kinds) async {
     final c = db.catalogTitles.id.count();

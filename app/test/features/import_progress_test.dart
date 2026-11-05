@@ -1,4 +1,9 @@
 import 'package:cue/app/router.dart';
+import 'package:cue/app/tokens.dart';
+import 'package:cue/data/catalog_gateway.dart';
+import 'package:cue/data/catalog_repository.dart';
+import 'package:cue/data/db/database.dart';
+import 'package:cue/features/deck/poster.dart';
 import 'package:cue/features/imports/import_job.dart';
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
@@ -6,6 +11,8 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers.dart';
+import '../support/fakes.dart';
+import '../support/test_posters.dart';
 
 class _Running extends ImportJob {
   @override
@@ -40,6 +47,76 @@ Future<void> _pumpMatching(WidgetTester t) => pumpCue(
   disableAnimations: true,
   overrides: [importJobProvider.overrideWith(_Running.new)],
 );
+
+String _poster(int i) => 'https://posters.test/$i.jpg';
+String _adultPoster(int i) => 'https://posters.test/adult-$i.jpg';
+
+/// A database whose catalog caches [count] titles with posters, plus a few
+/// adult ones that must never show.
+Future<CueDatabase> _cachedPosters(WidgetTester t, int count) async {
+  final db = memoryDb();
+  addTearDown(db.close);
+  await t.runAsync(
+    () => CatalogRepository(db, FakeGateway()).upsert([
+      for (var i = 1; i <= count; i++)
+        CatalogItemDto({...item(i), 'posterUrl': _poster(i)}),
+      for (var i = 1; i <= 4; i++)
+        CatalogItemDto({
+          ...item(500 + i, adult: true),
+          'posterUrl': _adultPoster(i),
+        }),
+      // No poster: never dealt.
+      CatalogItemDto(item(900)),
+    ]),
+  );
+  return db;
+}
+
+/// Matching over a catalog with [count] cached posters, decoded in memory.
+/// URLs in [failing] report a load error.
+Future<void> _pumpWithPosters(
+  WidgetTester t,
+  int count, {
+  Set<String> failing = const {},
+}) async {
+  final db = await _cachedPosters(t, count);
+  final image = (await t.runAsync(() => createTestImage(width: 2, height: 3)))!;
+  addTearDown(image.dispose);
+  await pumpCue(
+    t,
+    location: CueRoutes.importer,
+    disableAnimations: true,
+    db: db,
+    overrides: [
+      importJobProvider.overrideWith(_Running.new),
+      posterImagesProvider.overrideWithValue(
+        (url) => TestPosterImage(url, image, fails: failing.contains(url)),
+      ),
+    ],
+  );
+}
+
+/// The poster each placeholder shows (the incoming one mid-fade), or null
+/// where it shows a plain tone.
+List<String?> _shown(WidgetTester t, String prefix) => [
+  for (var i = 0; i < 6; i++)
+    () {
+      final images = find.descendant(
+        of: find.byKey(ValueKey('$prefix-$i')),
+        matching: find.byType(Image),
+      );
+      if (images.evaluate().isEmpty) return null;
+      return (t.widget<Image>(images.last).image as TestPosterImage).url;
+    }(),
+];
+
+List<String?> _tilePosters(WidgetTester t) => _shown(t, 'import-tile');
+List<String?> _thumbPosters(WidgetTester t) => _shown(t, 'import-thumb');
+
+int _differences(List<String?> a, List<String?> b) => [
+  for (var i = 0; i < a.length; i++)
+    if (a[i] != b[i]) i,
+].length;
 
 void _motion(WidgetTester t, {required bool on}) =>
     t.platformDispatcher.accessibilityFeaturesTestValue =
@@ -199,5 +276,167 @@ void main() {
     expect(SchedulerBinding.instance.transientCallbackCount, 0);
     expect(t.binding.hasScheduledFrame, isFalse);
     // The test binding also fails the test if any timer is left pending.
+  });
+
+  group('cached posters', () {
+    testWidgets('fill the tiles and the row thumbnails, dimmed, never adult, '
+        'and hold still with reduced motion', (t) async {
+      await _pumpWithPosters(t, 30);
+      final safe = {for (var i = 1; i <= 30; i++) _poster(i)};
+
+      final tiles = _tilePosters(t);
+      final thumbs = _thumbPosters(t);
+      expect(tiles, everyElement(isNotNull));
+      expect(thumbs, everyElement(isNotNull));
+      final all = [...tiles, ...thumbs];
+      // Each from the catalog's cached posters, none adult, none twice.
+      expect(safe.containsAll(all), isTrue);
+      expect(all.toSet(), hasLength(12));
+
+      // Dimmed, and hidden from screen readers like the tones were.
+      for (final image in t.widgetList<Image>(find.byType(Image))) {
+        expect(image.opacity?.value, closeTo(0.7, 1e-9));
+        expect(image.excludeFromSemantics, isTrue);
+      }
+      expect(
+        find.ancestor(
+          of: find.byKey(const ValueKey('import-thumb-0')),
+          matching: find.byType(ExcludeSemantics),
+        ),
+        findsWidgets,
+      );
+      // Thumbnails keep the review list's poster shape.
+      expect(
+        t.getSize(find.byKey(const ValueKey('import-thumb-0'))),
+        const Size(40, 56),
+      );
+      // The live region still carries the stage and the progress.
+      expect(find.textContaining('Matching 3 of 10'), findsOneWidget);
+      expect(
+        t
+            .widget<LinearProgressIndicator>(
+              find.byType(LinearProgressIndicator),
+            )
+            .value,
+        closeTo(0.3, 1e-9),
+      );
+
+      // Reduced motion: nothing changes and no timer or ticker runs.
+      for (var i = 0; i < 5; i++) {
+        await t.pump(const Duration(seconds: 1));
+      }
+      expect(_tilePosters(t), tiles);
+      expect(_thumbPosters(t), thumbs);
+      expect(SchedulerBinding.instance.transientCallbackCount, 0);
+      expect(t.binding.hasScheduledFrame, isFalse);
+    });
+
+    testWidgets('keep changing one tile and one thumbnail at a time, '
+        'without repeating one on screen', (t) async {
+      await _pumpWithPosters(t, 30);
+      final safe = {for (var i = 1; i <= 30; i++) _poster(i)};
+      _motion(t, on: true);
+      await t.pump();
+
+      var tiles = _tilePosters(t);
+      var thumbs = _thumbPosters(t);
+      var tileChanges = 0;
+      var thumbChanges = 0;
+      var crossFaded = false;
+      // Changes come 0.7 to 1 s apart, so a half-second step sees at most
+      // one per group.
+      for (var step = 0; step < 16; step++) {
+        await t.pump(const Duration(milliseconds: 500));
+        final nowTiles = _tilePosters(t);
+        final nowThumbs = _thumbPosters(t);
+        final dt = _differences(tiles, nowTiles);
+        final dr = _differences(thumbs, nowThumbs);
+        expect(dt, lessThanOrEqualTo(1));
+        expect(dr, lessThanOrEqualTo(1));
+        tileChanges += dt;
+        thumbChanges += dr;
+        final all = [...nowTiles, ...nowThumbs];
+        expect(all, everyElement(isNotNull));
+        expect(safe.containsAll(all), isTrue);
+        expect(all.toSet(), hasLength(12));
+        // Mid-fade the old poster is still there under the new one.
+        for (var i = 0; i < 6; i++) {
+          final images = find.descendant(
+            of: find.byKey(ValueKey('import-tile-$i')),
+            matching: find.byType(Image),
+          );
+          if (images.evaluate().length == 2) crossFaded = true;
+        }
+        tiles = nowTiles;
+        thumbs = nowThumbs;
+      }
+      expect(tileChanges, greaterThanOrEqualTo(5));
+      expect(thumbChanges, greaterThanOrEqualTo(5));
+      expect(crossFaded, isTrue);
+    });
+
+    testWidgets('fewer than six cached: coloured tiles and blocks', (t) async {
+      await _pumpWithPosters(t, 5);
+      expect(find.byType(Image), findsNothing);
+      expect(_tileColors(t).toSet().length, greaterThanOrEqualTo(3));
+
+      // The tones still cycle with motion on; no poster ever appears.
+      final before = _tileColors(t);
+      _motion(t, on: true);
+      await t.pump();
+      for (var i = 0; i < 4; i++) {
+        await t.pump(const Duration(seconds: 1));
+      }
+      expect(_tileColors(t), isNot(before));
+      expect(find.byType(Image), findsNothing);
+      final thumb = t.widget<DecoratedBox>(
+        find
+            .descendant(
+              of: find.byKey(const ValueKey('import-thumb-0')),
+              matching: find.byType(DecoratedBox),
+            )
+            .first,
+      );
+      expect((thumb.decoration as BoxDecoration).color, CueColors.surfaceHigh);
+    });
+
+    testWidgets('a poster that fails to load leaves its tone', (t) async {
+      await _pumpWithPosters(
+        t,
+        6,
+        failing: {for (var i = 1; i <= 6; i++) _poster(i)}..remove(_poster(1)),
+      );
+      final tiles = _tilePosters(t);
+      final thumbs = _thumbPosters(t);
+      // Only the one good poster shows; every other placeholder keeps a
+      // tone rather than going blank.
+      expect([...tiles, ...thumbs].whereType<String>().toSet(), {_poster(1)});
+      expect(tiles.where((u) => u == null), hasLength(5));
+      for (var i = 0; i < 6; i++) {
+        if (tiles[i] != null) continue;
+        expect(
+          find.descendant(
+            of: find.byKey(ValueKey('import-tile-$i')),
+            matching: find.byType(DecoratedBox),
+          ),
+          findsWidgets,
+        );
+      }
+    });
+
+    testWidgets('leaving mid-fade cancels both timers cleanly', (t) async {
+      await _pumpWithPosters(t, 30);
+      _motion(t, on: true);
+      await t.pump();
+      await t.pump(const Duration(seconds: 1));
+      await t.pump(const Duration(milliseconds: 200));
+      expect(SchedulerBinding.instance.transientCallbackCount, greaterThan(0));
+
+      await t.pumpWidget(const SizedBox());
+      await t.pump(const Duration(seconds: 3));
+      expect(t.takeException(), isNull);
+      expect(SchedulerBinding.instance.transientCallbackCount, 0);
+      expect(t.binding.hasScheduledFrame, isFalse);
+    });
   });
 }
