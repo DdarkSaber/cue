@@ -1,3 +1,6 @@
+import 'dart:async' show Timer;
+import 'dart:math' show Random;
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide Title;

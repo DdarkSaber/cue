@@ -131,19 +131,41 @@ class Title {
     return null;
   }
 
-  /// One useful length: episodes, chapters, seasons, or nothing if unknown.
+  /// How long the title is, for the card meta and the details sheet.
+  ///
+  /// Reading: "120 chapters"; while releasing the count is only the latest
+  /// known one, so "Ongoing · 120+ chapters"; "Chapters unknown" without a
+  /// count. Watching: "3 seasons · 64 episodes" when several seasons are
+  /// listed (episodes only when every season's count is known), else
+  /// "24 episodes" / "1 episode"; "Airing" or null when unknown. Movies:
+  /// null (no runtime in the catalog).
   String? get lengthLabel {
-    if (kind == MediaKind.movie) return 'Film';
+    if (kind == MediaKind.movie) return null;
     if (kind.isReading) {
-      if (chapters != null) return '$chapters chapters';
-      return status == 'ongoing' ? 'Ongoing' : null;
+      final ongoing = status == 'ongoing';
+      final count = chapters;
+      if (count == null) {
+        return ongoing ? 'Ongoing · chapters unknown' : 'Chapters unknown';
+      }
+      if (ongoing) return 'Ongoing · $count+ chapters';
+      return _count(count, 'chapter');
     }
-    if (seasons.length > 1) return '${seasons.length} seasons';
-    if (episodes != null) {
-      return episodes == 1 ? '1 episode' : '$episodes episodes';
+    if (seasons.length > 1) {
+      final perSeason = [for (final s in seasons) s.episodes];
+      final total = perSeason.contains(null)
+          ? null
+          : perSeason.fold<int>(0, (n, e) => n + e!);
+      return [
+        '${seasons.length} seasons',
+        if (total != null && total > 0) _count(total, 'episode'),
+      ].join(' · ');
     }
+    if (episodes != null) return _count(episodes!, 'episode');
     return status == 'airing' ? 'Airing' : null;
   }
+
+  static String _count(int n, String noun) =>
+      n == 1 ? '1 $noun' : '$n ${noun}s';
 
   /// Franchise grouping: the provider hint, else a normalised base title.
   String get franchiseKey {
