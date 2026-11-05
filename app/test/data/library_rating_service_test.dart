@@ -5,6 +5,7 @@ import 'package:cue/data/recommendation_repository.dart';
 import 'package:cue/data/try_now_repository.dart';
 import 'package:cue/domain/models/library.dart';
 import 'package:drift/drift.dart' hide isNull;
+import 'package:cue/domain/ranker.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/fakes.dart';
@@ -16,6 +17,10 @@ void main() {
     late RecommendationRepository recommendations;
     late LibraryRatingService service;
     final now = DateTime.utc(2026, 10, 20, 12);
+    final watched500DaysAgo = recencyWeight(
+      now.subtract(const Duration(days: 500)),
+      now,
+    );
 
     Future<UserTitle?> row(String profile, String title) =>
         (db.select(db.userTitles)..where(
@@ -124,13 +129,21 @@ void main() {
           ),
           before,
         );
-        expect((await library.signals('a')).weights['comedy'], rating.weight);
+        // Imported history counts by recency: this one was watched 500
+        // days ago.
+        expect(
+          (await library.signals('a')).weights['comedy'],
+          closeTo(rating.weight * watched500DaysAgo, 1e-9),
+        );
         expect(after.updatedAt.isAfter(before.updatedAt), isTrue);
         expect(await service.undo('a', undo), isTrue);
         final restored = (await row('a', 'one'))!;
         expect(restored.copyWith(updatedAt: before.updatedAt), before);
         expect(restored.updatedAt.isAfter(after.updatedAt), isTrue);
-        expect((await library.signals('a')).weights['comedy'], 0.15);
+        expect(
+          (await library.signals('a')).weights['comedy'],
+          closeTo(0.15 * watched500DaysAgo, 1e-9),
+        );
         await (db.delete(
           db.userTitles,
         )..where((u) => u.titleId.equals('one'))).go();
@@ -400,7 +413,10 @@ void main() {
       ))!;
       expect(await db.select(db.shortlist).get(), isEmpty);
       expect((await row('a', 'one'))!.rating, Rating.dropped.code);
-      expect((await library.signals('a')).weights['comedy'], -1.5);
+      expect(
+        (await library.signals('a')).weights['comedy'],
+        closeTo(-1.5 * watched500DaysAgo, 1e-9),
+      );
       final concurrent = ShortlistCompanion.insert(
         profileId: 'a',
         titleId: 'one',

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 
 import '../domain/models/library.dart';
@@ -101,8 +103,50 @@ class LibraryRepository {
       }
     }
 
+    final imported = await _knownFromImports(profileId);
+    final known = imported.ids.difference({for (final u in ut) u.titleId});
+    final seenTitles = await _titles({...known, for (final u in ut) u.titleId});
+    final activity = await _activity(profileId, ut);
+    // Taste per medium: what someone reads can differ from what they watch
+    // (action webtoons, rom-com anime), so each medium also keeps its own.
+    final mediumWeights = <bool, Map<String, double>>{true: {}, false: {}};
+    final mediumCounts = <bool, int>{true: 0, false: 0};
+    for (final u in ut) {
+      final t = seenTitles[u.titleId];
+      final e = _evidence(u, activity);
+      if (t == null || e == 0 || t.features.isEmpty) continue;
+      final m = mediumWeights[t.kind.isReading]!;
+      mediumCounts[t.kind.isReading] = mediumCounts[t.kind.isReading]! + 1;
+      for (final f in t.features) {
+        m[f] = (m[f] ?? 0) + e;
+      }
+    }
+    final historyYears = <int, int>{};
+    for (final u in ut) {
+      final y = seenTitles[u.titleId]?.year;
+      final state = LibraryState.parse(u.state);
+      if (y != null &&
+          state != LibraryState.planned &&
+          state != LibraryState.none) {
+        historyYears[y] = (historyYears[y] ?? 0) + 1;
+      }
+    }
+    final seenNames = {
+      // Names exactly as the person's files wrote them, so a title that
+      // matched another entry (or nothing) is still not dealt as new.
+      ...imported.names,
+      for (final t in seenTitles.values) ...workNames(t),
+    };
     final base = ProfileSignals(
       excluded: {for (final x in ex) x.titleId},
+      known: known,
+      seenNames: seenNames,
+      historyYears: historyYears,
+      mediumWeights: {
+        for (final e in mediumWeights.entries)
+          if (mediumCounts[e.key]! >= ProfileSignals.mediumTasteFrom)
+            e.key: e.value,
+      },
       excludedFranchises: await FranchiseExclusionRepository(db)
           .activeScopes(profileId),
       deferred: {for (final x in de) x.titleId},
@@ -121,6 +165,7 @@ class LibraryRepository {
               {
                 LibraryState.watching,
                 LibraryState.reading,
+                LibraryState.caughtUp,
                 LibraryState.completed,
               }.contains(LibraryState.parse(u.state)))
             u.titleId,
@@ -130,6 +175,10 @@ class LibraryRepository {
     final seeds = selectTasteSeeds(base);
     return ProfileSignals(
       excluded: base.excluded,
+      known: base.known,
+      seenNames: base.seenNames,
+      historyYears: base.historyYears,
+      mediumWeights: base.mediumWeights,
       excludedFranchises: base.excludedFranchises,
       deferred: base.deferred,
       shortlisted: base.shortlisted,
@@ -142,6 +191,85 @@ class LibraryRepository {
       tasteSeeds: seeds,
       becauseOf: await _becauseOf(seeds),
     );
+  }
+
+  /// Titles this profile's completed imports named without adding them:
+  /// matched but unticked rows (unconfirmed Netflix plays) and suggested
+  /// candidates waiting in review. Dismissed rows are not counted.
+  Future<({Set<String> ids, Set<String> names})> _knownFromImports(
+    String profileId,
+  ) async {
+    final rows =
+        await (db.select(db.sourceObservations).join([
+              innerJoin(
+                db.importBatches,
+                db.importBatches.id.equalsExp(db.sourceObservations.batchId),
+              ),
+            ])..where(
+              db.importBatches.profileId.equals(profileId) &
+                  db.importBatches.state.equals('completed') &
+                  db.sourceObservations.matchClass.isNotIn(const ['dismissed']),
+            ))
+            .map((r) => r.readTable(db.sourceObservations))
+            .get();
+    final known = <String>{
+      for (final o in rows)
+        if (o.titleId != null) o.titleId!,
+    };
+    final candidates = <(String, String)>{};
+    for (final o in rows) {
+      final raw = o.candidateJson;
+      if (raw == null) continue;
+      try {
+        final j = jsonDecode(raw) as Map;
+        final p = j['provider'], id = j['providerId'];
+        if (p is String && id != null) candidates.add((p, '$id'));
+      } on FormatException {
+        // A damaged candidate is simply not counted.
+      }
+    }
+    if (candidates.isNotEmpty) {
+      final ids =
+          await (db.select(db.catalogIdentities)..where(
+                (i) => i.providerId.isIn({for (final c in candidates) c.$2}),
+              ))
+              .get();
+      for (final i in ids) {
+        if (candidates.contains((i.provider, i.providerId))) {
+          known.add(i.titleId);
+        }
+      }
+    }
+    return (ids: known, names: {for (final o in rows) ..._rawKeys(o)});
+  }
+
+  /// The medium of a raw import row comes from the record's own kind; a
+  /// row of unknown kind counts for both media.
+  Iterable<String> _rawKeys(SourceObservation o) {
+    MediaKind? kind;
+    final raw = o.recordJson;
+    if (raw != null) {
+      try {
+        kind = MediaKind.parse((jsonDecode(raw) as Map)['kind'] as String?);
+      } on FormatException {
+        kind = null;
+      }
+    } else {
+      for (final part in o.sourceEntryKey.split(':')) {
+        final k = MediaKind.parse(part);
+        if (k != MediaKind.unknown) {
+          kind = k;
+          break;
+        }
+      }
+    }
+    if (kind == null || kind == MediaKind.unknown) {
+      return {
+        ...workKeys(false, [o.rawTitle]),
+        ...workKeys(true, [o.rawTitle]),
+      };
+    }
+    return workKeys(kind.isReading, [o.rawTitle]);
   }
 
   /// Public "more like this" edges from these seeds, joined in memory.
@@ -176,6 +304,81 @@ class LibraryRepository {
 
   static const _evidenceTag = '_evidence_v2';
 
+  /// Taste evidence of one library entry: its rating, else a weak signal
+  /// for an imported title that was watched or read, scaled by how recent
+  /// it is ([recencyWeight]): what someone watches now says more about
+  /// their taste than what they watched years ago.
+  ///
+  /// Only imported history is scaled: choices made in Cue are current by
+  /// definition and keep their plain rating weight.
+  double _evidence(UserTitle u, Map<String, DateTime> activity) =>
+      _baseEvidence(u) *
+      (u.source.startsWith('import:')
+          ? recencyWeight(
+              activity[u.titleId],
+              _now(),
+              inProgress: _inProgress.contains(LibraryState.parse(u.state)),
+            )
+          : 1);
+
+  static const _inProgress = {
+    LibraryState.watching,
+    LibraryState.reading,
+    LibraryState.caughtUp,
+  };
+
+  /// The latest known moment of activity per library title: the import's
+  /// activity date (MAL finish or last update, Mihon last read, a sheet's
+  /// last played), a real watch date, or the person's own edit in Cue.
+  Future<Map<String, DateTime>> _activity(
+    String profileId,
+    List<UserTitle> ut,
+  ) async {
+    final rows =
+        await (db.select(db.sourceObservations).join([
+              innerJoin(
+                db.importBatches,
+                db.importBatches.id.equalsExp(db.sourceObservations.batchId),
+              ),
+            ])..where(
+              db.importBatches.profileId.equals(profileId) &
+                  db.importBatches.state.equals('completed') &
+                  db.sourceObservations.titleId.isNotNull() &
+                  db.sourceObservations.activityDate.isNotNull(),
+            ))
+            .map((r) => r.readTable(db.sourceObservations))
+            .get();
+    final out = <String, DateTime>{};
+    void note(String id, DateTime? at) {
+      if (at == null) return;
+      final had = out[id];
+      if (had == null || at.isAfter(had)) out[id] = at;
+    }
+
+    for (final o in rows) {
+      note(o.titleId!, o.activityDate);
+    }
+    for (final u in ut) {
+      note(u.titleId, u.actualWatchedAt);
+      if (u.source == 'user') note(u.titleId, u.updatedAt);
+    }
+    return out;
+  }
+
+  static double _baseEvidence(UserTitle u) {
+    final r = Rating.parse(u.rating);
+    if (r != null) return r.weight;
+    if (!u.source.startsWith('import:')) return 0;
+    return switch (LibraryState.parse(u.state)) {
+      // Caught up on a series still running is read to the latest chapter.
+      LibraryState.watching ||
+      LibraryState.reading ||
+      LibraryState.caughtUp => 0.2,
+      LibraryState.completed => 0.15,
+      _ => 0.0,
+    };
+  }
+
   /// Recomputes tag weights from distinct evidence: ratings, Will try and
   /// Not interested. Re-importing the same records cannot double them.
   Future<void> recomputeWeights(String profileId) async {
@@ -191,19 +394,11 @@ class LibraryRepository {
             ))
             .get();
 
+    final activity = await _activity(profileId, ut);
     final evidence = <String, double>{};
     for (final u in ut) {
-      final r = Rating.parse(u.rating);
-      if (r != null) {
-        evidence[u.titleId] = (evidence[u.titleId] ?? 0) + r.weight;
-      } else if (u.source.startsWith('import:')) {
-        final weak = switch (LibraryState.parse(u.state)) {
-          LibraryState.watching || LibraryState.reading => 0.2,
-          LibraryState.completed => 0.15,
-          _ => 0.0,
-        };
-        if (weak > 0) evidence[u.titleId] = weak;
-      }
+      final e = _evidence(u, activity);
+      if (e != 0) evidence[u.titleId] = (evidence[u.titleId] ?? 0) + e;
     }
     final ratedIds = {
       for (final u in ut)

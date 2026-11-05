@@ -586,7 +586,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       const Padding(
         padding: EdgeInsets.only(top: CueSpace.lg),
         child: Text(
-          'Sources combine in this library; separate libraries stay separate. Browse or remove titles in Settings > This library.',
+          'Sources combine in this library; separate libraries stay separate. Browse or remove titles in Settings > Library.',
           style: TextStyle(fontSize: 12, color: CueColors.textMuted),
         ),
       ),

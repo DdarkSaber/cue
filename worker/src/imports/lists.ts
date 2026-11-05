@@ -16,6 +16,8 @@ export interface ListEntry {
   progress: number | null;
   repeat: number | null;
   completedAt: string | null;
+  /** When the person last changed this entry (YYYY-MM-DD), a recency hint. */
+  updatedAt?: string | null;
 }
 
 const MAX_ENTRIES = 20000;
@@ -42,13 +44,14 @@ async function malPages(
       out.push({
         malId: n.id ?? null,
         title: n.title ?? "",
-        kind: type === "anime" ? "anime" : null,
+        kind: type === "anime" ? "anime" : mangaKind(n.media_type),
         status: String(s.status ?? "").toLowerCase(),
         score: s.score > 0 ? s.score : null,
         scoreScale: s.score > 0 ? "10" : null,
         progress: (type === "anime" ? s.num_episodes_watched : s.num_chapters_read) || null,
         repeat: s.is_rewatching || s.num_times_rewatched > 0 ? Math.max(1, s.num_times_rewatched ?? 1) : null,
         completedAt: typeof s.finish_date === "string" && s.finish_date.length === 10 ? s.finish_date : null,
+        updatedAt: isoDay(s.updated_at),
       });
       if (out.length >= MAX_ENTRIES) return out;
     }
@@ -57,7 +60,18 @@ async function malPages(
   return out;
 }
 
-const MAL_FIELDS = "list_status{status,score,num_episodes_watched,num_chapters_read,is_rewatching,num_times_rewatched,finish_date}";
+const MAL_FIELDS =
+  "media_type,list_status{status,score,num_episodes_watched,num_chapters_read,is_rewatching,num_times_rewatched,finish_date,updated_at}";
+
+/** MAL's manga media_type names the format; novels stay unknown (and are filtered later). */
+function mangaKind(t: unknown): ListEntry["kind"] {
+  return t === "manhwa" ? "manhwa" : t === "manhua" ? "manhua" : t === "manga" || t === "one_shot" || t === "doujinshi" ? "manga" : null;
+}
+
+/** "2026-10-12T08:00:00+00:00" -> "2026-10-12"; anything else -> null. */
+function isoDay(v: unknown): string | null {
+  return typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null;
+}
 
 function malUrl(user: string, type: "anime" | "manga") {
   const u = new URL(`https://api.myanimelist.net/v2/users/${encodeURIComponent(user)}/${type}list`);

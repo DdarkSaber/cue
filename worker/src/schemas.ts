@@ -17,7 +17,7 @@ export const mediaKind = z.enum([
 export const tmdbType = z.enum(["tv", "movie", "series"]).default("tv");
 
 export const mood = z.enum(["hype", "comfort", "gripping", "feels"]);
-export const catalogProvider = z.enum(["tmdb", "tvmaze", "cinemeta", "mangaupdates"]);
+export const catalogProvider = z.enum(["tmdb", "tvmaze", "cinemeta", "mangaupdates", "mal"]);
 export const oauthProvider = z.enum(["mal"]);
 const numericId = z.string().regex(/^\d{1,12}$/);
 
@@ -28,6 +28,7 @@ export const IMAGE_HOSTS = new Set([
   "static.tvmaze.com",
   "images.metahub.space",
   "cdn.mangaupdates.com",
+  "cdn.myanimelist.net",
 ]);
 
 export function isAllowedImageUrl(raw: string): boolean {
@@ -51,6 +52,8 @@ export const discoverQuery = z.object({
   mood: mood.optional(),
   // Deep paging for big libraries; TMDB itself stops at page 500.
   page: z.coerce.number().int().min(1).max(500).default(1),
+  // "mal": the app's backup when AniList fails, anime and comics only.
+  source: z.enum(["default", "mal"]).default("default"),
 });
 
 export const titleParams = z.object({

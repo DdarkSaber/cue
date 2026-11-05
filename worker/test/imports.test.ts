@@ -59,6 +59,20 @@ describe("list imports", () => {
     expect(entries[0]).toMatchObject({ malId: 5, score: null, repeat: 2 });
   });
 
+  it("MAL entries carry the comic format and when the entry last changed", async () => {
+    mockUpstream(vi, (url) =>
+      Response.json({
+        data: url.pathname.endsWith("/mangalist")
+          ? [{ node: { id: 7, title: "Synthetic comic", media_type: "manhwa" }, list_status: { status: "reading", updated_at: "2026-10-12T08:00:00+00:00" } }]
+          : [{ node: { id: 5, title: "Synthetic" }, list_status: { status: "watching", updated_at: "bad" } }],
+      }),
+    );
+    const res = await call("/import/mal/user/someone", {}, fakeEnv({ MAL_CLIENT_ID: "cid" }));
+    const { entries } = (await res.json()) as { entries: Record<string, unknown>[] };
+    expect(entries).toContainEqual(expect.objectContaining({ malId: 7, kind: "manhwa", updatedAt: "2026-10-12" }));
+    expect(entries).toContainEqual(expect.objectContaining({ malId: 5, kind: "anime", updatedAt: null }));
+  });
+
   it("signed-in lists need a bearer token and never log it", async () => {
     const lines: string[] = [];
     vi.spyOn(console, "log").mockImplementation((m: unknown) => lines.push(String(m)));

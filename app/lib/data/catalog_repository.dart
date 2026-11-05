@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 
 import '../domain/models/title.dart';
 import '../domain/title_names.dart';
+import 'anilist_client.dart' show AniListClient;
 import 'catalog_gateway.dart';
 import 'db/database.dart';
 import 'request_priority.dart';
@@ -269,6 +270,7 @@ class CatalogRepository {
       'static.tvmaze.com',
       'images.metahub.space',
       'cdn.mangaupdates.com',
+      'cdn.myanimelist.net',
     };
     return u != null && u.scheme == 'https' && hosts.contains(u.host)
         ? url
@@ -563,6 +565,10 @@ class CatalogRepository {
         if (request == 0) rethrow;
         break;
       }
+      // A catalog route never really ends on an empty first page; that is
+      // a provider fault (AniList once answered null filters that way), so
+      // it is not remembered as the end of the catalog.
+      if (next.page == 1 && page.items.isEmpty && !page.hasNext) break;
       final known = await _knownIds(page.items);
       final newHere = page.items.length - known;
       await upsert(page.items);
@@ -614,6 +620,7 @@ class CatalogRepository {
     String? mood,
     List<String?> sorts,
   ) async {
+    await _forgetFalseEnds();
     final keys = {for (final s in sorts) s: _routeKey(mood, s, sorts)};
     final rows =
         await (db.select(db.catalogPages)..where(
@@ -638,6 +645,24 @@ class CatalogRepository {
       }
     }
     return best;
+  }
+
+  bool _falseEndsForgotten = false;
+
+  /// Earlier builds recorded AniList's empty answers to null filters as the
+  /// final page of a route, which hid anime (and comics) for a week. A real
+  /// AniList route never ends on page 1, so those rows are dropped once.
+  Future<void> _forgetFalseEnds() async {
+    if (_falseEndsForgotten) return;
+    _falseEndsForgotten = true;
+    final names = [for (final k in AniListClient.kinds) k.name];
+    await (db.delete(db.catalogPages)..where(
+          (p) =>
+              p.mediaKind.isIn(names) &
+              p.page.equals(1) &
+              p.hasNext.equals(false),
+        ))
+        .go();
   }
 
   /// Marker rows in [CatalogPages] remember when a seed was last asked.
@@ -799,10 +824,11 @@ class CatalogRepository {
     final ids = await (db.select(
       db.catalogIdentities,
     )..where((i) => i.titleId.equals(titleId))).get();
-    final id = ids
-        .where((i) => i.provider != 'mal')
-        .cast<CatalogIdentity?>()
-        .firstWhere((_) => true, orElse: () => null);
+    // A provider listing first; a title known only from MAL (the backup
+    // catalog) is looked up on AniList by its MAL id.
+    final id =
+        ids.where((i) => i.provider != 'mal').firstOrNull ??
+        ids.where((i) => i.provider == 'mal').firstOrNull;
     if (id == null) return cached;
     try {
       final dto = await gateway.title(

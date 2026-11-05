@@ -10,6 +10,7 @@ import 'package:cue/imports/adapters/netflix_csv.dart';
 import 'package:cue/imports/detect.dart';
 import 'package:cue/imports/records.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fixnum/fixnum.dart';
 import 'package:protobuf/protobuf.dart';
 
 Uint8List b(String s) => Uint8List.fromList(utf8.encode(s));
@@ -54,10 +55,17 @@ Uint8List mihonBackup() {
     w.writeField(100, PbFieldType.O3, 555);
     w.writeField(4, PbFieldType.OS, 'https://tracker.example/token-like');
   });
+  final history = msg((w) {
+    w.writeField(1, PbFieldType.OS, '/chapter/7');
+    w.writeField(2, PbFieldType.O6, Int64(1760000000000)); // Oct 2025
+  });
   final manga = msg((w) {
     w.writeField(3, PbFieldType.OS, 'Synthetic Manhwa');
+    w.writeField(7, PbFieldType.OS, 'Action');
+    w.writeField(7, PbFieldType.OS, 'Manhwa');
     w.writeField(16, PbFieldType.OY, chapter);
     w.writeField(18, PbFieldType.OY, tracking);
+    w.writeField(104, PbFieldType.OY, history);
   });
   final prefs = msg((w) => w.writeField(1, PbFieldType.OS, 'secret-pref'));
   final backup = msg((w) {
@@ -262,6 +270,17 @@ void main() {
       expect(r.progressValue, 7);
       expect(r.state, LibraryState.reading);
       expect(r.toString(), isNot(contains('token-like')));
+    });
+
+    test('reads the format from genre labels and when it was last read', () {
+      final r = parseDetected(detect(mihonBackup(), 'b.tachibk'))
+          .records
+          .single;
+      expect(r.kind, MediaKind.manhwa);
+      expect(
+        r.activityDate,
+        DateTime.fromMillisecondsSinceEpoch(1760000000000, isUtc: true),
+      );
     });
   });
 

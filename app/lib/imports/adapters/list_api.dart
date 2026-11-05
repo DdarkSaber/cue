@@ -22,6 +22,9 @@ ParsedImport parseListEntries(
     final repeat = (e['repeat'] as num?)?.toInt() ?? 0;
     final kind = MediaKind.parse(e['kind'] as String?);
     final completed = _date(e['completedAt'] as String?);
+    // When the entry last changed: no watch date, but a fair sign of when
+    // the person was into it, for weighting recent taste.
+    final touched = _date(e['updatedAt'] as String?);
     final anilistId = (e['anilistId'] as num?)?.toInt();
     final malId = (e['malId'] as num?)?.toInt();
     records.add(
@@ -45,7 +48,7 @@ ParsedImport parseListEntries(
             : (kind == MediaKind.anime ? 'episode' : 'chapter'),
         progressValue: (e['progress'] as num?)?.toDouble(),
         actualWatchedAt: completed,
-        activityDate: completed,
+        activityDate: completed ?? touched,
       ),
     );
   }

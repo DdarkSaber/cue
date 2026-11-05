@@ -255,3 +255,40 @@ describe("TMDB more-like-this for taste-seeded retrieval", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("MAL backup catalog", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("serves a ranking page for comics with the format MAL gives, hiding adult entries", async () => {
+    const calls = mockUpstream(vi, () =>
+      Response.json({
+        data: [
+          { node: { id: 1, title: "Synthetic Hwa", media_type: "manhwa", mean: 8.4, genres: [{ name: "Action" }], main_picture: { large: "https://cdn.myanimelist.net/images/manga/1/1.jpg" }, start_date: "2022-01-01", status: "currently_publishing" } },
+          { node: { id: 2, title: "Synthetic Adult", media_type: "manhwa", nsfw: "black" } },
+        ],
+        paging: { next: "https://api.myanimelist.net/v2/manga/ranking?offset=50" },
+      }),
+    );
+    const res = await call("/catalog/discover?kind=manhwa&page=2&source=mal", {}, fakeEnv({ MAL_CLIENT_ID: "cid", CATALOG_CACHE: fakeKv() }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: Record<string, unknown>[]; hasNext: boolean };
+    expect(calls[0]!.url.pathname).toBe("/v2/manga/ranking");
+    expect(calls[0]!.url.searchParams.get("ranking_type")).toBe("manhwa");
+    expect(calls[0]!.url.searchParams.get("offset")).toBe("50");
+    expect(body.hasNext).toBe(true);
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]).toMatchObject({ provider: "mal", providerKind: "manga", idMal: 1, kind: "manhwa", score: 84, status: "ongoing", adult: false });
+  });
+
+  it("is not configured without a MAL client id, and never serves screen kinds", async () => {
+    expect((await call("/catalog/discover?kind=anime&source=mal", {}, fakeEnv({ CATALOG_CACHE: fakeKv() }))).status).toBe(503);
+    const calls = mockUpstream(vi);
+    const res = await call("/catalog/discover?kind=kdrama&source=mal", {}, fakeEnv({ MAL_CLIENT_ID: "cid", CATALOG_CACHE: fakeKv() }));
+    expect(((await res.json()) as { items: unknown[] }).items).toEqual([]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("allows MAL's image host", () => {
+    expect(isAllowedImageUrl("https://cdn.myanimelist.net/images/anime/1/1.jpg")).toBe(true);
+  });
+});

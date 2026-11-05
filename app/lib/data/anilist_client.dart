@@ -186,7 +186,7 @@ class AniListClient {
   static const _list = '''query (\$name: String, \$type: MediaType) {
   MediaListCollection(userName: \$name, type: \$type) {
     lists { entries {
-      status score(format: POINT_10) progress repeat
+      status score(format: POINT_10) progress repeat updatedAt
       completedAt { year month day }
       media { id idMal countryOfOrigin type title { romaji english native } }
     } }
@@ -214,7 +214,16 @@ class AniListClient {
                 'Accept': 'application/json',
                 'Authorization': ?(token == null ? null : 'Bearer $token'),
               },
-              body: jsonEncode({'query': query, 'variables': variables}),
+              // Unset variables are left out, never sent as null: AniList
+              // reads countryOfOrigin: null as "no country" (empty anime
+              // pages, empty searches) and status_not_in: null as a 500.
+              body: jsonEncode({
+                'query': query,
+                'variables': {
+                  for (final e in variables.entries)
+                    if (e.value != null) e.key: e.value,
+                },
+              }),
             )
             .timeout(const Duration(seconds: 12));
       } on TimeoutException {
@@ -278,9 +287,9 @@ class AniListClient {
       'notFormats': k.notFormats,
       'genres': moodGenres[mood],
       // Newest-first would otherwise lead with announced, unreleased titles.
-      'notStatus': order == 'START_DATE_DESC'
-          ? const ['NOT_YET_RELEASED', 'CANCELLED']
-          : null,
+      // Left out otherwise: AniList answers status_not_in: null with a 500.
+      if (order == 'START_DATE_DESC')
+        'notStatus': const ['NOT_YET_RELEASED', 'CANCELLED'],
       // ID breaks ties so pages stay stable while scores move.
       'sort': [order, 'ID'],
     });
@@ -467,6 +476,13 @@ class AniListClient {
       'progress': ((e['progress'] as num?) ?? 0) > 0 ? e['progress'] : null,
       'repeat': ((e['repeat'] as num?) ?? 0) > 0 ? e['repeat'] : null,
       'completedAt': date,
+      // Seconds since 1970; when the entry last changed (a recency hint).
+      'updatedAt': e['updatedAt'] is num && (e['updatedAt'] as num) > 0
+          ? DateTime.fromMillisecondsSinceEpoch(
+              (e['updatedAt'] as num).toInt() * 1000,
+              isUtc: true,
+            ).toIso8601String().substring(0, 10)
+          : null,
     };
   }
 
@@ -552,7 +568,10 @@ class AniListClient {
       'posterUrl': cover['extraLarge'] ?? cover['large'],
       'backdropUrl': m['bannerImage'],
       'synopsis': _plain(m['description'] as String?),
-      'adult': m['isAdult'] == true || tags.any((t) => t['isAdult'] == true),
+      // AniList's own 18+ flag. Its adult *tags* are no guide: Code Geass,
+      // Gintama and Psycho-Pass carry minor ones, and treating those as 18+
+      // hid much of mainstream anime and manhwa from imports and the deck.
+      'adult': m['isAdult'] == true,
       'franchiseKey': relations.isEmpty
           ? null
           : 'anilist:${[id, ...related].reduce((a, b) => a < b ? a : b)}',
