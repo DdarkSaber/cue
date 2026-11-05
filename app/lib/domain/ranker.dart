@@ -141,6 +141,24 @@ double? eraFit(ProfileSignals s, int? year) {
   return (0.1 + 0.9 * around(year) / best).clamp(0.1, 1.0).toDouble();
 }
 
+/// Series that stopped before getting anywhere are not worth starting:
+/// anything cancelled; comics on hiatus with fewer than [hiatusFrom]
+/// chapters; comics that "finished" that early (usually axed). Titles in the
+/// library are unaffected (this only gates new picks).
+const stalledBelow = 40;
+
+/// Comics on hiatus are still dealt from this many chapters.
+const hiatusFrom = 50;
+
+bool isStalled(Title t) {
+  if (t.status == 'cancelled') return true;
+  if (!t.kind.isReading) return false;
+  final ch = t.chapters;
+  // On hiatus is fine with a solid run behind it.
+  if (t.status == 'hiatus') return ch == null || ch < hiatusFrom;
+  return t.status == 'finished' && ch != null && ch < stalledBelow;
+}
+
 /// A title's names reduced to letters and digits, keyed by medium ("w:"
 /// watched, "r:" read), for spotting the same work under another entry.
 /// Watching an anime says nothing about reading its manga, so the two never
@@ -236,6 +254,7 @@ class Ranker {
     bool includeRewatchesDefault = false,
   }) {
     if (t.format == 'NOVEL' || t.format == 'MUSIC') return false;
+    if (!f.isRevisit && isStalled(t)) return false;
     if (t.adult && !showAdult) return false;
     if (s.excluded.contains(t.id)) return false;
     final franchise = reliableFranchiseId(t);

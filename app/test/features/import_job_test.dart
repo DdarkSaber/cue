@@ -20,7 +20,10 @@ void main() {
     await pumpCue(t, overrides: [importJobProvider.overrideWith(_Running.new)]);
     expect(find.text('Matching your import: 3 of 10 · Open'), findsOneWidget);
     await t.tap(find.text('Matching your import: 3 of 10 · Open'));
-    await t.pumpAndSettle();
+    // The progress skeleton shimmers until matching ends, so the screen
+    // never settles; step past the route transition instead.
+    await t.pump();
+    await t.pump(const Duration(seconds: 1));
     expect(find.textContaining('Matching 3 of 10'), findsOneWidget);
   });
 

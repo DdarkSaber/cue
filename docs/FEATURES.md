@@ -20,7 +20,11 @@ second list. Saved options includes a card picker and a two-title factual
 comparison. Unknown metadata stays unknown; Cue does not invent a winner.
 Saved titles remain excluded from ordinary discovery.
 
-Optional Rate your library cards offer Loved, Enjoyed, One-time and Dropped.
+Optional Rate your library is a full-screen deck of your own titles' story
+cards: swipe up Loved, right Enjoyed, down One-time, left Dropped (or use the
+buttons or arrow keys), with Skip, Undo, a progress count and an exit button
+at the top. Shortlist follow-ups use the same deck: up Loved, right Enjoyed,
+left Not for me, down Haven't started.
 They are explicit answers, not automatic ratings for imported history.
 Skip, dismissal and Haven't started do not assume consumption or liking.
 Optional follow-up prompts concern older unrated saved picks and respect
@@ -66,8 +70,14 @@ that library, not an active neighbour.
 
 Matching uses known provider IDs first, then official, romanized, native and
 alternate names. Anime and comics use AniList; MangaDex and MangaUpdates can
-provide additional comic names and verified catalog links. Import labels do not
-restrict comic searches to one country. Discovery filters are unchanged.
+provide additional comic names and verified catalog links. Anime and comics
+AniList cannot place are then searched on MyAnimeList (a hit is linked to the
+same AniList entry by its MAL id), and after that Wikipedia supplies the name
+the work is known by, which is searched in AniList and MyAnimeList again. An
+article is trusted only when it lists the typed name; otherwise what it leads
+to is offered unticked. Only titles every source misses go to review. Import
+labels do not restrict comic searches to one country. Discovery filters are
+unchanged.
 
 Unique verified matches are selected automatically in the import preview.
 Multiple aliases of one canonical title are not treated as separate matches.

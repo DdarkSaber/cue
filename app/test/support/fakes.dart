@@ -216,6 +216,42 @@ class FakeGateway implements CatalogGateway {
     return [for (final n in names) aliasCatalog[n.toLowerCase()] ?? const []];
   }
 
+  /// MyAnimeList search hits keyed by lower-cased query, per list.
+  final malSearchAnime = <String, List<Map<String, dynamic>>>{};
+  final malSearchManga = <String, List<Map<String, dynamic>>>{};
+
+  /// Wikipedia articles keyed by lower-cased query.
+  final wikiCatalog = <String, List<WikiNameDto>>{};
+
+  /// Every fallback lookup in order: `mal-anime:<name>`, `mal-manga:<name>`,
+  /// `wiki:<name>`.
+  final lookupLog = <String>[];
+
+  @override
+  Future<List<List<CatalogItemDto>>> malSearch(List<MalQuery> items) async {
+    lookupLog.addAll([
+      for (final i in items) 'mal-${i.anime ? 'anime' : 'manga'}:${i.q}',
+    ]);
+    if (offline) throw const CatalogUnavailable('offline');
+    return [
+      for (final i in items)
+        ((i.anime ? malSearchAnime : malSearchManga)[i.q.toLowerCase()] ??
+                const [])
+            .map(CatalogItemDto.new)
+            .toList(),
+    ];
+  }
+
+  @override
+  Future<List<List<WikiNameDto>>> canonicalNames(
+    List<String> names, {
+    MediaKind? kind,
+  }) async {
+    lookupLog.addAll([for (final n in names) 'wiki:$n']);
+    if (offline) throw const CatalogUnavailable('offline');
+    return [for (final n in names) wikiCatalog[n.toLowerCase()] ?? const []];
+  }
+
   @override
   Future<List<CatalogItemDto>> byAniListIds(
     List<int> ids, {

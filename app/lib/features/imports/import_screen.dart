@@ -1,3 +1,6 @@
+import 'dart:async' show Timer;
+import 'dart:math' show Random;
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide Title;
@@ -18,6 +21,7 @@ import '../../imports/detect.dart';
 import '../../imports/import_service.dart';
 import '../../imports/matcher.dart';
 import '../../imports/records.dart';
+import '../library/rating_deck.dart';
 import 'import_job.dart';
 import 'sign_in_import.dart';
 import 'source_names.dart';
@@ -203,6 +207,13 @@ class ImportScreenState extends ConsumerState<ImportScreen> {
       _step = _Step.summary;
     });
   }
+
+  /// Jumps straight to the summary step, for widget tests of its buttons.
+  @visibleForTesting
+  void debugShowSummary(ImportSummary summary) => setState(() {
+    _summary = summary;
+    _step = _Step.summary;
+  });
 
   /// The importer lives in the Library tab's stack. Going straight to For you
   /// would leave it parked there, so Library would reopen on the summary:

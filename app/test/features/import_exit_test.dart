@@ -1,6 +1,8 @@
 import 'package:cue/app/router.dart';
 import 'package:cue/features/imports/import_screen.dart';
 import 'package:cue/features/library/library_screen.dart';
+import 'package:cue/features/library/rating_deck.dart';
+import 'package:cue/imports/import_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
@@ -36,6 +38,59 @@ void main() {
     await tester.tap(find.text('Library').last);
     await tester.pumpAndSettle();
     expect(find.byType(ImportScreen), findsNothing);
+    expect(find.byType(LibraryScreen), findsOneWidget);
+  });
+
+  testWidgets(
+    'summary "Rate titles in Library" opens the rating deck; exit lands in Library',
+    (tester) async {
+      await openImporter(tester);
+      tester
+          .state<ImportScreenState>(find.byType(ImportScreen))
+          .debugShowSummary(
+            const ImportSummary(
+              batchId: null,
+              checked: 3,
+              added: 3,
+              updated: 0,
+              unchanged: 0,
+              review: 0,
+            ),
+          );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Rate titles in Library'));
+      await tester.pumpAndSettle();
+      expect(find.byType(LibraryRatingDeck), findsOneWidget);
+      expect(find.text('Rate your library'), findsOneWidget);
+      await tester.tap(find.byTooltip('Exit rating'));
+      await tester.pumpAndSettle();
+      expect(find.byType(LibraryRatingDeck), findsNothing);
+      expect(find.byType(ImportScreen), findsNothing);
+      expect(find.byType(LibraryScreen), findsOneWidget);
+    },
+  );
+
+  testWidgets('summary with titles to review still links to the review', (
+    tester,
+  ) async {
+    await openImporter(tester);
+    tester
+        .state<ImportScreenState>(find.byType(ImportScreen))
+        .debugShowSummary(
+          const ImportSummary(
+            batchId: null,
+            checked: 3,
+            added: 1,
+            updated: 0,
+            unchanged: 0,
+            review: 2,
+          ),
+        );
+    await tester.pumpAndSettle();
+    expect(find.text('Rate titles in Library'), findsNothing);
+    await tester.tap(find.text('Review 2 in Library'));
+    await tester.pumpAndSettle();
+    expect(find.byType(LibraryRatingDeck), findsNothing);
     expect(find.byType(LibraryScreen), findsOneWidget);
   });
 

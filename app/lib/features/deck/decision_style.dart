@@ -45,4 +45,36 @@ class DecisionStyle {
       stampText: Color(0xFFFFE0E8),
     ),
   };
+
+  /// The same colours with another icon (used by other swipe decks).
+  DecisionStyle withIcon(CueIcons icon) => DecisionStyle(
+    color: color,
+    icon: icon,
+    stampBackground: stampBackground,
+    stampText: stampText,
+  );
+}
+
+/// What one swipe direction means: the label and style shared by the stamp
+/// on the card and the button below it. The For you deck derives these from
+/// its decisions; other decks (rating your library) supply their own.
+class SwipeChoice {
+  const SwipeChoice({
+    required this.label,
+    required this.style,
+    this.primary = false,
+  });
+
+  factory SwipeChoice.decision(Decision d, {required bool reading}) =>
+      SwipeChoice(
+        label: d.labelFor(reading: reading),
+        style: DecisionStyle.of(d),
+        primary: d == Decision.willTry,
+      );
+
+  final String label;
+  final DecisionStyle style;
+
+  /// Drawn as the filled, emphasised button.
+  final bool primary;
 }

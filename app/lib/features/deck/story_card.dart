@@ -21,6 +21,22 @@ class StoryCard extends StatelessWidget {
   final String reason;
   final VoidCallback? onDetails;
 
+  /// The scrim behind the copy: [scrimMin] (about 85% near-black) where the
+  /// text starts, deepening to [scrimMax] at the card's bottom edge.
+  static const scrimMin = Color(0xD9080D12);
+  static const scrimMax = Color(0xF2080D12);
+
+  /// Height of the fade from transparent to [scrimMin] above the text.
+  static const double scrimFade = 48;
+
+  static const scrimKey = ValueKey('story-card-scrim');
+  static const scrimBodyKey = ValueKey('story-card-scrim-body');
+
+  /// A soft shadow under the title, for edges the scrim fades into.
+  static const titleShadows = [
+    Shadow(color: Color(0x99000000), blurRadius: 12, offset: Offset(0, 1)),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final desktop = context.cueLayout == CueLayout.desktop;
@@ -68,16 +84,21 @@ class StoryCard extends StatelessWidget {
           ),
         ),
         Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: _TextScrim(
+            padding: const EdgeInsets.fromLTRB(22, 0, 22, 18),
+            child: _CardCopy(title: title, reason: reason, desktop: false),
+          ),
+        ),
+        // Last, so the kind chip and the details button stay on top of
+        // the scrim when large text makes the copy tall.
+        Positioned(
           left: 13,
           right: 13,
           top: 12,
           child: _CardTop(title: title, onDetails: onDetails),
-        ),
-        Positioned(
-          left: 22,
-          right: 22,
-          bottom: 18,
-          child: _CardCopy(title: title, reason: reason, desktop: false),
         ),
       ],
     );
@@ -120,23 +141,73 @@ class StoryCard extends StatelessWidget {
           ),
         ),
         Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: _TextScrim(
+            padding: const EdgeInsets.fromLTRB(56, 0, 26, 70),
+            child: Align(
+              alignment: Alignment.bottomLeft,
+              child: SizedBox(
+                width: (MediaQuery.sizeOf(context).width * 0.43).clamp(
+                  320,
+                  530,
+                ),
+                child: _CardCopy(title: title, reason: reason, desktop: true),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
           left: 32,
           right: 26,
           top: 26,
           child: _CardTop(title: title, onDetails: onDetails),
         ),
-        Positioned(
-          left: 56,
-          bottom: 70,
-          child: LayoutBuilder(
-            builder: (context, _) {
-              final width = MediaQuery.sizeOf(context).width;
-              return SizedBox(
-                width: (width * 0.43).clamp(320, 530),
-                child: _CardCopy(title: title, reason: reason, desktop: true),
-              );
-            },
+      ],
+    );
+  }
+}
+
+/// A dark band behind the card copy, so white text stays readable on any
+/// artwork, a pure white poster included. It fades in above the text and
+/// grows with it (long titles, large text); the text itself always sits on
+/// at least [StoryCard.scrimMin].
+class _TextScrim extends StatelessWidget {
+  const _TextScrim({required this.padding, required this.child});
+  final EdgeInsets padding;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      key: StoryCard.scrimKey,
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Soft edge: transparent to the scrim's lightest tone.
+        const SizedBox(
+          height: StoryCard.scrimFade,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0x00080D12), StoryCard.scrimMin],
+              ),
+            ),
           ),
+        ),
+        DecoratedBox(
+          key: StoryCard.scrimBodyKey,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [StoryCard.scrimMin, StoryCard.scrimMax],
+            ),
+          ),
+          child: Padding(padding: padding, child: child),
         ),
       ],
     );
@@ -228,6 +299,7 @@ class _CardCopy extends StatelessWidget {
             height: 1.03,
             letterSpacing: -titleSize * 0.04,
             color: CueColors.text,
+            shadows: StoryCard.titleShadows,
           ),
         ),
         SizedBox(height: desktop ? 20 : 8),

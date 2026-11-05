@@ -286,10 +286,12 @@ class AniListClient {
       'country': k.country,
       'notFormats': k.notFormats,
       'genres': moodGenres[mood],
-      // Newest-first would otherwise lead with announced, unreleased titles.
-      // Left out otherwise: AniList answers status_not_in: null with a 500.
-      if (order == 'START_DATE_DESC')
-        'notStatus': const ['NOT_YET_RELEASED', 'CANCELLED'],
+      // Cancelled series are never worth starting; newest-first would also
+      // lead with announced, unreleased titles. Never sent as null: AniList
+      // answers status_not_in: null with a 500.
+      'notStatus': order == 'START_DATE_DESC'
+          ? const ['NOT_YET_RELEASED', 'CANCELLED']
+          : const ['CANCELLED'],
       // ID breaks ties so pages stay stable while scores move.
       'sort': [order, 'ID'],
     });
@@ -532,7 +534,9 @@ class AniListClient {
     final status = switch (m['status']) {
       'FINISHED' => 'finished',
       'RELEASING' => m['type'] == 'ANIME' ? 'airing' : 'ongoing',
-      'HIATUS' => 'ongoing',
+      // Kept apart from "ongoing" so stalled and axed series can be skipped.
+      'HIATUS' => 'hiatus',
+      'CANCELLED' => 'cancelled',
       _ => 'unknown',
     };
     final title = (m['title'] as Map?) ?? const {};

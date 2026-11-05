@@ -5,7 +5,7 @@ import type { catalogProvider, mediaKind } from "../schemas";
 export type MediaKind = z.infer<typeof mediaKind>;
 export type CatalogProvider = z.infer<typeof catalogProvider>;
 
-export type TitleStatus = "finished" | "airing" | "ongoing" | "unknown";
+export type TitleStatus = "finished" | "airing" | "ongoing" | "hiatus" | "cancelled" | "unknown";
 
 /**
  * One title as the app receives it, whatever the provider.

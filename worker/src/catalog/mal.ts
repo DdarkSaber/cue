@@ -52,7 +52,9 @@ function statusOf(s: unknown, type: "anime" | "manga"): CatalogItem["status"] {
     case "currently_publishing":
       return type === "anime" ? "airing" : "ongoing";
     case "on_hiatus":
-      return "ongoing";
+      return "hiatus";
+    case "discontinued":
+      return "cancelled";
     default:
       return "unknown";
   }
@@ -115,4 +117,54 @@ export async function discoverMal(
     .map((n) => normalizeMal(n, r.type))
     .filter((i) => !i.adult && i.format !== "LIGHT_NOVEL" && i.format !== "NOVEL" && i.format !== "MUSIC");
   return { items, hasNext: Boolean(body?.paging?.next) };
+}
+
+/** MAL's search refuses queries under 3 characters and over 64. */
+const MAL_Q_MIN = 3;
+const MAL_Q_MAX = 64;
+
+/** A MAL search hit: a catalog item plus MAL's other names for it. */
+export type MalSearchItem = CatalogItem & { synonyms: string[] };
+
+/** Cuts a name to MAL's 64-character limit at a word boundary when it can. */
+export function malQuery(q: string): string | null {
+  const s = q.trim().replace(/\s+/g, " ");
+  if (s.length < MAL_Q_MIN) return null;
+  if (s.length <= MAL_Q_MAX) return s;
+  const cut = s.slice(0, MAL_Q_MAX);
+  const space = cut.lastIndexOf(" ");
+  return space >= MAL_Q_MIN ? cut.slice(0, space) : cut;
+}
+
+/**
+ * MyAnimeList's title search for one name, as a second opinion when AniList
+ * finds nothing. Adult entries, novels and music videos are dropped. Needs
+ * only Cue's public client id.
+ */
+export async function searchMal(
+  clientId: string | undefined,
+  q: string,
+  type: "anime" | "manga",
+): Promise<MalSearchItem[]> {
+  if (!clientId) throw new NotConfiguredError("mal");
+  const query = malQuery(q);
+  if (!query) return [];
+  const u = new URL(`${API}/${type}`);
+  u.searchParams.set("q", query);
+  u.searchParams.set("limit", "6");
+  u.searchParams.set("fields", FIELDS);
+  u.searchParams.set("nsfw", "false");
+  const body = (await fetchJson(u.toString(), {
+    headers: { "X-MAL-CLIENT-ID": clientId },
+  })) as Row | null;
+  return ((body?.data ?? []) as Row[])
+    .map((d) => d.node)
+    .filter((n): n is Row => n != null && n.id != null)
+    .map((n) => ({
+      ...normalizeMal(n, type),
+      synonyms: ((n.alternative_titles?.synonyms ?? []) as unknown[])
+        .filter((s): s is string => typeof s === "string" && s.trim() !== "")
+        .slice(0, 12),
+    }))
+    .filter((i) => !i.adult && i.format !== "LIGHT_NOVEL" && i.format !== "NOVEL" && i.format !== "MUSIC");
 }
