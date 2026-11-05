@@ -98,21 +98,26 @@ void main() {
     expect(eligible(other, s), isTrue);
   });
 
-  test('the same story in another format is not new', () {
+  test('another entry of the same story is hidden only in its own medium', () {
     const anime = Title(
       id: 'anilist:1',
       kind: MediaKind.anime,
       titleEn: 'A Silent Voice',
     );
+    // Watching the anime says nothing about reading the manga.
     const manga = Title(
       id: 'anilist:2',
       kind: MediaKind.manga,
       titleEn: 'A Silent Voice',
-      titleRomaji: 'Koe no Katachi',
+    );
+    const remake = Title(
+      id: 'anilist:3',
+      kind: MediaKind.anime,
+      titleEn: 'A Silent Voice (2016)',
     );
     const unrelated = Title(
-      id: 'anilist:3',
-      kind: MediaKind.manga,
+      id: 'anilist:4',
+      kind: MediaKind.anime,
       titleEn: 'A Silent Voice of the Sea',
     );
     final s = ProfileSignals(
@@ -124,7 +129,105 @@ void main() {
       },
       seenNames: workNames(anime).toSet(),
     );
-    expect(eligible(manga, s), isFalse);
+    expect(eligible(manga, s), isTrue);
+    expect(eligible(remake, s), isFalse);
     expect(eligible(unrelated, s), isTrue);
+  });
+
+  test('a trailing year does not hide the same story', () {
+    expect(workName('Hunter x Hunter (2011)'), workName('HUNTER x HUNTER'));
+    expect(workName('Hunter x Hunter (2011)'), 'hunterxhunter');
+    expect(workName('Fruits Basket (2019)'), 'fruitsbasket');
+    expect(workName('86'), '86');
+  });
+
+  test('names from the import file itself are never dealt', () async {
+    final db = memoryDb();
+    addTearDown(db.close);
+    final catalog = CatalogRepository(db, FakeGateway());
+    final profile = (await ProfileRepository(db).ensureActive()).id;
+    final service = ImportService(db, catalog);
+    // Unresolved offline: nothing cached, so it waits in review.
+    await service.commit(
+      profile,
+      await service.stage(
+        profile,
+        const ParsedImport(
+          sourceType: 'mal_api',
+          adapterVersion: '1',
+          records: [
+            NormalizedRecord(
+              sourceEntryKey: 'x',
+              title: 'Bleach: Sennen Kessen-hen',
+              kind: MediaKind.anime,
+              state: LibraryState.completed,
+            ),
+          ],
+        ),
+        offlineOnly: true,
+      ),
+    );
+    final s = await LibraryRepository(db).signals(profile);
+    const later = Title(
+      id: 'anilist:9',
+      kind: MediaKind.anime,
+      titleEn: 'BLEACH: Thousand-Year Blood War',
+      titleRomaji: 'BLEACH: Sennen Kessen-hen',
+    );
+    expect(eligible(later, s), isFalse);
+  });
+
+  test('the format rated most leads instead of being held back', () {
+    const s = ProfileSignals(
+      kindRatings: {MediaKind.anime: 300, MediaKind.manhwa: 30},
+    );
+    expect(kindAffinity(s, MediaKind.anime), 1);
+    expect(
+      kindAffinity(s, MediaKind.anime),
+      greaterThan(kindAffinity(s, MediaKind.manhwa)),
+    );
+    expect(
+      kindAffinity(s, MediaKind.manhwa),
+      greaterThan(kindAffinity(s, MediaKind.movie)),
+    );
+    expect(kindAffinity(const ProfileSignals(), MediaKind.movie), 0.5);
+  });
+
+  test('reading taste comes from reading history, not only from anime', () {
+    const romance = Title(
+      id: 'anilist:10',
+      kind: MediaKind.manhwa,
+      titleEn: 'Webtoon A',
+      genres: ['Romance', 'Slice of Life'],
+      year: 2024,
+      score: 80,
+    );
+    const action = Title(
+      id: 'anilist:11',
+      kind: MediaKind.manhwa,
+      titleEn: 'Webtoon B',
+      genres: ['Action', 'Fantasy'],
+      year: 2024,
+      score: 80,
+    );
+    // Rom-com anime favourites dominate overall taste...
+    const overall = {'romance': 30.0, 'slice of life': 20.0, 'action': 5.0};
+    const animeOnly = ProfileSignals(weights: overall, evidenceTitles: 50);
+    final ranker = Ranker();
+    double score(Title t, ProfileSignals s) =>
+        ranker.score(t, s, const DeckFilters());
+    expect(score(romance, animeOnly), greaterThan(score(action, animeOnly)));
+    // ...but what this person reads is action and fantasy.
+    const withReading = ProfileSignals(
+      weights: overall,
+      evidenceTitles: 50,
+      mediumWeights: {
+        true: {'action': 8.0, 'fantasy': 6.0},
+      },
+    );
+    expect(
+      score(action, withReading),
+      greaterThan(score(romance, withReading)),
+    );
   });
 }

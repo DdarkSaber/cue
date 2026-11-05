@@ -561,7 +561,10 @@ class AniListClient {
       'posterUrl': cover['extraLarge'] ?? cover['large'],
       'backdropUrl': m['bannerImage'],
       'synopsis': _plain(m['description'] as String?),
-      'adult': m['isAdult'] == true || tags.any((t) => t['isAdult'] == true),
+      // AniList's own 18+ flag. Its adult *tags* are no guide: Code Geass,
+      // Gintama and Psycho-Pass carry minor ones, and treating those as 18+
+      // hid much of mainstream anime and manhwa from imports and the deck.
+      'adult': m['isAdult'] == true,
       'franchiseKey': relations.isEmpty
           ? null
           : 'anilist:${[id, ...related].reduce((a, b) => a < b ? a : b)}',

@@ -19,6 +19,8 @@ class ProfileSignals {
     this.excluded = const {},
     this.known = const {},
     this.seenNames = const {},
+    this.historyYears = const {},
+    this.mediumWeights = const {},
     this.excludedFranchises = const {},
     this.deferred = const {},
     this.shortlisted = const {},
@@ -48,10 +50,19 @@ class ProfileSignals {
   /// queue). Never dealt as new picks, and never read as taste.
   final Set<String> known;
 
-  /// [workName]s of every library and [known] title. A title of another
-  /// format with the same name (the manga of a watched anime, the anime of
-  /// a read manhwa) is the same story, so it is not dealt as new.
+  /// [workNames] of every library and [known] title, and the names the
+  /// person's import files used. Another entry of the same medium with the
+  /// same name (a remake year, a merged season) is not dealt as new.
   final Set<String> seenNames;
+
+  /// Release year -> how many titles of that year the person watched or
+  /// read. Freshness follows their own history (see [eraFit]).
+  final Map<int, int> historyYears;
+
+  /// Tag weights from one medium's history only, keyed by "is reading";
+  /// present once that medium has [mediumTasteFrom] titles with evidence.
+  final Map<bool, Map<String, double>> mediumWeights;
+  static const mediumTasteFrom = 10;
   final Set<String> excludedFranchises;
   final Set<String> deferred;
   final Set<String> shortlisted;
@@ -73,12 +84,66 @@ class ProfileSignals {
   final Map<MediaKind, int> kindRatings;
 }
 
-/// A title's names reduced to letters and digits, for spotting the same work
-/// across formats. Very short names are left out: too many works share them.
-Iterable<String> workNames(Title t) => {
-  for (final n in [t.titleEn, t.titleRomaji])
-    if (n != null) n.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), ''),
-}.where((n) => n.length >= 5);
+/// 0..1: how much of the person's rated history is this format, relative
+/// to their most rated format. Unrated formats get 0.3, so they are not shut
+/// out; with no ratings at all every format is equal.
+double kindAffinity(ProfileSignals s, MediaKind kind) {
+  final most = s.kindRatings.values.fold(0, max);
+  if (most == 0) return 0.5;
+  final rated = s.kindRatings[kind] ?? 0;
+  return rated == 0 ? 0.3 : 0.3 + 0.7 * rated / most;
+}
+
+/// 0.1..1: how close a release year is to the years the person actually
+/// watches, from their own history (titles within four years either side,
+/// against their busiest stretch); anything newer than that stretch is 1.
+/// Null until 20 dated titles are known.
+double? eraFit(ProfileSignals s, int? year) {
+  if (year == null) return null;
+  final total = s.historyYears.values.fold(0, (a, b) => a + b);
+  if (total < 20) return null;
+  int around(int y) {
+    var n = 0;
+    for (var d = -4; d <= 4; d++) {
+      n += s.historyYears[y + d] ?? 0;
+    }
+    return n;
+  }
+
+  var best = 1;
+  var peak = year;
+  for (final y in s.historyYears.keys) {
+    final n = around(y);
+    if (n > best || (n == best && y > peak)) {
+      best = n;
+      peak = y;
+    }
+  }
+  // Newer than the busiest stretch is never penalised: new releases are
+  // exactly what someone who watches recent shows wants next.
+  if (year >= peak) return 1;
+  return (0.1 + 0.9 * around(year) / best).clamp(0.1, 1.0).toDouble();
+}
+
+/// A title's names reduced to letters and digits, keyed by medium ("w:"
+/// watched, "r:" read), for spotting the same work under another entry.
+/// Watching an anime says nothing about reading its manga, so the two never
+/// hide each other. Very short names are left out: too many works share them.
+Iterable<String> workNames(Title t) =>
+    workKeys(t.kind.isReading, [t.titleEn, t.titleRomaji]);
+
+Iterable<String> workKeys(bool reading, Iterable<String?> names) => {
+  for (final n in names)
+    if (n != null && workName(n).length >= 5)
+      '${reading ? 'r' : 'w'}:${workName(n)}',
+};
+
+/// A trailing year ("Hunter x Hunter (2011)") marks another adaptation of
+/// the same story, so it is dropped.
+String workName(String name) => name
+    .toLowerCase()
+    .replaceAll(RegExp(r'\s*\((19|20)\d\d\)\s*$'), '')
+    .replaceAll(RegExp(r'[^a-z0-9]'), '');
 
 /// In-session drift: tags the person keeps skipping or keeping right now.
 /// It fades with every decision and is never stored.
@@ -235,11 +300,17 @@ class Ranker {
   }) {
     final features = t.features;
     final clusterTaste = clusters.isEmpty ? null : clusterAffinity(t, clusters);
+    // Taste from everything, blended half and half with taste from this
+    // medium alone once it has enough history of its own.
+    final medium = s.mediumWeights[t.kind.isReading];
+    final overall = medium == null
+        ? _cosine(features, s.weights)
+        : 0.5 * _cosine(features, s.weights) + 0.5 * _cosine(features, medium);
     final rawTaste = features.isEmpty
         ? 0.5
         : clusterTaste == null
-        ? _cosine(features, s.weights)
-        : 0.7 * _cosine(features, s.weights) + 0.3 * clusterTaste;
+        ? overall
+        : 0.7 * overall + 0.3 * clusterTaste;
     final taste = 0.5 + s.tasteConfidence * (rawTaste - 0.5);
     final mood = switch (f.mood) {
       // The learned mood steers the default deck.
@@ -250,16 +321,20 @@ class Ranker {
       final m => moodOverlap(features, m),
     };
     final quality = t.score == null ? 0.6 : t.score! / 100;
-    var freshness = t.year == null
-        ? 0.5
-        : t.year! >= 2023
-        ? 1.0
-        : t.year! >= 2018
-        ? 0.7
-        : 0.4;
+    var freshness =
+        eraFit(s, t.year) ??
+        (t.year == null
+            ? 0.5
+            : t.year! >= 2023
+            ? 1.0
+            : t.year! >= 2018
+            ? 0.7
+            : 0.4);
     if (f.era == EraFilter.classic) freshness = 1.4 - freshness;
-    final rated = s.kindRatings[t.kind] ?? 0;
-    final novelty = 1 / (1 + rated / 5);
+    // Formats the person rates most lead; others still appear through the
+    // exploration and variety slots. (This used to be inverted: the more a
+    // format was rated, the less it was dealt, so anime fans saw movies.)
+    final affinity = kindAffinity(s, t.kind);
     final penalty = _penalty(features, s.weights);
     final lean = session?.lean(features) ?? 0;
     final learned = f.mood == QuickMood.forYou && (target?.confidence ?? 0) > 0;
@@ -269,7 +344,7 @@ class Ranker {
         moodW * mood +
         0.15 * quality +
         0.15 * freshness +
-        0.10 * novelty -
+        0.10 * affinity -
         penalty +
         0.08 * lean +
         0.08 * (temporary?.lean(features) ?? 0) -
@@ -577,7 +652,7 @@ class Ranker {
       candidates.sort((a, b) {
         double value(RankedCard c) =>
             (picked.any((p) => p.title.kind == c.title.kind) ? 0 : 1) +
-            1 / (1 + (signals.kindRatings[c.title.kind] ?? 0)) +
+            0.5 * kindAffinity(signals, c.title.kind) +
             (recent.contains(c.title.id) ? 0 : 0.2) +
             (c.title.year != null && c.title.year! >= 2023 ? 0.05 : 0);
         return value(b).compareTo(value(a));

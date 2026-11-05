@@ -637,16 +637,23 @@ class DeckController extends Notifier<DeckState> {
         keepTop: false,
       );
       if (!ref.mounted) return;
-      if (early.cards.isNotEmpty &&
+      // Only exact matches open the deck early. Near matches from outside
+      // the filters (anime under "Manhwa only") wait until the catalog has
+      // been asked; until then the loading card shows.
+      final exactEarly = [
+        for (final c in early.cards)
+          if (!early.relaxed.containsKey(c.title.id)) c,
+      ];
+      if (exactEarly.isNotEmpty &&
           state.cards.isEmpty &&
           await _profile == profileId &&
           ref.mounted &&
           ref.read(deckFiltersProvider) == filters) {
         _dealtProfile = profileId;
         state = state.copyWith(
-          cards: early.cards,
-          relaxed: early.relaxed,
-          lengthFallback: early.lengthFallback,
+          cards: exactEarly,
+          relaxed: const {},
+          lengthFallback: false,
           loading: false,
           refreshing: true,
           clearEmpty: true,

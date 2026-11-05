@@ -347,4 +347,19 @@ void main() {
     }
     expect(sent.first.containsKey('country'), isFalse);
   });
+
+  // Code Geass carries a minor adult tag; it is not an 18+ title.
+  test('only AniList\'s own 18+ flag marks a title adult', () {
+    Map<String, Object?> media({required bool isAdult}) => {
+      'id': 1575,
+      'type': 'ANIME',
+      'isAdult': isAdult,
+      'title': {'romaji': 'Code Geass'},
+      'tags': [
+        {'name': 'Masturbation', 'rank': 31, 'isAdult': true},
+      ],
+    };
+    expect(AniListClient.normalize(media(isAdult: false)).json['adult'], false);
+    expect(AniListClient.normalize(media(isAdult: true)).json['adult'], true);
+  });
 }
