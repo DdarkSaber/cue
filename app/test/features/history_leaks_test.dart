@@ -244,4 +244,30 @@ void main() {
     expect(w(30, inProgress: true), greaterThan(w(30)));
     expect(recencyWeight(null, now), 1);
   });
+
+  test('series that stopped early are not dealt', () {
+    Title comic(String status, int? chapters) => Title(
+      id: 'anilist:$status$chapters',
+      kind: MediaKind.manhwa,
+      titleEn: 'Webtoon $status $chapters',
+      status: status,
+      chapters: chapters,
+    );
+    const s = ProfileSignals();
+    expect(eligible(comic('cancelled', 200), s), isFalse);
+    expect(eligible(comic('hiatus', 20), s), isFalse);
+    expect(eligible(comic('hiatus', null), s), isFalse);
+    expect(eligible(comic('finished', 20), s), isFalse);
+    expect(eligible(comic('hiatus', 300), s), isTrue);
+    expect(eligible(comic('finished', 120), s), isTrue);
+    expect(eligible(comic('ongoing', 20), s), isTrue);
+    expect(eligible(comic('ongoing', null), s), isTrue);
+    const anime = Title(
+      id: 'anilist:9',
+      kind: MediaKind.anime,
+      titleEn: 'Show',
+      status: 'cancelled',
+    );
+    expect(eligible(anime, s), isFalse);
+  });
 }

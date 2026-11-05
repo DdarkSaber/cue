@@ -242,7 +242,7 @@ void main() {
       await client.discover(MediaKind.anime, sort: 'NOT_A_SORT');
       final vars = [for (final s in sent) s['variables'] as Map];
       expect(vars[0]['sort'], ['POPULARITY_DESC', 'ID']);
-      expect(vars[0]['notStatus'], isNull);
+      expect(vars[0]['notStatus'], ['CANCELLED']);
       expect(vars[1]['sort'], ['START_DATE_DESC', 'ID']);
       expect(vars[1]['page'], 3);
       // Newest-first skips announced titles nobody can watch yet.
@@ -319,11 +319,12 @@ void main() {
       await client.discover(MediaKind.anime, sort: sort);
     }
     for (final v in sent) {
+      // Always a list (cancelled series are skipped), never null.
+      expect(v['notStatus'], contains('CANCELLED'));
       expect(
-        v['notStatus'],
-        v['sort'][0] == 'START_DATE_DESC' ? isNotNull : null,
+        (v['notStatus'] as List).contains('NOT_YET_RELEASED'),
+        v['sort'][0] == 'START_DATE_DESC',
       );
-      expect(v.containsKey('notStatus'), v['sort'][0] == 'START_DATE_DESC');
     }
   });
 

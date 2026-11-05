@@ -52,7 +52,9 @@ function statusOf(s: unknown, type: "anime" | "manga"): CatalogItem["status"] {
     case "currently_publishing":
       return type === "anime" ? "airing" : "ongoing";
     case "on_hiatus":
-      return "ongoing";
+      return "hiatus";
+    case "discontinued":
+      return "cancelled";
     default:
       return "unknown";
   }
