@@ -17,6 +17,8 @@ import 'franchise_identity.dart';
 class ProfileSignals {
   const ProfileSignals({
     this.excluded = const {},
+    this.known = const {},
+    this.seenNames = const {},
     this.excludedFranchises = const {},
     this.deferred = const {},
     this.shortlisted = const {},
@@ -40,6 +42,16 @@ class ProfileSignals {
   final Map<String, List<String>> becauseOf;
 
   final Set<String> excluded;
+
+  /// Titles the person's imports listed but did not add to the library
+  /// (unconfirmed Netflix plays, suggestions left unticked, the review
+  /// queue). Never dealt as new picks, and never read as taste.
+  final Set<String> known;
+
+  /// [workName]s of every library and [known] title. A title of another
+  /// format with the same name (the manga of a watched anime, the anime of
+  /// a read manhwa) is the same story, so it is not dealt as new.
+  final Set<String> seenNames;
   final Set<String> excludedFranchises;
   final Set<String> deferred;
   final Set<String> shortlisted;
@@ -60,6 +72,13 @@ class ProfileSignals {
   /// How many rated titles exist per kind (drives exploration).
   final Map<MediaKind, int> kindRatings;
 }
+
+/// A title's names reduced to letters and digits, for spotting the same work
+/// across formats. Very short names are left out: too many works share them.
+Iterable<String> workNames(Title t) => {
+  for (final n in [t.titleEn, t.titleRomaji])
+    if (n != null) n.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), ''),
+}.where((n) => n.length >= 5);
 
 /// In-session drift: tags the person keeps skipping or keeping right now.
 /// It fades with every decision and is never stored.
@@ -154,7 +173,10 @@ class Ranker {
     final rewatchable = (entry?.rating?.isRewatch ?? false) || longAgo;
     if (f.isRevisit) {
       if (!rewatchable) return false;
-    } else if (entry != null) {
+    } else if (entry != null || s.known.contains(t.id)) {
+      return false;
+    } else if (s.seenNames.isNotEmpty &&
+        workNames(t).any(s.seenNames.contains)) {
       return false;
     }
 

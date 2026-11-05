@@ -73,6 +73,26 @@ class XlsxImportAdapter {
             screenOnly: netflixPlay,
           ),
         );
+        // "Seasons / films merged": every listed entry was watched too, so
+        // each becomes its own record and its sequel is never dealt as new.
+        // Unrated, so one franchise does not count several times for taste.
+        final seen = {title.toLowerCase(), ?at(cols.alt)?.toLowerCase()};
+        for (final name in (at(cols.merged) ?? '').split(';')) {
+          final n = name.trim();
+          if (n.isEmpty || !seen.add(n.toLowerCase())) continue;
+          records.add(
+            NormalizedRecord(
+              sourceEntryKey:
+                  'xlsx:${kind?.name ?? 'any'}:merged:${n.toLowerCase()}',
+              title: n,
+              kind: kind,
+              state: state,
+              statusOriginal: status,
+              confirmed: !netflixPlay,
+              screenOnly: netflixPlay,
+            ),
+          );
+        }
       }
     }
     if (records.isEmpty) {
@@ -202,6 +222,7 @@ class _Columns {
     plays = find((h) => h.contains('episode plays') || h == 'plays');
     last = find((h) => h.startsWith('last '));
     notes = find((h) => h == 'notes' || h == 'note');
+    merged = find((h) => h.contains('merged'));
   }
 
   late final int? title,
@@ -215,5 +236,6 @@ class _Columns {
       latest,
       plays,
       last,
-      notes;
+      notes,
+      merged;
 }

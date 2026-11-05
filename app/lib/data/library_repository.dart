@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 
 import '../domain/models/library.dart';
@@ -101,8 +103,19 @@ class LibraryRepository {
       }
     }
 
+    final known = (await _knownFromImports(profileId))
+        .difference({for (final u in ut) u.titleId});
+    final seenNames = {
+      for (final t in (await _titles({
+        ...known,
+        for (final u in ut) u.titleId,
+      })).values)
+        ...workNames(t),
+    };
     final base = ProfileSignals(
       excluded: {for (final x in ex) x.titleId},
+      known: known,
+      seenNames: seenNames,
       excludedFranchises: await FranchiseExclusionRepository(db)
           .activeScopes(profileId),
       deferred: {for (final x in de) x.titleId},
@@ -130,6 +143,8 @@ class LibraryRepository {
     final seeds = selectTasteSeeds(base);
     return ProfileSignals(
       excluded: base.excluded,
+      known: base.known,
+      seenNames: base.seenNames,
       excludedFranchises: base.excludedFranchises,
       deferred: base.deferred,
       shortlisted: base.shortlisted,
@@ -142,6 +157,54 @@ class LibraryRepository {
       tasteSeeds: seeds,
       becauseOf: await _becauseOf(seeds),
     );
+  }
+
+  /// Titles this profile's completed imports named without adding them:
+  /// matched but unticked rows (unconfirmed Netflix plays) and suggested
+  /// candidates waiting in review. Dismissed rows are not counted.
+  Future<Set<String>> _knownFromImports(String profileId) async {
+    final rows =
+        await (db.select(db.sourceObservations).join([
+              innerJoin(
+                db.importBatches,
+                db.importBatches.id.equalsExp(db.sourceObservations.batchId),
+              ),
+            ])..where(
+              db.importBatches.profileId.equals(profileId) &
+                  db.importBatches.state.equals('completed') &
+                  db.sourceObservations.matchClass.isNotIn(const ['dismissed']),
+            ))
+            .map((r) => r.readTable(db.sourceObservations))
+            .get();
+    final known = <String>{
+      for (final o in rows)
+        if (o.titleId != null) o.titleId!,
+    };
+    final candidates = <(String, String)>{};
+    for (final o in rows) {
+      final raw = o.candidateJson;
+      if (raw == null) continue;
+      try {
+        final j = jsonDecode(raw) as Map;
+        final p = j['provider'], id = j['providerId'];
+        if (p is String && id != null) candidates.add((p, '$id'));
+      } on FormatException {
+        // A damaged candidate is simply not counted.
+      }
+    }
+    if (candidates.isNotEmpty) {
+      final ids =
+          await (db.select(db.catalogIdentities)..where(
+                (i) => i.providerId.isIn({for (final c in candidates) c.$2}),
+              ))
+              .get();
+      for (final i in ids) {
+        if (candidates.contains((i.provider, i.providerId))) {
+          known.add(i.titleId);
+        }
+      }
+    }
+    return known;
   }
 
   /// Public "more like this" edges from these seeds, joined in memory.

@@ -1059,6 +1059,7 @@ class DeckController extends Notifier<DeckState> {
       kinds,
       excludeIds: {
         ...signals.excluded,
+        ...signals.known,
         ...signals.deferred,
         ...signals.shortlisted,
         ...signals.library.keys,
