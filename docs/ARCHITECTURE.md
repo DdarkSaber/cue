@@ -30,6 +30,8 @@ zod, KV and D1. Tests use flutter_test and Vitest.
 | K/C/J-dramas and series | TVmaze | No |
 | Movies | Stremio Cinemeta (unofficial) | No |
 | Comic alternate names | MangaDex, MangaUpdates | No |
+| Import fallback: anime and comic search | MyAnimeList | Public client id |
+| Import fallback: canonical names | Wikipedia (English) | No |
 
 Optional keys and account setup are covered in [Setup](SETUP.md).
 An import source is not an additional recommendation provider.

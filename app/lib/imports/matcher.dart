@@ -222,6 +222,18 @@ class ImportMatcher {
   static const similarThreshold = 0.74;
   final _ambiguous = <int>{};
 
+  /// Names a record is also known by, learned from Wikipedia during this
+  /// match: the article's title and the redirects used to search.
+  final _aka = Map<NormalizedRecord, List<String>>.identity();
+
+  /// The Worker answered that a fallback route is missing or unconfigured
+  /// (an older deployment): stop asking it for this match.
+  bool _malOff = false;
+  bool _wikiOff = false;
+
+  /// MAL search takes up to 8 names per request, as does Wikipedia.
+  static const lookupBatch = 8;
+
   String _query(NormalizedRecord r, String title) => cleanQuery(
     title,
     screen: _isScreen(r.kind) && r.kind != MediaKind.movie,
@@ -246,6 +258,9 @@ class ImportMatcher {
     void Function(int done, int total)? onProgress,
   }) async {
     _ambiguous.clear();
+    _aka.clear();
+    _malOff = false;
+    _wikiOff = false;
     final out = List<MatchedRecord?>.filled(records.length, null);
     final pending = <int>[];
 
@@ -568,7 +583,33 @@ class ImportMatcher {
       }
     }
 
-    // 5. Whatever is left may simply be rated adult, which Cue keeps out of
+    // 5. Still nothing certain: MyAnimeList's own search, then the name
+    // Wikipedia uses for the work, asked of AniList and MAL again. Only what
+    // all of them miss goes to review.
+    bool open(int i) =>
+        !_ambiguous.contains(i) &&
+        !unchecked.contains(i) &&
+        (out[i] == null || out[i]!.matchClass == MatchClass.similar) &&
+        _malLists(records[i]).isNotEmpty;
+    final malIdx = [
+      for (final i in remote)
+        if (open(i)) i,
+    ];
+    await _viaMal(
+      records,
+      malIdx,
+      (i) => [_query(records[i], records[i].title)],
+      out,
+    );
+    // Netflix plays are mostly live action: an encyclopedia article for
+    // one would only be searched for as anime.
+    final wikiIdx = [
+      for (final i in malIdx)
+        if (open(i) && !records[i].screenOnly) i,
+    ];
+    await _viaWikipedia(records, wikiIdx, out);
+
+    // 6. Whatever is left may simply be rated adult, which Cue keeps out of
     // search by design. Say so instead of leaving it as an unexplained miss.
     final leftover = [
       for (final i in remote)
@@ -656,13 +697,16 @@ class ImportMatcher {
 
   /// One search per (record, query). A confident match always wins; a
   /// similar one is kept only if nothing better turns up.
+  /// Records in [weak] were searched under a name nobody confirmed (an
+  /// encyclopedia's best guess): an exact hit is only offered, unticked.
   Future<void> _titlePass(
     List<NormalizedRecord> records,
     List<int> idx,
     List<String> Function(int) queriesFor,
     List<MatchedRecord?> out,
-    Set<int> unchecked,
-  ) async {
+    Set<int> unchecked, {
+    Set<int> weak = const {},
+  }) async {
     _records = records;
     final gateway = catalog.gateway;
     final jobs = <(int, String)>[
@@ -704,6 +748,13 @@ class ImportMatcher {
         for (final c in candidates[idx]!) resolved[c]!: c,
       }.values.toList();
       final exact = _exact(r, unique);
+      if (exact != null &&
+          weak.contains(idx) &&
+          !_ambiguous.contains(idx) &&
+          !failed.contains(idx)) {
+        out[idx] ??= _offer(r, exact);
+        continue;
+      }
       if (exact != null && !_ambiguous.contains(idx) && !failed.contains(idx)) {
         final ids = await catalog.upsert([exact]);
         out[idx] = MatchedRecord(
@@ -720,17 +771,249 @@ class ImportMatcher {
       }
       if (out[idx] != null) continue;
       final like = _similar(r, unique);
-      if (like != null) {
-        // Offered, not linked: the catalog row is added only if ticked.
-        out[idx] = MatchedRecord(
-          r,
-          like.titleId,
-          MatchClass.similar,
-          included: false,
-          candidate: like,
-        );
+      if (like != null) out[idx] = _offer(r, like);
+    }
+  }
+
+  /// Offered, not linked: the catalog row is added only if ticked.
+  MatchedRecord _offer(NormalizedRecord r, CatalogItemDto c) => MatchedRecord(
+    r,
+    c.titleId,
+    MatchClass.similar,
+    included: false,
+    candidate: c,
+  );
+
+  /// Which MyAnimeList lists a record may be searched in: `true` for anime,
+  /// `false` for comics. Shows, dramas and films have none.
+  static List<bool> _malLists(NormalizedRecord r) {
+    final k = r.kind;
+    final any = k == null || k == MediaKind.unknown;
+    return [
+      if (any || k == MediaKind.anime) true,
+      if (!r.screenOnly && (any || k.isReading)) false,
+    ];
+  }
+
+  /// An older Worker without the route, or one without a MAL client id.
+  static bool _routeMissing(CatalogUnavailable e) =>
+      e.code == 'not_found' || e.code == 'not_configured';
+
+  /// MyAnimeList's own search for names AniList did not place. A hit with
+  /// one of the record's names is resolved to its AniList entry by MAL id,
+  /// so ids stay the same whichever catalog found it; MAL's card is kept
+  /// only when AniList has no such entry.
+  Future<void> _viaMal(
+    List<NormalizedRecord> records,
+    List<int> idx,
+    List<String> Function(int) queriesFor,
+    List<MatchedRecord?> out, {
+    Set<int> weak = const {},
+  }) async {
+    if (idx.isEmpty || _malOff) return;
+    final gateway = catalog.gateway;
+    final jobs = <(int, MalQuery)>[
+      for (final i in idx)
+        for (final q in queriesFor(i))
+          for (final anime in _malLists(records[i]))
+            (i, MalQuery(q, anime: anime)),
+    ];
+    final found = <int, List<CatalogItemDto>>{};
+    for (var s = 0; s < jobs.length; s += lookupBatch) {
+      final chunk = jobs.skip(s).take(lookupBatch).toList();
+      final List<List<CatalogItemDto>> res;
+      try {
+        res = await gateway.malSearch([for (final (_, q) in chunk) q]);
+      } on CatalogUnavailable catch (e) {
+        if (_routeMissing(e)) {
+          _malOff = true;
+          break;
+        }
+        continue;
+      }
+      for (var j = 0; j < chunk.length && j < res.length; j++) {
+        found.putIfAbsent(chunk[j].$1, () => []).addAll(res[j]);
       }
     }
+    if (found.isEmpty) return;
+
+    // AniList's entries for every MAL hit worth keeping, 50 ids a call.
+    final anime = <int>{}, manga = <int>{};
+    for (final e in found.entries) {
+      final r = records[e.key];
+      for (final d in [..._exactHits(r, e.value), ?_similar(r, e.value)]) {
+        if (d.idMal case final id?) {
+          (d.providerKind == 'manga' ? manga : anime).add(id);
+        }
+      }
+    }
+    String keyOf(bool reading, int id) => '${reading ? 'manga' : 'anime'}:$id';
+    final lifted = <String, CatalogItemDto>{};
+    try {
+      for (final (ids, isAnime) in [
+        (anime.toList(), true),
+        (manga.toList(), false),
+      ]) {
+        for (var s = 0; s < ids.length; s += 50) {
+          final chunk = ids.skip(s).take(50).toList();
+          final res = await gateway.match(
+            const [],
+            malAnime: isAnime ? chunk : const [],
+            malManga: isAnime ? const [] : chunk,
+          );
+          for (final d in res.mal) {
+            if (d.idMal case final id?) lifted[keyOf(d.kind.isReading, id)] = d;
+          }
+        }
+      }
+    } on CatalogUnavailable {
+      // AniList is busy: MAL's own cards stand in.
+    }
+    CatalogItemDto lift(CatalogItemDto d) => d.idMal == null
+        ? d
+        : lifted[keyOf(d.providerKind == 'manga', d.idMal!)] ?? d;
+
+    for (final e in found.entries) {
+      final i = e.key;
+      final r = records[i];
+      if (out[i] != null && out[i]!.matchClass != MatchClass.similar) continue;
+      final exact = _exact(r, e.value);
+      if (exact == null && _exactHits(r, e.value).length > 1) {
+        // Two works share the name (an anime and its manga, with no kind
+        // to tell them apart): the person picks.
+        _ambiguous.add(i);
+        continue;
+      }
+      if (exact != null) {
+        final d = lift(exact);
+        if (d.json['adult'] == true) {
+          out[i] = MatchedRecord(
+            r,
+            null,
+            MatchClass.unresolved,
+            included: false,
+            adultHidden: true,
+          );
+          continue;
+        }
+        if (!_allowed(r, d)) continue;
+        if (weak.contains(i)) {
+          out[i] ??= _offer(r, d);
+          continue;
+        }
+        final ids = await catalog.upsert([d]);
+        out[i] = MatchedRecord(
+          r,
+          ids.first,
+          MatchClass.suggested,
+          included: r.confirmed,
+        );
+        continue;
+      }
+      if (out[i] != null) continue;
+      final like = _similar(r, e.value);
+      if (like == null) continue;
+      final d = lift(like);
+      if (d.json['adult'] != true && _allowed(r, d)) out[i] = _offer(r, d);
+    }
+  }
+
+  /// Asks Wikipedia what a name refers to. An article that lists one of the
+  /// record's names (as its title or a redirect) is confirmed: its title and
+  /// a couple of its other names are searched in AniList, then MyAnimeList,
+  /// and an exact hit is a normal match. An article found by search alone is
+  /// only a guess, so whatever it leads to is offered unticked.
+  Future<void> _viaWikipedia(
+    List<NormalizedRecord> records,
+    List<int> idx,
+    List<MatchedRecord?> out,
+  ) async {
+    if (idx.isEmpty || _wikiOff) return;
+    final gateway = catalog.gateway;
+    final byKind = <MediaKind?, List<int>>{};
+    for (final i in idx) {
+      final k = records[i].kind == MediaKind.unknown ? null : records[i].kind;
+      byKind.putIfAbsent(k, () => []).add(i);
+    }
+    final queries = <int, List<String>>{};
+    final weak = <int>{};
+    outer:
+    for (final group in byKind.entries) {
+      for (var s = 0; s < group.value.length; s += lookupBatch) {
+        final chunk = group.value.skip(s).take(lookupBatch).toList();
+        final List<List<WikiNameDto>> res;
+        try {
+          res = await gateway.canonicalNames([
+            for (final i in chunk) _query(records[i], records[i].title),
+          ], kind: group.key);
+        } on CatalogUnavailable catch (e) {
+          if (_routeMissing(e)) {
+            _wikiOff = true;
+            break outer;
+          }
+          continue;
+        }
+        for (var j = 0; j < chunk.length && j < res.length; j++) {
+          final i = chunk[j];
+          final r = records[i];
+          final pages = [
+            for (final p in res[j])
+              if (p.title.trim().isNotEmpty) p,
+          ];
+          if (pages.isEmpty) continue;
+          final names = _names(r);
+          final confirmed = pages
+              .where(
+                (p) =>
+                    [p.title, ...p.names].any((n) => names.contains(_key(n))),
+              )
+              .firstOrNull;
+          final page = confirmed ?? pages.first;
+          final tried = {
+            for (final q in [
+              ..._initialQueries(r),
+              ..._shorterQueries(i, records),
+            ])
+              _key(q),
+          };
+          final qs = <String>[];
+          void add(String n) {
+            final q = _query(r, n);
+            if (q.length >= 3 && tried.add(_key(q))) qs.add(q);
+          }
+
+          add(page.title);
+          if (confirmed != null) {
+            for (final n in page.names) {
+              if (qs.length >= 3) break;
+              add(n);
+            }
+          }
+          if (qs.isEmpty) continue;
+          queries[i] = qs;
+          _aka[r] = [page.title, ...qs];
+          if (confirmed == null) weak.add(i);
+        }
+      }
+    }
+    if (queries.isEmpty) return;
+    final asked = queries.keys.toList();
+    // A failed re-query is not "unchecked": AniList already answered once.
+    await _titlePass(
+      records,
+      asked,
+      (i) => queries[i]!,
+      out,
+      <int>{},
+      weak: weak,
+    );
+    final left = [
+      for (final i in asked)
+        if (!_ambiguous.contains(i) &&
+            (out[i] == null || out[i]!.matchClass == MatchClass.similar))
+          i,
+    ];
+    await _viaMal(records, left, (i) => queries[i]!, out, weak: weak);
   }
 
   /// MangaUpdates: a work whose associated names include the typed name
@@ -884,7 +1167,8 @@ class ImportMatcher {
   static String _key(String s) => normTitle(s).replaceAll(' ', '');
 
   Set<String> _names(NormalizedRecord r) => {
-    for (final n in [r.title, _query(r, r.title), ...r.altTitles]) _key(n),
+    for (final n in [r.title, _query(r, r.title), ...r.altTitles, ...?_aka[r]])
+      _key(n),
   };
 
   /// Titles and alternate names (AniList synonyms) of a candidate.
@@ -958,7 +1242,7 @@ class ImportMatcher {
     NormalizedRecord r,
     List<CatalogItemDto> candidates,
   ) {
-    final queries = [r.title, cleanQuery(r.title), ...r.altTitles];
+    final queries = [r.title, cleanQuery(r.title), ...r.altTitles, ...?_aka[r]];
     CatalogItemDto? best;
     var bestScore = similarThreshold;
     for (final c in candidates) {

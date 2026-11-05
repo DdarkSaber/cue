@@ -12,6 +12,8 @@ declare global {
       AI_LIMITER?: RateLimit;
       /** Stricter per-IP limit for /catalog/match and /catalog/aliases (many upstream calls per request). */
       HEAVY_LIMITER?: RateLimit;
+      /** Per-IP limit for /catalog/mal-search and /catalog/names (up to 8 cached lookups each). */
+      LOOKUP_LIMITER?: RateLimit;
       ALLOWED_ORIGINS: string;
       /** Secret. Without it, TMDB-backed kinds answer 503 not_configured. */
       TMDB_API_KEY?: string;

@@ -11,9 +11,10 @@ import {
 import { aliasesFor, type AliasCandidate } from "./mangadex";
 import { aliasesFromMangaUpdates, titleMangaUpdates } from "./mangaupdates";
 import { CINEMETA_KINDS, cinemetaType, discoverCinemeta, searchCinemeta, titleCinemeta } from "./cinemeta";
-import { discoverMal } from "./mal";
+import { discoverMal, searchMal, type MalSearchItem } from "./mal";
+import { wikiNames, type WikiName } from "./wikipedia";
 import { discoverTvmaze, searchTvmaze, titleTvmaze, tvmazeLastPage } from "./tvmaze";
-import type { CatalogItem, CatalogPage, CatalogProvider, MediaKind } from "./types";
+import { type CatalogItem, type CatalogPage, type CatalogProvider, type MediaKind, NotConfiguredError } from "./types";
 
 type Mood = "hype" | "comfort" | "gripping" | "feels";
 
@@ -161,6 +162,70 @@ export async function aliases(
     );
   }
   return out;
+}
+
+/** Lookup results are kept a week: names and their matches rarely change. */
+const LOOKUP_TTL = 7 * 24 * 60 * 60;
+
+/**
+ * Runs one cached lookup per name, four at a time. A failed lookup is an
+ * empty list for that name, so one bad title never sinks a batch.
+ */
+async function perName<Q extends { q: string }, T>(
+  env: Env,
+  queries: Q[],
+  keyOf: (norm: string, query: Q) => string,
+  load: (query: Q) => Promise<T[]>,
+): Promise<T[][]> {
+  const out: T[][] = queries.map(() => []);
+  for (let s = 0; s < queries.length; s += 4) {
+    await Promise.all(
+      queries.slice(s, s + 4).map(async (query, j) => {
+        try {
+          const norm = query.q.toLowerCase().replace(/\s+/g, " ").trim();
+          const { value } = await cached<T[]>(env.CATALOG_CACHE, keyOf(norm, query), LOOKUP_TTL, () =>
+            load(query),
+          );
+          out[s + j] = value;
+        } catch (e) {
+          // A missing key is the whole route's answer, not one name's.
+          if (e instanceof NotConfiguredError) throw e;
+        }
+      }),
+    );
+  }
+  return out;
+}
+
+/**
+ * MyAnimeList title search for imports: the second opinion after AniList.
+ * Each name searches anime or comics (MAL keeps manga, manhwa and manhua in
+ * one list).
+ */
+export function malSearch(
+  env: Env,
+  queries: { q: string; type: "anime" | "manga" }[],
+): Promise<MalSearchItem[][]> {
+  if (!env.MAL_CLIENT_ID) throw new NotConfiguredError("mal");
+  return perName(
+    env,
+    queries,
+    (n, { type }) => `malsearch:${type}:${n}`,
+    ({ q, type }) => searchMal(env.MAL_CLIENT_ID, q, type),
+  );
+}
+
+/**
+ * Canonical names from Wikipedia for names no catalog recognised, so the app
+ * can ask AniList and MAL again with the title an article uses.
+ */
+export function names(env: Env, queries: string[], kind: MediaKind | undefined): Promise<WikiName[][]> {
+  return perName(
+    env,
+    queries.map((q) => ({ q })),
+    (n) => `wiki:${kind ?? "-"}:${n}`,
+    ({ q }) => wikiNames(q, kind),
+  );
 }
 
 /**
