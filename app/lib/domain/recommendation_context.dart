@@ -169,13 +169,20 @@ double clusterAffinity(Title title, List<InterestCluster> clusters) {
 }
 
 /// At most four transparent on-device theme groups, not inferred star ratings.
+///
+/// [reading] keeps only one medium's history (true: manga, manhwa, manhua;
+/// false: everything watched), so read and watch tastes stay apart.
 List<InterestCluster> interestClusters(
   ProfileSignals signals,
-  Map<String, Title> titles,
-) {
+  Map<String, Title> titles, {
+  bool? reading,
+  int maxGroups = 4,
+}) {
+  bool keep(Title t) => reading == null || t.kind.isReading == reading;
   final evidence = <(Title, double)>[];
   for (final entry in signals.library.values) {
     final t = titles[entry.titleId];
+    if (t != null && !keep(t)) continue;
     final weight =
         entry.rating?.weight ??
         (signals.weakHistoryIds.contains(entry.titleId)
@@ -189,7 +196,7 @@ List<InterestCluster> interestClusters(
     signals.library.keys.toSet(),
   )) {
     final t = titles[id];
-    if (t != null && t.features.isNotEmpty) evidence.add((t, 1));
+    if (t != null && keep(t) && t.features.isNotEmpty) evidence.add((t, 1));
   }
   evidence.sort((a, b) => b.$2.compareTo(a.$2));
   final groups = <Map<String, double>>[];
@@ -205,7 +212,7 @@ List<InterestCluster> interestClusters(
           features.intersection(g.keys.toSet()).length / features.length >= 0.5,
     );
     if (group < 0) {
-      if (groups.length >= 4) continue;
+      if (groups.length >= maxGroups) continue;
       group = groups.length;
       groups.add({});
       strengths.add(0);

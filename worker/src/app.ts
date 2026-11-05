@@ -98,7 +98,7 @@ export function createApp() {
   app.get("/catalog/discover", async (c) => {
     const q = check(c, discoverQuery, c.req.query());
     if (!q.ok) return q.res;
-    const { value } = await catalog.discover(c.env, q.data.kind, q.data.mood, q.data.page);
+    const { value } = await catalog.discover(c.env, q.data.kind, q.data.mood, q.data.page, q.data.source);
     return publicJson(c, value);
   });
 

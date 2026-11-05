@@ -555,14 +555,25 @@ class DeckController extends Notifier<DeckState> {
       ..sort(
         (a, b) => (b.rating?.weight ?? 0).compareTo(a.rating?.weight ?? 0),
       );
+    // All of the history (bounded): unrated reading history sorts last and
+    // would otherwise never reach the reading clusters.
     final related = await catalog.titlesByIds({
-      ...history.take(64).map((e) => e.titleId),
+      ...history.take(1500).map((e) => e.titleId),
       ...signals.shortlisted.take(64),
     });
     if (!ref.mounted) return;
-    clusters = interestClusters(signals, {
+    // Interest clusters come from the medium being dealt: what someone reads
+    // is not what they watch. A mixed deck keeps the two strongest of each.
+    final known = {
       for (final t in [...pool, ...related]) t.id: t,
-    });
+    };
+    final media = {for (final k in kinds) k.isReading};
+    clusters = media.length == 1
+        ? interestClusters(signals, known, reading: media.single)
+        : [
+            ...interestClusters(signals, known, reading: false, maxGroups: 2),
+            ...interestClusters(signals, known, reading: true, maxGroups: 2),
+          ];
     String? notice;
     var catalogPending = false;
     var refilled = false;

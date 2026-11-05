@@ -52,10 +52,12 @@ void main() {
         await service.stage(id, parsed, offlineOnly: true),
       );
       final signals = await lib.signals(id);
-      expect(signals.weights['comedy'], closeTo(0.55, 0.0001));
+      // Watching and reading count a quarter more than completed: they are
+      // what the person is into now (0.2 x 1.25 twice, plus 0.15).
+      expect(signals.weights['comedy'], closeTo(0.65, 0.0001));
       expect(signals.evidenceTitles, 3);
-      expect(signals.evidenceStrength, closeTo(0.55, 0.0001));
-      expect(signals.tasteConfidence, closeTo(0.0275, 0.0001));
+      expect(signals.evidenceStrength, closeTo(0.65, 0.0001));
+      expect(signals.tasteConfidence, closeTo(0.0325, 0.0001));
       final ranker = Ranker();
       const candidate = Title(
         id: 'fresh',
@@ -75,7 +77,7 @@ void main() {
         id,
         await service.stage(id, parsed, offlineOnly: true),
       );
-      expect((await lib.signals(id)).weights['comedy'], closeTo(0.55, 0.0001));
+      expect((await lib.signals(id)).weights['comedy'], closeTo(0.65, 0.0001));
       await lib.saveEntry(
         id,
         'anilist:1',
@@ -84,7 +86,7 @@ void main() {
       );
       await lib.recomputeWeights(id);
       final negative = await lib.signals(id);
-      expect(negative.weights['comedy'], closeTo(-0.65, 0.0001));
+      expect(negative.weights['comedy'], closeTo(-0.6, 0.0001));
       expect(negative.weakHistoryIds, isNot(contains('anilist:1')));
       await lib.saveEntry(
         id,
@@ -94,7 +96,7 @@ void main() {
       );
       await lib.recomputeWeights(id);
       final positive = await lib.signals(id);
-      expect(positive.weights['comedy'], closeTo(3.35, 0.0001));
+      expect(positive.weights['comedy'], closeTo(3.4, 0.0001));
       expect(positive.tasteConfidence, greaterThan(signals.tasteConfidence));
     },
   );

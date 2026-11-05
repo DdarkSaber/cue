@@ -560,6 +560,17 @@ class HttpCatalogGateway implements CatalogGateway {
     return CatalogPageDto(_items(body), (body as Map?)?['hasNext'] == true);
   }
 
+  /// MyAnimeList's ranking for anime and comics, through the Worker: the
+  /// backup when AniList fails. One list per kind, whatever the mood.
+  Future<CatalogPageDto> malDiscover(MediaKind kind, {int page = 1}) async {
+    final body = await _get('/catalog/discover', {
+      'kind': kind.name,
+      'page': '$page',
+      'source': 'mal',
+    });
+    return CatalogPageDto(_items(body), (body as Map?)?['hasNext'] == true);
+  }
+
   @override
   Future<CatalogItemDto?> title(
     String provider,
@@ -625,9 +636,22 @@ class HybridCatalogGateway implements CatalogGateway {
     String? mood,
     int page = 1,
     String? sort,
-  }) => _ani(kind)
-      ? anilist.discover(kind, mood: mood, page: page, sort: sort)
-      : worker.discover(kind, mood: mood, page: page);
+  }) async {
+    if (!_ani(kind)) return worker.discover(kind, mood: mood, page: page);
+    try {
+      return await anilist.discover(kind, mood: mood, page: page, sort: sort);
+    } on CatalogUnavailable catch (e) {
+      // AniList refused or broke (not the device being offline): the same
+      // page of MyAnimeList's ranking keeps the deck supplied. If that fails
+      // too, AniList's own error is what the deck retries on.
+      if (e.code == 'offline') rethrow;
+      try {
+        return await worker.malDiscover(kind, page: page);
+      } on CatalogUnavailable {
+        throw e;
+      }
+    }
+  }
 
   @override
   List<String?> discoverSorts(MediaKind kind) =>
@@ -687,7 +711,19 @@ class HybridCatalogGateway implements CatalogGateway {
   Future<CatalogItemDto?> title(String provider, String id, {String? type}) =>
       provider == 'anilist'
       ? anilist.title(id)
+      : provider == 'mal'
+      // Backup listings are refreshed through AniList by their MAL id.
+      ? _byMal(id, type)
       : worker.title(provider, id, type: type);
+
+  Future<CatalogItemDto?> _byMal(String id, String? type) async {
+    final n = int.tryParse(id);
+    if (n == null) return null;
+    final found = await anilist.byMalIds([
+      n,
+    ], type == 'manga' ? 'MANGA' : 'ANIME');
+    return found.firstOrNull;
+  }
 
   @override
   Future<List<CatalogItemDto>> search(String query, {MediaKind? kind}) async {

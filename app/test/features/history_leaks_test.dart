@@ -230,4 +230,18 @@ void main() {
       greaterThan(score(romance, withReading)),
     );
   });
+
+  test('recent and in-progress history counts more than old history', () {
+    final now = DateTime.utc(2026, 11, 5);
+    double w(int daysAgo, {bool inProgress = false}) => recencyWeight(
+      now.subtract(Duration(days: daysAgo)),
+      now,
+      inProgress: inProgress,
+    );
+    expect(w(30), greaterThan(w(400)));
+    expect(w(400), greaterThan(w(1000)));
+    expect(w(1000), greaterThan(w(3000)));
+    expect(w(30, inProgress: true), greaterThan(w(30)));
+    expect(recencyWeight(null, now), 1);
+  });
 }

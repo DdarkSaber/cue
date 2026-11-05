@@ -11,6 +11,7 @@ import {
 import { aliasesFor, type AliasCandidate } from "./mangadex";
 import { aliasesFromMangaUpdates, titleMangaUpdates } from "./mangaupdates";
 import { CINEMETA_KINDS, cinemetaType, discoverCinemeta, searchCinemeta, titleCinemeta } from "./cinemeta";
+import { discoverMal } from "./mal";
 import { discoverTvmaze, searchTvmaze, titleTvmaze, tvmazeLastPage } from "./tvmaze";
 import type { CatalogItem, CatalogPage, CatalogProvider, MediaKind } from "./types";
 
@@ -22,7 +23,19 @@ type Mood = "hype" | "comfort" | "gripping" | "feels";
  */
 const DEVICE_KINDS = new Set<MediaKind>(["anime", "manga", "manhwa", "manhua"]);
 
-export function discover(env: Env, kind: MediaKind, mood: Mood | undefined, page: number) {
+export function discover(
+  env: Env,
+  kind: MediaKind,
+  mood: Mood | undefined,
+  page: number,
+  source: "default" | "mal" = "default",
+) {
+  // MAL's ranking has no genre filter, so its pages are shared by every mood.
+  if (source === "mal") {
+    return cached<CatalogPage>(env.CATALOG_CACHE, `discover:mal:${kind}:${page}`, TTL.discover, () =>
+      discoverMal(env.MAL_CLIENT_ID, kind, page),
+    );
+  }
   return cached<CatalogPage>(
     env.CATALOG_CACHE,
     `discover:${kind}:${mood ?? "-"}:${page}`,
@@ -64,6 +77,9 @@ export function title(env: Env, provider: CatalogProvider, id: string, type: Tit
           return titleMangaUpdates(id);
         case "tvmaze":
           return titleTvmaze(id);
+        case "mal":
+          // Backup listings only: the app refreshes these through AniList by MAL id.
+          return Promise.resolve(null);
       }
     },
   );

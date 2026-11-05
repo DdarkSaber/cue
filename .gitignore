@@ -25,6 +25,8 @@ key.properties
 
 # --- Worker ---
 worker/node_modules/
+# Wrangler's local cache (account id and name) wherever it is run from.
+.wrangler/
 worker/.wrangler/
 worker/dist/
 .wrangler-dry/

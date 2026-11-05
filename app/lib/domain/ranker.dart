@@ -84,6 +84,22 @@ class ProfileSignals {
   final Map<MediaKind, int> kindRatings;
 }
 
+/// How much one title's taste evidence counts by when the person last
+/// engaged with it: the last six months count most, a few years ago less,
+/// an unknown date is neutral. Something still being watched or
+/// read counts a quarter more: it is the clearest sign of taste right now.
+double recencyWeight(DateTime? at, DateTime now, {bool inProgress = false}) {
+  final base = switch (at == null ? null : now.difference(at).inDays) {
+    null => 1.0,
+    <= 180 => 1.6,
+    <= 365 => 1.35,
+    <= 730 => 1.1,
+    <= 1460 => 0.9,
+    _ => 0.7,
+  };
+  return inProgress ? base * 1.25 : base;
+}
+
 /// 0..1: how much of the person's rated history is this format, relative
 /// to their most rated format. Unrated formats get 0.3, so they are not shut
 /// out; with no ratings at all every format is equal.

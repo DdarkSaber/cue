@@ -308,4 +308,65 @@ void main() {
     expect(result.failed, {0});
     expect(result.results.single.single.titleId, 'cinemeta:88');
   });
+
+  test(
+    'a failing AniList falls back to MyAnimeList, offline does not',
+    () async {
+      final asked = <Uri>[];
+      var anilistDown = true;
+      final g = HybridCatalogGateway(
+        HttpCatalogGateway(
+          'https://worker.example',
+          client: MockClient((req) async {
+            asked.add(req.url);
+            return http.Response(
+              jsonEncode({
+                'items': [
+                  {
+                    'provider': 'mal',
+                    'providerId': '9',
+                    'providerKind': 'manga',
+                    'idMal': 9,
+                    'kind': 'manhwa',
+                    'titleRomaji': 'Synthetic Backup',
+                  },
+                ],
+                'hasNext': true,
+              }),
+              200,
+            );
+          }),
+        ),
+        AniListClient(
+          client: MockClient(
+            (_) async => anilistDown
+                ? http.Response('{}', 500)
+                : throw const SocketExceptionLike(),
+          ),
+          sleep: (_) async {},
+        ),
+      );
+      final page = await g.discover(MediaKind.manhwa, page: 3);
+      expect(page.items.single.json['provider'], 'mal');
+      expect(page.hasNext, isTrue);
+      expect(asked.single.queryParameters, {
+        'kind': 'manhwa',
+        'page': '3',
+        'source': 'mal',
+      });
+      anilistDown = false;
+      asked.clear();
+      await expectLater(
+        g.discover(MediaKind.manhwa),
+        throwsA(
+          isA<CatalogUnavailable>().having((e) => e.code, 'code', 'offline'),
+        ),
+      );
+      expect(asked, isEmpty);
+    },
+  );
+}
+
+class SocketExceptionLike implements Exception {
+  const SocketExceptionLike();
 }

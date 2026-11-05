@@ -186,7 +186,7 @@ class AniListClient {
   static const _list = '''query (\$name: String, \$type: MediaType) {
   MediaListCollection(userName: \$name, type: \$type) {
     lists { entries {
-      status score(format: POINT_10) progress repeat
+      status score(format: POINT_10) progress repeat updatedAt
       completedAt { year month day }
       media { id idMal countryOfOrigin type title { romaji english native } }
     } }
@@ -476,6 +476,13 @@ class AniListClient {
       'progress': ((e['progress'] as num?) ?? 0) > 0 ? e['progress'] : null,
       'repeat': ((e['repeat'] as num?) ?? 0) > 0 ? e['repeat'] : null,
       'completedAt': date,
+      // Seconds since 1970; when the entry last changed (a recency hint).
+      'updatedAt': e['updatedAt'] is num && (e['updatedAt'] as num) > 0
+          ? DateTime.fromMillisecondsSinceEpoch(
+              (e['updatedAt'] as num).toInt() * 1000,
+              isUtc: true,
+            ).toIso8601String().substring(0, 10)
+          : null,
     };
   }
 

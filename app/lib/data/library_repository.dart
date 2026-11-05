@@ -106,13 +106,14 @@ class LibraryRepository {
     final imported = await _knownFromImports(profileId);
     final known = imported.ids.difference({for (final u in ut) u.titleId});
     final seenTitles = await _titles({...known, for (final u in ut) u.titleId});
+    final activity = await _activity(profileId, ut);
     // Taste per medium: what someone reads can differ from what they watch
     // (action webtoons, rom-com anime), so each medium also keeps its own.
     final mediumWeights = <bool, Map<String, double>>{true: {}, false: {}};
     final mediumCounts = <bool, int>{true: 0, false: 0};
     for (final u in ut) {
       final t = seenTitles[u.titleId];
-      final e = _evidence(u);
+      final e = _evidence(u, activity);
       if (t == null || e == 0 || t.features.isEmpty) continue;
       final m = mediumWeights[t.kind.isReading]!;
       mediumCounts[t.kind.isReading] = mediumCounts[t.kind.isReading]! + 1;
@@ -303,12 +304,68 @@ class LibraryRepository {
 
   static const _evidenceTag = '_evidence_v2';
 
-  /// Recomputes tag weights from distinct evidence: ratings, Will try and
-  /// Not interested. Re-importing the same records cannot double them.
   /// Taste evidence of one library entry: its rating, else a weak signal
-  /// for an imported title that was watched or read. Same rules as
-  /// [recomputeWeights].
-  static double _evidence(UserTitle u) {
+  /// for an imported title that was watched or read, scaled by how recent
+  /// it is ([recencyWeight]): what someone watches now says more about
+  /// their taste than what they watched years ago.
+  ///
+  /// Only imported history is scaled: choices made in Cue are current by
+  /// definition and keep their plain rating weight.
+  double _evidence(UserTitle u, Map<String, DateTime> activity) =>
+      _baseEvidence(u) *
+      (u.source.startsWith('import:')
+          ? recencyWeight(
+              activity[u.titleId],
+              _now(),
+              inProgress: _inProgress.contains(LibraryState.parse(u.state)),
+            )
+          : 1);
+
+  static const _inProgress = {
+    LibraryState.watching,
+    LibraryState.reading,
+    LibraryState.caughtUp,
+  };
+
+  /// The latest known moment of activity per library title: the import's
+  /// activity date (MAL finish or last update, Mihon last read, a sheet's
+  /// last played), a real watch date, or the person's own edit in Cue.
+  Future<Map<String, DateTime>> _activity(
+    String profileId,
+    List<UserTitle> ut,
+  ) async {
+    final rows =
+        await (db.select(db.sourceObservations).join([
+              innerJoin(
+                db.importBatches,
+                db.importBatches.id.equalsExp(db.sourceObservations.batchId),
+              ),
+            ])..where(
+              db.importBatches.profileId.equals(profileId) &
+                  db.importBatches.state.equals('completed') &
+                  db.sourceObservations.titleId.isNotNull() &
+                  db.sourceObservations.activityDate.isNotNull(),
+            ))
+            .map((r) => r.readTable(db.sourceObservations))
+            .get();
+    final out = <String, DateTime>{};
+    void note(String id, DateTime? at) {
+      if (at == null) return;
+      final had = out[id];
+      if (had == null || at.isAfter(had)) out[id] = at;
+    }
+
+    for (final o in rows) {
+      note(o.titleId!, o.activityDate);
+    }
+    for (final u in ut) {
+      note(u.titleId, u.actualWatchedAt);
+      if (u.source == 'user') note(u.titleId, u.updatedAt);
+    }
+    return out;
+  }
+
+  static double _baseEvidence(UserTitle u) {
     final r = Rating.parse(u.rating);
     if (r != null) return r.weight;
     if (!u.source.startsWith('import:')) return 0;
@@ -322,6 +379,8 @@ class LibraryRepository {
     };
   }
 
+  /// Recomputes tag weights from distinct evidence: ratings, Will try and
+  /// Not interested. Re-importing the same records cannot double them.
   Future<void> recomputeWeights(String profileId) async {
     final ut = await (db.select(
       db.userTitles,
@@ -335,22 +394,11 @@ class LibraryRepository {
             ))
             .get();
 
+    final activity = await _activity(profileId, ut);
     final evidence = <String, double>{};
     for (final u in ut) {
-      final r = Rating.parse(u.rating);
-      if (r != null) {
-        evidence[u.titleId] = (evidence[u.titleId] ?? 0) + r.weight;
-      } else if (u.source.startsWith('import:')) {
-        final weak = switch (LibraryState.parse(u.state)) {
-          // Caught up on a series still running is read to the latest chapter.
-          LibraryState.watching ||
-          LibraryState.reading ||
-          LibraryState.caughtUp => 0.2,
-          LibraryState.completed => 0.15,
-          _ => 0.0,
-        };
-        if (weak > 0) evidence[u.titleId] = weak;
-      }
+      final e = _evidence(u, activity);
+      if (e != 0) evidence[u.titleId] = (evidence[u.titleId] ?? 0) + e;
     }
     final ratedIds = {
       for (final u in ut)

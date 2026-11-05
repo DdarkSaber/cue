@@ -270,6 +270,7 @@ class CatalogRepository {
       'static.tvmaze.com',
       'images.metahub.space',
       'cdn.mangaupdates.com',
+      'cdn.myanimelist.net',
     };
     return u != null && u.scheme == 'https' && hosts.contains(u.host)
         ? url
@@ -823,10 +824,11 @@ class CatalogRepository {
     final ids = await (db.select(
       db.catalogIdentities,
     )..where((i) => i.titleId.equals(titleId))).get();
-    final id = ids
-        .where((i) => i.provider != 'mal')
-        .cast<CatalogIdentity?>()
-        .firstWhere((_) => true, orElse: () => null);
+    // A provider listing first; a title known only from MAL (the backup
+    // catalog) is looked up on AniList by its MAL id.
+    final id =
+        ids.where((i) => i.provider != 'mal').firstOrNull ??
+        ids.where((i) => i.provider == 'mal').firstOrNull;
     if (id == null) return cached;
     try {
       final dto = await gateway.title(

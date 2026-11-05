@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:protobuf/protobuf.dart';
 
 import '../../domain/models/library.dart';
+import '../../domain/models/title.dart';
 import '../records.dart';
 
 /// Mihon / Tachiyomi backup (gzip + protobuf). Reads only an allowlist:
@@ -10,7 +11,8 @@ import '../records.dart';
 /// sources, extension repos and tracker credentials are skipped unread.
 ///
 /// Field numbers follow Mihon's Backup.proto: Backup.backupManga = 1;
-/// BackupManga.title = 3, chapters = 16, tracking = 18;
+/// BackupManga.title = 3, genre = 7, chapters = 16, tracking = 18,
+/// history = 104; BackupHistory.lastRead = 2 (epoch milliseconds);
 /// BackupChapter.read = 4, chapterNumber = 9;
 /// BackupTracking.syncId = 1, mediaIdInt = 3, lastChapterRead = 6,
 /// totalChapters = 7, mediaId = 100.
@@ -71,11 +73,20 @@ class MihonBackupAdapter {
     double? highestRead;
     int? malId, anilistId;
     double? trackerRead, trackerTotal;
+    final genres = <String>[];
+    int? lastReadMs;
     while (!r.isAtEnd()) {
       final tag = r.readTag();
       switch (getTagFieldNumber(tag)) {
         case 3:
           title = cleanField(r.readString());
+        case 7:
+          if (genres.length < 40) genres.add(r.readString().toLowerCase());
+        case 104:
+          final at = _historyLastRead(r.readBytes());
+          if (at != null && (lastReadMs == null || at > lastReadMs)) {
+            lastReadMs = at;
+          }
         case 16:
           final (read, number) = _chapter(r.readBytes());
           if (read) {
@@ -111,15 +122,45 @@ class MihonBackupAdapter {
           ? 'anilist:$anilistId'
           : 'title:${title.toLowerCase()}',
       title: title,
+      kind: _kind(genres),
       malId: malId,
       anilistId: anilistId,
       state: readCount == 0 ? LibraryState.planned : LibraryState.reading,
+      // When a chapter was last opened: a recency hint for taste.
+      activityDate: lastReadMs == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(lastReadMs, isUtc: true),
       progressUnit: progress == null ? null : 'chapter',
       progressValue: progress,
       latestKnown: trackerTotal != null && trackerTotal > 0
           ? trackerTotal
           : null,
     );
+  }
+
+  /// The source's own genre labels often name the format.
+  static MediaKind? _kind(List<String> genres) {
+    bool has(String g) => genres.any((x) => x.trim() == g);
+    if (has('manhwa') || has('webtoon')) return MediaKind.manhwa;
+    if (has('manhua')) return MediaKind.manhua;
+    if (has('manga')) return MediaKind.manga;
+    return null;
+  }
+
+  /// BackupHistory.lastRead, ignoring zero and far-future stamps.
+  int? _historyLastRead(List<int> data) {
+    final r = CodedBufferReader(data);
+    int? at;
+    while (!r.isAtEnd()) {
+      final tag = r.readTag();
+      if (getTagFieldNumber(tag) == 2) {
+        at = r.readInt64().toInt();
+      } else {
+        r.skipField(tag);
+      }
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return at != null && at > 0 && at <= now + 86400000 ? at : null;
   }
 
   (bool, double?) _chapter(List<int> data) {
