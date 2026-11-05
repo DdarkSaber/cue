@@ -1,3 +1,4 @@
+import 'package:cue/app/route_scaffold.dart';
 import 'package:cue/app/router.dart';
 import 'package:cue/app/providers.dart';
 import 'package:cue/data/catalog_gateway.dart';
@@ -8,6 +9,7 @@ import 'package:cue/domain/decisions.dart';
 import 'package:cue/domain/models/decision.dart';
 import 'package:cue/domain/models/library.dart';
 import 'package:cue/domain/models/settings.dart';
+import 'package:cue/features/settings/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -230,8 +232,10 @@ void main() {
   ) async {
     await pumpCue(t, location: CueRoutes.settings);
     await settle(t);
+    expect(find.widgetWithText(CueListRow, 'Library'), findsOneWidget);
+    expect(find.text('This library'), findsNothing);
+    expect(find.text('Library and imports'), findsNothing);
     for (final s in [
-      'This library',
       'Recommendation preferences',
       'Swipe actions',
       'Privacy and data',
@@ -278,6 +282,45 @@ void main() {
     await t.tap(find.text('Delete library'));
     await settle(t);
     expect(find.textContaining('A fresh, empty one is ready'), findsOneWidget);
+  });
+
+  testWidgets('Settings has one Library entry that opens its page', (t) async {
+    await pumpCue(t, location: CueRoutes.settings);
+    await settle(t);
+    await t.tap(find.widgetWithText(CueListRow, 'Library'));
+    await settle(t);
+    expect(find.byType(LibrarySettingsPage), findsOneWidget);
+    for (final s in [
+      'Import a list',
+      'Past imports',
+      'What is in this library',
+      'Browse titles',
+      'Libraries on this device',
+    ]) {
+      expect(find.text(s), findsOneWidget, reason: s);
+    }
+  });
+
+  for (final row in ['Import a list', 'Past imports']) {
+    testWidgets('Library page: $row opens the importer', (t) async {
+      await pumpCue(t, location: '/settings/library');
+      await settle(t);
+      await t.tap(find.text(row));
+      await settle(t);
+      expect(find.text('Step 1 of 3 · Pick your list'), findsOneWidget);
+    });
+  }
+
+  testWidgets('Library page: Browse titles opens the library in use', (
+    t,
+  ) async {
+    await pumpCue(t, location: '/settings/library');
+    await settle(t);
+    await t.ensureVisible(find.text('Browse titles'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Browse titles'));
+    await settle(t);
+    expect(find.byType(LibraryContentsPage), findsOneWidget);
   });
 
   testWidgets('This library lists what it holds per source', (t) async {

@@ -54,6 +54,34 @@ ThemeData buildCueTheme() {
           bodyColor: CueColors.text,
           displayColor: CueColors.text,
         ),
+    // Notification bars match the deck's dark glass toast: dark surface,
+    // rounded, floating, accent action, and a sideways swipe dismisses them.
+    // Opaque surfaceHigh keeps text at well over 4.5:1 whatever sits behind.
+    snackBarTheme: const SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      dismissDirection: DismissDirection.horizontal,
+      backgroundColor: CueColors.surfaceHigh,
+      elevation: 6,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(14)),
+        side: BorderSide(color: CueColors.line),
+      ),
+      contentTextStyle: TextStyle(
+        fontFamily: cueFontFamily,
+        color: CueColors.text,
+        fontSize: 14,
+        height: 1.4,
+      ),
+      actionTextColor: CueColors.accent,
+      disabledActionTextColor: CueColors.textMuted,
+      closeIconColor: CueColors.textMuted,
+      insetPadding: EdgeInsets.fromLTRB(
+        CueSpace.lg,
+        CueSpace.sm,
+        CueSpace.lg,
+        CueSpace.md,
+      ),
+    ),
     tooltipTheme: const TooltipThemeData(
       decoration: BoxDecoration(
         color: CueColors.surfaceHigh,

@@ -84,14 +84,12 @@ class SettingsScreen extends ConsumerWidget {
         CueGroup(
           children: [
             CueListRow(
-              title: 'This library',
-              subtitle: s.displayName ?? 'Local to this device',
+              title: 'Library',
+              subtitle: [
+                ?s.displayName,
+                'Import, past imports, titles and libraries',
+              ].join('. '),
               onTap: () => open('library'),
-            ),
-            CueListRow(
-              title: 'Library and imports',
-              subtitle: 'Import history, past imports',
-              onTap: () => context.go(CueRoutes.importer),
             ),
             CueListRow(
               title: 'Sync between devices',
