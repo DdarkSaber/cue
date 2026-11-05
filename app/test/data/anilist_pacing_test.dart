@@ -301,4 +301,50 @@ void main() {
     expect(r, hasLength(5));
     expect(r.first.map((d) => d.providerId), ['11', '12']);
   });
+
+  // AniList answers status_not_in: null with a 500, which emptied every
+  // anime and comic deck. Only newest-first sends the status filter.
+  test('discover never sends a null status filter', () async {
+    final sent = <Map<String, dynamic>>[];
+    final client = AniListClient(
+      client: MockClient((r) async {
+        sent.add(
+          (jsonDecode(r.body) as Map)['variables'] as Map<String, dynamic>,
+        );
+        return ok({});
+      }),
+      sleep: (_) async {},
+    );
+    for (final sort in AniListClient.sorts) {
+      await client.discover(MediaKind.anime, sort: sort);
+    }
+    for (final v in sent) {
+      expect(
+        v['notStatus'],
+        v['sort'][0] == 'START_DATE_DESC' ? isNotNull : null,
+      );
+      expect(v.containsKey('notStatus'), v['sort'][0] == 'START_DATE_DESC');
+    }
+  });
+
+  test('no variable is ever sent as null', () async {
+    final sent = <Map<String, dynamic>>[];
+    final client = AniListClient(
+      client: MockClient((r) async {
+        sent.add(
+          (jsonDecode(r.body) as Map)['variables'] as Map<String, dynamic>,
+        );
+        return ok({});
+      }),
+      sleep: (_) async {},
+    );
+    await client.discover(MediaKind.anime);
+    await client.search('Frieren', kind: MediaKind.anime);
+    await client.search('Frieren');
+    expect(sent, hasLength(3));
+    for (final v in sent) {
+      expect(v.values, isNot(contains(null)));
+    }
+    expect(sent.first.containsKey('country'), isFalse);
+  });
 }

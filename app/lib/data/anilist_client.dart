@@ -214,7 +214,16 @@ class AniListClient {
                 'Accept': 'application/json',
                 'Authorization': ?(token == null ? null : 'Bearer $token'),
               },
-              body: jsonEncode({'query': query, 'variables': variables}),
+              // Unset variables are left out, never sent as null: AniList
+              // reads countryOfOrigin: null as "no country" (empty anime
+              // pages, empty searches) and status_not_in: null as a 500.
+              body: jsonEncode({
+                'query': query,
+                'variables': {
+                  for (final e in variables.entries)
+                    if (e.value != null) e.key: e.value,
+                },
+              }),
             )
             .timeout(const Duration(seconds: 12));
       } on TimeoutException {
@@ -278,9 +287,9 @@ class AniListClient {
       'notFormats': k.notFormats,
       'genres': moodGenres[mood],
       // Newest-first would otherwise lead with announced, unreleased titles.
-      'notStatus': order == 'START_DATE_DESC'
-          ? const ['NOT_YET_RELEASED', 'CANCELLED']
-          : null,
+      // Left out otherwise: AniList answers status_not_in: null with a 500.
+      if (order == 'START_DATE_DESC')
+        'notStatus': const ['NOT_YET_RELEASED', 'CANCELLED'],
       // ID breaks ties so pages stay stable while scores move.
       'sort': [order, 'ID'],
     });
