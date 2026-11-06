@@ -21,6 +21,27 @@ Explicit ratings replace weaker shortlist or imported-history signals.
 | Imported planned / on-hold / dropped / unknown | 0 |
 | Active Not interested | -0.3 |
 
+Imported history is weighted by how recent it is, from the date the source
+gives (MAL's finish or last-update date, Mihon's last read, the Excel date):
+
+| Last activity | Multiplier |
+|---|---:|
+| Within 6 months | ×1.6 |
+| Within 1 year | ×1.35 |
+| Within 2 years | ×1.1 |
+| Within 4 years | ×0.9 |
+| Older | ×0.7 |
+| Unknown date | ×1.0 |
+
+Titles still in progress (watching or reading) get a further ×1.25.
+Explicit ratings are not discounted by age.
+
+Watching and reading keep separate taste: once a medium has 10 titles with
+evidence, its own tag weights are used for picks in that medium, so anime
+taste does not decide manhwa picks or the other way round. Interest clusters
+are built per medium too. A watched anime never hides its manga (and vice
+versa) from new picks.
+
 Missing genre/tag metadata stays neutral. No imported title receives an
 invented 4/5 rating. Try now adds no stronger durable taste signal.
 
@@ -28,6 +49,11 @@ invented 4/5 rating. Try now adds no stronger durable taste signal.
 
 Novels and music entries are excluded from recommendations, including cached
 titles and Revisit. Manga, manhwa and manhua refer to comics, not prose novels.
+
+Stalled works are not dealt as new picks (Revisit and your library are not
+affected): anything cancelled; comics marked finished with fewer than 40
+chapters, which are usually axed; and comics on hiatus with fewer than 50
+chapters. Hiatus series with a solid run behind them are still dealt.
 
 Confidence grows as `min(1, evidenceStrength / 20)`, summing
 `min(1, abs(signal))` over distinct metadata-bearing titles.
@@ -44,7 +70,14 @@ Default score weights:
 | Mood | 0.20 |
 | Quality | 0.15 |
 | Freshness | 0.15 |
-| Under-rated-format novelty | 0.10 |
+| Format affinity | 0.10 |
+
+Freshness is era fit: once 20 dated titles are known, release years near the
+years you actually watch or read (within four years, against your busiest
+stretch) score highest, and anything newer counts as a fit. Before that,
+newer releases score higher. Format affinity favours the formats you rate
+most (0.3 to 1, unrated formats 0.3), while exploration and variety slots
+still mix other formats in.
 
 Negative-feature penalty is capped at 0.30. A confident learned mood sets mood
 weight to `0.10 + 0.25 * confidence` and taste weight to
