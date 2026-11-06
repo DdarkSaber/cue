@@ -16,7 +16,8 @@
 
 <p align="center">
   <a href="https://cue-next.cue-worker.workers.dev"><b>Open the web app</b></a> ·
-  <a href="#android">Build the Android app</a> ·
+  <a href="https://github.com/DdarkSaber/cue/releases/latest"><b>Download for Android</b></a> ·
+  <a href="#android">Build it yourself</a> ·
   <a href="docs/FEATURES.md">Feature guide</a>
 </p>
 
@@ -39,10 +40,23 @@
 - **Optional AI picks from your taste.** Turn it on and the Worker asks
   Groq (falling back to Gemini) for ideas. Every suggestion is resolved against
   the real catalog; nothing is fabricated, and unmatched ideas are dropped.
-- **Bring your library.** Import supported files or lists, review matches, and
-  confirm before saving. Interrupted matching resumes locally.
+- **Bring your library.** Sign in to MyAnimeList, or import an AniList list,
+  a Mihon/Tachiyomi backup, CSV or Excel. Each title is matched on AniList,
+  then MyAnimeList, then by its Wikipedia name; only titles every source
+  misses ask for your help. Matching shows real posters while it works and
+  resumes if interrupted.
+- **Taste that follows you now.** What you watched or read recently, and what
+  you are in the middle of, counts more than titles from years ago. Watching
+  and reading are learned separately, so an anime fan who reads manhwa gets
+  good picks for both.
+- **No dead ends in comics.** Cancelled series, and manga/manhwa that stopped
+  after a handful of chapters, are not suggested. Series on hiatus still are
+  once they have 50+ chapters.
+- **Rate your library by swiping.** Your own titles come up as cards; swipe to
+  rate and leave whenever you like.
 - **Explainable picks.** Filter formats and genres, describe your mood, or
-  explore. Every card says why it was suggested.
+  explore. Every card says why it was suggested, and details show the length:
+  chapters for comics, seasons × episodes for shows.
 - **Sync without an account.** Share an encrypted library between phone and
   web using a code.
 
@@ -126,6 +140,16 @@ flutter run -d chrome --web-port 7357
 ```
 
 ### Android
+
+The easy way: download the APK from the
+[latest release](https://github.com/DdarkSaber/cue/releases/latest).
+
+> **Upgrading from 0.2.0-beta or older?** Those builds were signed with a
+> different key, so Android refuses to install 0.4.0 over them. First use
+> Settings → Privacy → **Export my library**, uninstall the old app, install
+> 0.4.0, then import the exported file.
+
+To build it yourself:
 
 ```sh
 cd app
