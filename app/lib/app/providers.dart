@@ -26,6 +26,7 @@ import '../domain/mood/mood_engine.dart';
 import '../sync/sync_service.dart';
 import '../diagnostics/technical_diagnostics.dart';
 import 'config.dart';
+import '../data/mangaupdates_client.dart';
 
 /// Overridden in main() with the opened database, and in tests with an
 /// in-memory one.
@@ -257,4 +258,9 @@ final syncServiceProvider = Provider<SyncService>(
     library: ref.watch(libraryRepositoryProvider),
     db: ref.watch(databaseProvider),
   ),
+);
+
+/// Chapter counts for ongoing comics, from MangaUpdates (device only).
+final mangaUpdatesProvider = Provider<MangaUpdatesClient>(
+  (ref) => MangaUpdatesClient(),
 );
