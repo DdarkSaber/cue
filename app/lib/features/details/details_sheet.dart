@@ -25,6 +25,7 @@ Future<Decision?> showDetailsSheet(
   context,
   kicker: title.kind.label,
   title: title.displayTitle,
+  copyableTitle: true,
   body: (_) => DetailsBody(title: title, reason: reason),
   footer: showActions
       ? (ctx) => Row(
@@ -84,6 +85,7 @@ class _DetailsBodyState extends ConsumerState<DetailsBody> {
   }
 
   bool _providersLoaded = false;
+  int? _latestChapter;
 
   @override
   void initState() {
@@ -95,6 +97,10 @@ class _DetailsBodyState extends ConsumerState<DetailsBody> {
     final repo = ref.read(catalogRepositoryProvider);
     final full = await repo.detailed(widget.title.id);
     if (mounted && full != null) setState(() => _title = full);
+    if (_title.kind.isReading && _title.chapters == null) {
+      final n = await ref.read(mangaUpdatesProvider).latestChapter(_title);
+      if (mounted && n != null) setState(() => _latestChapter = n);
+    }
     final region = ref.read(currentSettingsProvider).region;
     final p = await repo.watchProviders(widget.title.id, region);
     if (mounted) {
@@ -114,7 +120,16 @@ class _DetailsBodyState extends ConsumerState<DetailsBody> {
       if (t.titleNative != null) ('Native title', t.titleNative!),
       ('Year', t.year?.toString() ?? 'Unknown'),
       ('Status', _status(t)),
-      if (t.lengthLabel case final length?)
+      if (t.chapters == null && _latestChapter != null)
+        (
+          'Length',
+          switch (t.status) {
+            'ongoing' => 'Ongoing · $_latestChapter+ chapters',
+            'hiatus' => 'On hiatus · $_latestChapter chapters so far',
+            _ => '$_latestChapter chapters',
+          },
+        )
+      else if (t.lengthLabel case final length?)
         ('Length', length)
       else if (t.kind != MediaKind.movie)
         ('Length', 'Unknown'),

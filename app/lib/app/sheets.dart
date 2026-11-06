@@ -1,3 +1,7 @@
+import 'package:flutter/services.dart';
+
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'icons.dart';
@@ -199,6 +203,7 @@ Future<T?> showCueSheet<T>(
   required String title,
   required WidgetBuilder body,
   WidgetBuilder? footer,
+  bool copyableTitle = false,
 }) {
   final desktop = MediaQuery.sizeOf(context).width >= CueSize.desktopBreakpoint;
   final reduce = MediaQuery.disableAnimationsOf(context);
@@ -207,6 +212,7 @@ Future<T?> showCueSheet<T>(
     title: title,
     body: body(ctx),
     footer: footer?.call(ctx),
+    copyableTitle: copyableTitle,
   );
   if (desktop) {
     return showGeneralDialog<T>(
@@ -265,12 +271,16 @@ class CueSheet extends StatelessWidget {
     required this.title,
     required this.body,
     this.footer,
+    this.copyableTitle = false,
   });
 
   final String kicker;
   final String title;
   final Widget body;
   final Widget? footer;
+
+  /// Long-press the title to copy it (details sheets).
+  final bool copyableTitle;
 
   @override
   Widget build(BuildContext context) {
@@ -285,7 +295,9 @@ class CueSheet extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: CueRouteHeader(kicker: kicker, title: title),
+                child: copyableTitle
+                    ? _CopyableHeader(kicker: kicker, title: title)
+                    : CueRouteHeader(kicker: kicker, title: title),
               ),
               CueRoundButton(
                 icon: CueIcons.close,
@@ -405,4 +417,42 @@ Future<bool> confirmAction(
     ),
   );
   return ok ?? false;
+}
+
+/// A sheet header whose title is copied on a long press; the kicker briefly
+/// says so (a snackbar would sit behind the sheet).
+class _CopyableHeader extends StatefulWidget {
+  const _CopyableHeader({required this.kicker, required this.title});
+  final String kicker;
+  final String title;
+
+  @override
+  State<_CopyableHeader> createState() => _CopyableHeaderState();
+}
+
+class _CopyableHeaderState extends State<_CopyableHeader> {
+  bool _copied = false;
+  int _epoch = 0;
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.title));
+    unawaited(HapticFeedback.mediumImpact());
+    final epoch = ++_epoch;
+    if (mounted) setState(() => _copied = true);
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (mounted && epoch == _epoch) setState(() => _copied = false);
+  }
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    onLongPressHint: 'Copy title',
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: _copy,
+      child: CueRouteHeader(
+        kicker: _copied ? 'Title copied' : widget.kicker,
+        title: widget.title,
+      ),
+    ),
+  );
 }
