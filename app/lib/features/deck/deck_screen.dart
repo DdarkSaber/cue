@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:drift/drift.dart'
+    show BooleanExpressionOperators, StringExpressionOperators;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -297,8 +299,12 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
         relaxation.misses.isNotEmpty &&
         _keptFilters != filters;
 
+    // Only for people who have not brought a list yet.
     final showInvite =
-        deck.sessionDecisions >= 6 && !settings.inviteDismissed && top != null;
+        deck.sessionDecisions >= 6 &&
+        !settings.inviteDismissed &&
+        top != null &&
+        ref.watch(_hasImportedProvider).value == false;
 
     return Focus(
       focusNode: _focus,
@@ -619,3 +625,18 @@ class _Header extends StatelessWidget {
     );
   }
 }
+
+/// Whether this library already holds anything from an import.
+final _hasImportedProvider = FutureProvider.autoDispose<bool>((ref) async {
+  ref.watch(libraryVersionProvider);
+  final profile = await ref.watch(profileIdProvider.future);
+  final db = ref.watch(databaseProvider);
+  final row =
+      await (db.select(db.userTitles)
+            ..where(
+              (u) => u.profileId.equals(profile) & u.source.like('import:%'),
+            )
+            ..limit(1))
+          .getSingleOrNull();
+  return row != null;
+});
