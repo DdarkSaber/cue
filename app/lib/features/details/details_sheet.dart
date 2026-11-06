@@ -25,6 +25,7 @@ Future<Decision?> showDetailsSheet(
   context,
   kicker: title.kind.label,
   title: title.displayTitle,
+  copyableTitle: true,
   body: (_) => DetailsBody(title: title, reason: reason),
   footer: showActions
       ? (ctx) => Row(

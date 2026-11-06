@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart' hide Title;
 
 import '../../app/icons.dart';
@@ -62,10 +63,9 @@ class StoryCard extends StatelessWidget {
   }
 
   Widget _phone(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Poster(title: title),
+    return _PeekPoster(
+      poster: Poster(title: title),
+      overlay: [
         const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -366,4 +366,52 @@ class _EraTag extends StatelessWidget {
       child: Text(era, style: TextStyle(fontSize: 12, color: color)),
     );
   }
+}
+
+/// Hold the card to see the whole poster: the copy, scrim and chips fade
+/// out while the finger stays down and come back on release. Swipes, taps
+/// and double taps are unaffected (a hold does not move).
+class _PeekPoster extends StatefulWidget {
+  const _PeekPoster({required this.poster, required this.overlay});
+  final Widget poster;
+  final List<Widget> overlay;
+
+  @override
+  State<_PeekPoster> createState() => _PeekPosterState();
+}
+
+class _PeekPosterState extends State<_PeekPoster> {
+  bool _peek = false;
+
+  void _set(bool v) {
+    if (_peek == v) return;
+    if (v) HapticFeedback.selectionClick();
+    setState(() => _peek = v);
+  }
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    onLongPressHint: 'Show the whole poster',
+    child: GestureDetector(
+      onLongPressStart: (_) => _set(true),
+      onLongPressEnd: (_) => _set(false),
+      onLongPressCancel: () => _set(false),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          widget.poster,
+          IgnorePointer(
+            ignoring: _peek,
+            child: AnimatedOpacity(
+              opacity: _peek ? 0 : 1,
+              duration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : const Duration(milliseconds: 160),
+              child: Stack(fit: StackFit.expand, children: widget.overlay),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
