@@ -1,0 +1,39 @@
+name: update-goldens
+
+# Golden screenshots are recorded on Windows (fonts render differently
+# elsewhere). Run this from the Actions tab on a branch after an intended UI
+# change: it re-records them and commits the result to that branch.
+# GitHub does not start CI for commits made by a workflow, so push any
+# commit (or close and reopen the PR) afterwards to get a fresh CI run.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  goldens:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: 3.47.9
+          cache: true
+      - run: flutter pub get
+      - run: flutter test --update-goldens test/golden
+      - name: Commit changed goldens
+        shell: bash
+        run: |
+          git add test/golden/goldens
+          if git diff --cached --quiet; then
+            echo "Goldens already up to date."
+            exit 0
+          fi
+          git -c user.name=DdarkSaber -c user.email=girishbarath2007@gmail.com \
+            commit -m "Re-record golden screenshots"
+          git push

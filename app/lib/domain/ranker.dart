@@ -19,6 +19,7 @@ class ProfileSignals {
     this.excluded = const {},
     this.known = const {},
     this.seenNames = const {},
+    this.seenAnilist = const {},
     this.historyYears = const {},
     this.mediumWeights = const {},
     this.excludedFranchises = const {},
@@ -54,6 +55,10 @@ class ProfileSignals {
   /// person's import files used. Another entry of the same medium with the
   /// same name (a remake year, a merged season) is not dealt as new.
   final Set<String> seenNames;
+
+  /// AniList ids of titles watched or read. A sequel season, or a film or
+  /// special of a series, is only a new pick when what it follows is here.
+  final Set<int> seenAnilist;
 
   /// Release year -> how many titles of that year the person watched or
   /// read. Freshness follows their own history (see [eraFit]).
@@ -149,6 +154,12 @@ const stalledBelow = 40;
 
 /// Comics on hiatus are still dealt from this many chapters.
 const hiatusFrom = 50;
+
+/// Season 1 is the way into a show: a later season, or a film/special/OVA of
+/// a series, is only dealt once the person has seen what it follows. Then it
+/// is the natural next pick (one per franchise per session).
+bool followsSeen(Title t, ProfileSignals s) =>
+    t.continues.isEmpty || t.continues.any(s.seenAnilist.contains);
 
 bool isStalled(Title t) {
   if (t.status == 'cancelled') return true;
@@ -255,6 +266,7 @@ class Ranker {
   }) {
     if (t.format == 'NOVEL' || t.format == 'MUSIC') return false;
     if (!f.isRevisit && isStalled(t)) return false;
+    if (!f.isRevisit && !followsSeen(t, s)) return false;
     if (t.adult && !showAdult) return false;
     if (s.excluded.contains(t.id)) return false;
     final franchise = reliableFranchiseId(t);
@@ -449,12 +461,15 @@ class Ranker {
     Set<String> recentExposures = const {},
     double? explorePreference,
     Set<String> skip = const {},
+    Set<String> skipFranchises = const {},
     bool shortestFirst = false,
     int size = deckSize,
   }) {
     final scored = <RankedCard>[];
     for (final t in pool) {
-      if (skip.contains(t.id)) continue;
+      if (skip.contains(t.id) || skipFranchises.contains(t.franchiseKey)) {
+        continue;
+      }
       if (!eligible(
         t,
         s,

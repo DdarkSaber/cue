@@ -212,6 +212,17 @@ class $CatalogTitlesTable extends CatalogTitles
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _continuesJsonMeta = const VerificationMeta(
+    'continuesJson',
+  );
+  @override
+  late final GeneratedColumn<String> continuesJson = GeneratedColumn<String>(
+    'continues_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _adultMeta = const VerificationMeta('adult');
   @override
   late final GeneratedColumn<bool> adult = GeneratedColumn<bool>(
@@ -272,6 +283,7 @@ class $CatalogTitlesTable extends CatalogTitles
     backdropUrl,
     synopsis,
     franchiseId,
+    continuesJson,
     adult,
     detailed,
     updatedAt,
@@ -418,6 +430,15 @@ class $CatalogTitlesTable extends CatalogTitles
         ),
       );
     }
+    if (data.containsKey('continues_json')) {
+      context.handle(
+        _continuesJsonMeta,
+        continuesJson.isAcceptableOrUnknown(
+          data['continues_json']!,
+          _continuesJsonMeta,
+        ),
+      );
+    }
     if (data.containsKey('adult')) {
       context.handle(
         _adultMeta,
@@ -523,6 +544,10 @@ class $CatalogTitlesTable extends CatalogTitles
         DriftSqlType.string,
         data['${effectivePrefix}franchise_id'],
       ),
+      continuesJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}continues_json'],
+      ),
       adult: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}adult'],
@@ -564,6 +589,9 @@ class CatalogTitle extends DataClass implements Insertable<CatalogTitle> {
   final String? backdropUrl;
   final String? synopsis;
   final String? franchiseId;
+
+  /// AniList ids this entry follows (earlier season or parent series), JSON.
+  final String? continuesJson;
   final bool adult;
 
   /// True once the full title (seasons, keywords) has been fetched.
@@ -589,6 +617,7 @@ class CatalogTitle extends DataClass implements Insertable<CatalogTitle> {
     this.backdropUrl,
     this.synopsis,
     this.franchiseId,
+    this.continuesJson,
     required this.adult,
     required this.detailed,
     required this.updatedAt,
@@ -641,6 +670,9 @@ class CatalogTitle extends DataClass implements Insertable<CatalogTitle> {
     if (!nullToAbsent || franchiseId != null) {
       map['franchise_id'] = Variable<String>(franchiseId);
     }
+    if (!nullToAbsent || continuesJson != null) {
+      map['continues_json'] = Variable<String>(continuesJson);
+    }
     map['adult'] = Variable<bool>(adult);
     map['detailed'] = Variable<bool>(detailed);
     map['updated_at'] = Variable<DateTime>(updatedAt);
@@ -692,6 +724,9 @@ class CatalogTitle extends DataClass implements Insertable<CatalogTitle> {
       franchiseId: franchiseId == null && nullToAbsent
           ? const Value.absent()
           : Value(franchiseId),
+      continuesJson: continuesJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(continuesJson),
       adult: Value(adult),
       detailed: Value(detailed),
       updatedAt: Value(updatedAt),
@@ -723,6 +758,7 @@ class CatalogTitle extends DataClass implements Insertable<CatalogTitle> {
       backdropUrl: serializer.fromJson<String?>(json['backdropUrl']),
       synopsis: serializer.fromJson<String?>(json['synopsis']),
       franchiseId: serializer.fromJson<String?>(json['franchiseId']),
+      continuesJson: serializer.fromJson<String?>(json['continuesJson']),
       adult: serializer.fromJson<bool>(json['adult']),
       detailed: serializer.fromJson<bool>(json['detailed']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -751,6 +787,7 @@ class CatalogTitle extends DataClass implements Insertable<CatalogTitle> {
       'backdropUrl': serializer.toJson<String?>(backdropUrl),
       'synopsis': serializer.toJson<String?>(synopsis),
       'franchiseId': serializer.toJson<String?>(franchiseId),
+      'continuesJson': serializer.toJson<String?>(continuesJson),
       'adult': serializer.toJson<bool>(adult),
       'detailed': serializer.toJson<bool>(detailed),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -777,6 +814,7 @@ class CatalogTitle extends DataClass implements Insertable<CatalogTitle> {
     Value<String?> backdropUrl = const Value.absent(),
     Value<String?> synopsis = const Value.absent(),
     Value<String?> franchiseId = const Value.absent(),
+    Value<String?> continuesJson = const Value.absent(),
     bool? adult,
     bool? detailed,
     DateTime? updatedAt,
@@ -800,6 +838,9 @@ class CatalogTitle extends DataClass implements Insertable<CatalogTitle> {
     backdropUrl: backdropUrl.present ? backdropUrl.value : this.backdropUrl,
     synopsis: synopsis.present ? synopsis.value : this.synopsis,
     franchiseId: franchiseId.present ? franchiseId.value : this.franchiseId,
+    continuesJson: continuesJson.present
+        ? continuesJson.value
+        : this.continuesJson,
     adult: adult ?? this.adult,
     detailed: detailed ?? this.detailed,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -837,6 +878,9 @@ class CatalogTitle extends DataClass implements Insertable<CatalogTitle> {
       franchiseId: data.franchiseId.present
           ? data.franchiseId.value
           : this.franchiseId,
+      continuesJson: data.continuesJson.present
+          ? data.continuesJson.value
+          : this.continuesJson,
       adult: data.adult.present ? data.adult.value : this.adult,
       detailed: data.detailed.present ? data.detailed.value : this.detailed,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -865,6 +909,7 @@ class CatalogTitle extends DataClass implements Insertable<CatalogTitle> {
           ..write('backdropUrl: $backdropUrl, ')
           ..write('synopsis: $synopsis, ')
           ..write('franchiseId: $franchiseId, ')
+          ..write('continuesJson: $continuesJson, ')
           ..write('adult: $adult, ')
           ..write('detailed: $detailed, ')
           ..write('updatedAt: $updatedAt')
@@ -893,6 +938,7 @@ class CatalogTitle extends DataClass implements Insertable<CatalogTitle> {
     backdropUrl,
     synopsis,
     franchiseId,
+    continuesJson,
     adult,
     detailed,
     updatedAt,
@@ -920,6 +966,7 @@ class CatalogTitle extends DataClass implements Insertable<CatalogTitle> {
           other.backdropUrl == this.backdropUrl &&
           other.synopsis == this.synopsis &&
           other.franchiseId == this.franchiseId &&
+          other.continuesJson == this.continuesJson &&
           other.adult == this.adult &&
           other.detailed == this.detailed &&
           other.updatedAt == this.updatedAt);
@@ -945,6 +992,7 @@ class CatalogTitlesCompanion extends UpdateCompanion<CatalogTitle> {
   final Value<String?> backdropUrl;
   final Value<String?> synopsis;
   final Value<String?> franchiseId;
+  final Value<String?> continuesJson;
   final Value<bool> adult;
   final Value<bool> detailed;
   final Value<DateTime> updatedAt;
@@ -969,6 +1017,7 @@ class CatalogTitlesCompanion extends UpdateCompanion<CatalogTitle> {
     this.backdropUrl = const Value.absent(),
     this.synopsis = const Value.absent(),
     this.franchiseId = const Value.absent(),
+    this.continuesJson = const Value.absent(),
     this.adult = const Value.absent(),
     this.detailed = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -994,6 +1043,7 @@ class CatalogTitlesCompanion extends UpdateCompanion<CatalogTitle> {
     this.backdropUrl = const Value.absent(),
     this.synopsis = const Value.absent(),
     this.franchiseId = const Value.absent(),
+    this.continuesJson = const Value.absent(),
     this.adult = const Value.absent(),
     this.detailed = const Value.absent(),
     required DateTime updatedAt,
@@ -1021,6 +1071,7 @@ class CatalogTitlesCompanion extends UpdateCompanion<CatalogTitle> {
     Expression<String>? backdropUrl,
     Expression<String>? synopsis,
     Expression<String>? franchiseId,
+    Expression<String>? continuesJson,
     Expression<bool>? adult,
     Expression<bool>? detailed,
     Expression<DateTime>? updatedAt,
@@ -1046,6 +1097,7 @@ class CatalogTitlesCompanion extends UpdateCompanion<CatalogTitle> {
       if (backdropUrl != null) 'backdrop_url': backdropUrl,
       if (synopsis != null) 'synopsis': synopsis,
       if (franchiseId != null) 'franchise_id': franchiseId,
+      if (continuesJson != null) 'continues_json': continuesJson,
       if (adult != null) 'adult': adult,
       if (detailed != null) 'detailed': detailed,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -1073,6 +1125,7 @@ class CatalogTitlesCompanion extends UpdateCompanion<CatalogTitle> {
     Value<String?>? backdropUrl,
     Value<String?>? synopsis,
     Value<String?>? franchiseId,
+    Value<String?>? continuesJson,
     Value<bool>? adult,
     Value<bool>? detailed,
     Value<DateTime>? updatedAt,
@@ -1098,6 +1151,7 @@ class CatalogTitlesCompanion extends UpdateCompanion<CatalogTitle> {
       backdropUrl: backdropUrl ?? this.backdropUrl,
       synopsis: synopsis ?? this.synopsis,
       franchiseId: franchiseId ?? this.franchiseId,
+      continuesJson: continuesJson ?? this.continuesJson,
       adult: adult ?? this.adult,
       detailed: detailed ?? this.detailed,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -1165,6 +1219,9 @@ class CatalogTitlesCompanion extends UpdateCompanion<CatalogTitle> {
     if (franchiseId.present) {
       map['franchise_id'] = Variable<String>(franchiseId.value);
     }
+    if (continuesJson.present) {
+      map['continues_json'] = Variable<String>(continuesJson.value);
+    }
     if (adult.present) {
       map['adult'] = Variable<bool>(adult.value);
     }
@@ -1202,6 +1259,7 @@ class CatalogTitlesCompanion extends UpdateCompanion<CatalogTitle> {
           ..write('backdropUrl: $backdropUrl, ')
           ..write('synopsis: $synopsis, ')
           ..write('franchiseId: $franchiseId, ')
+          ..write('continuesJson: $continuesJson, ')
           ..write('adult: $adult, ')
           ..write('detailed: $detailed, ')
           ..write('updatedAt: $updatedAt, ')
@@ -8638,6 +8696,7 @@ typedef $$CatalogTitlesTableCreateCompanionBuilder =
       Value<String?> backdropUrl,
       Value<String?> synopsis,
       Value<String?> franchiseId,
+      Value<String?> continuesJson,
       Value<bool> adult,
       Value<bool> detailed,
       required DateTime updatedAt,
@@ -8664,6 +8723,7 @@ typedef $$CatalogTitlesTableUpdateCompanionBuilder =
       Value<String?> backdropUrl,
       Value<String?> synopsis,
       Value<String?> franchiseId,
+      Value<String?> continuesJson,
       Value<bool> adult,
       Value<bool> detailed,
       Value<DateTime> updatedAt,
@@ -8819,6 +8879,11 @@ class $$CatalogTitlesTableFilterComposer
 
   ColumnFilters<String> get franchiseId => $composableBuilder(
     column: $table.franchiseId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get continuesJson => $composableBuilder(
+    column: $table.continuesJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8992,6 +9057,11 @@ class $$CatalogTitlesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get continuesJson => $composableBuilder(
+    column: $table.continuesJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get adult => $composableBuilder(
     column: $table.adult,
     builder: (column) => ColumnOrderings(column),
@@ -9083,6 +9153,11 @@ class $$CatalogTitlesTableAnnotationComposer
 
   GeneratedColumn<String> get franchiseId => $composableBuilder(
     column: $table.franchiseId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get continuesJson => $composableBuilder(
+    column: $table.continuesJson,
     builder: (column) => column,
   );
 
@@ -9197,6 +9272,7 @@ class $$CatalogTitlesTableTableManager
                 Value<String?> backdropUrl = const Value.absent(),
                 Value<String?> synopsis = const Value.absent(),
                 Value<String?> franchiseId = const Value.absent(),
+                Value<String?> continuesJson = const Value.absent(),
                 Value<bool> adult = const Value.absent(),
                 Value<bool> detailed = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -9221,6 +9297,7 @@ class $$CatalogTitlesTableTableManager
                 backdropUrl: backdropUrl,
                 synopsis: synopsis,
                 franchiseId: franchiseId,
+                continuesJson: continuesJson,
                 adult: adult,
                 detailed: detailed,
                 updatedAt: updatedAt,
@@ -9247,6 +9324,7 @@ class $$CatalogTitlesTableTableManager
                 Value<String?> backdropUrl = const Value.absent(),
                 Value<String?> synopsis = const Value.absent(),
                 Value<String?> franchiseId = const Value.absent(),
+                Value<String?> continuesJson = const Value.absent(),
                 Value<bool> adult = const Value.absent(),
                 Value<bool> detailed = const Value.absent(),
                 required DateTime updatedAt,
@@ -9271,6 +9349,7 @@ class $$CatalogTitlesTableTableManager
                 backdropUrl: backdropUrl,
                 synopsis: synopsis,
                 franchiseId: franchiseId,
+                continuesJson: continuesJson,
                 adult: adult,
                 detailed: detailed,
                 updatedAt: updatedAt,

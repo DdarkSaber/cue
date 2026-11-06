@@ -11,6 +11,7 @@ import '../../app/tokens.dart';
 import '../../imports/import_service.dart';
 import '../../imports/import_draft.dart';
 import '../../imports/records.dart';
+import 'import_notifications.dart';
 
 /// Matching an import against the catalogs can take minutes (AniList allows
 /// about 30 lookups a minute). It runs here, outside the import screen, so
@@ -41,6 +42,40 @@ class ImportJobState {
 
 class ImportJob extends Notifier<ImportJobState> {
   int _epoch = 0;
+  final _pace = ImportPace();
+  static const _notify = ImportNotifications();
+
+  /// Time left at the current matching pace, when it can be told.
+  Duration? get timeLeft => state.running
+      ? _pace.remaining(state.done, state.total, DateTime.now())
+      : null;
+
+  void _report(ImportJobState? before, ImportJobState now) {
+    if (now.running) {
+      if (before?.running != true) _pace.reset();
+      if (before?.done != now.done || before?.running != true) {
+        final left = _pace.remaining(now.done, now.total, DateTime.now());
+        unawaited(
+          _notify.progress(
+            now.done,
+            now.total,
+            left == null ? null : timeLeftLabel(left),
+          ),
+        );
+      }
+      return;
+    }
+    if (before?.running == true) {
+      unawaited(
+        now.staged != null
+            ? _notify.finished('Matching done. Open Cue to check and import.')
+            : now.error != null
+            ? _notify.finished('Import paused. Open Cue to carry on.')
+            : _notify.clear(),
+      );
+    }
+  }
+
   String? _profileId;
   ImportDraft? _draft;
   Future<void> _restored = Future.value();
@@ -65,6 +100,7 @@ class ImportJob extends Notifier<ImportJobState> {
     _profileId = null;
     _draft = null;
     ref.onDispose(() => _epoch++);
+    listenSelf(_report);
     _restored = _restore(profile, store, service, epoch);
     return const ImportJobState();
   }

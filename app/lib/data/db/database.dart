@@ -45,7 +45,7 @@ class CueDatabase extends _$CueDatabase {
   );
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -77,6 +77,15 @@ class CueDatabase extends _$CueDatabase {
         await m.addColumn(sourceObservations, sourceObservations.recordJson);
       }
       if (from < 6) await m.createTable(catalogRecommendations);
+      if (from < 7) {
+        // Older steps create catalog_titles from the current definition,
+        // which already has the column.
+        final cols = await customSelect("PRAGMA table_info('catalog_titles')")
+            .get();
+        if (!cols.any((c) => c.read<String>('name') == 'continues_json')) {
+          await m.addColumn(catalogTitles, catalogTitles.continuesJson);
+        }
+      }
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');

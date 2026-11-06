@@ -9,9 +9,12 @@ part of '../import_screen.dart';
 /// With reduced motion everything stays still. Only the words and the bar
 /// reach screen readers; the placeholders are decoration.
 class _Progress extends ConsumerStatefulWidget {
-  const _Progress({required this.label, this.value});
+  const _Progress({required this.label, this.value, this.onCancel});
   final String label;
   final double? value;
+
+  /// Stops matching and discards it; leaving the screen does not.
+  final VoidCallback? onCancel;
 
   /// Placeholder rows: about one screen of the review list.
   static const rows = 6;
@@ -231,6 +234,18 @@ class _ProgressState extends ConsumerState<_Progress>
             ],
           ),
         ),
+        if (widget.onCancel != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: widget.onCancel,
+              style: TextButton.styleFrom(
+                minimumSize: const Size(CueSize.minTarget, CueSize.minTarget),
+                foregroundColor: CueColors.textMuted,
+              ),
+              child: const Text('Cancel import'),
+            ),
+          ),
         const SizedBox(height: CueSpace.xl),
         ExcludeSemantics(
           child: _PosterTiles(faces: _tiles, still: still),

@@ -63,7 +63,7 @@ void main() {
         );
         await t.tap(find.text(name));
         await t.pumpAndSettle();
-        expect(find.text('This one'), findsOneWidget);
+        expect(find.byType(Checkbox), findsOneWidget);
         expect(find.textContaining('available matches'), findsOneWidget);
         await t.runAsync(() async {
           expect(await service.reviewQueue(profile), hasLength(1));
@@ -72,8 +72,11 @@ void main() {
             isNull,
           );
         });
-        await t.ensureVisible(find.text('This one'));
-        await t.tap(find.text('This one'));
+        await t.ensureVisible(find.byType(Checkbox));
+        await t.tap(find.byType(Checkbox));
+        await t.pump();
+        await t.ensureVisible(find.text('Link this title'));
+        await t.tap(find.text('Link this title'));
         await t.pumpAndSettle();
         await t.runAsync(() async {
           expect(await service.reviewQueue(profile), isEmpty);

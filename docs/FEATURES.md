@@ -55,6 +55,11 @@ Mihon/Tachiyomi backups, CSV or Excel with a Title column, and Cue backups.
 You can also sign in to MyAnimeList or use a public AniList username.
 Preview matches before confirmation; every import can be undone.
 
+While matching, the screen shows the time left at the current pace. Back (or
+minimising Cue) does not stop it: the deck banner and, on Android, a
+notification show the progress; Cancel import is a separate button. Names
+matched with confidence (and every pick made in review) are remembered on the
+device, so importing the same file again, even after cancelling, skips them.
 Matching resumes from local checkpoints for the active library. Ready previews
 and inclusion choices remain on this device until confirmation or cancellation;
 they are never automatically committed or synced. Interrupted requests may be
@@ -67,6 +72,13 @@ An entirely unresolved import can be explicitly saved for Library review
 without linking any titles or treating them as watched.
 Library exposes those queues, which survive reopening. Resolving a title changes
 that library, not an active neighbour.
+
+Review shows each possible match as a row with its poster, name and a short
+line such as "Anime · TV · 2011 · 51 episodes". Tick one or several: when one
+row in your file stands for a whole show, tick every season (or use Select all
+in this series, built from AniList's season links). The first ticked title
+keeps the row's rating; the others are added with the same status, unrated, so
+one show does not count several times for taste.
 
 Matching uses known provider IDs first, then official, romanized, native and
 alternate names. Anime and comics use AniList; MangaDex and MangaUpdates can

@@ -944,6 +944,7 @@ class DeckController extends Notifier<DeckState> {
       bool shortestFirst = false,
       ProfileSignals? using,
       Set<String> skip = const {},
+      Set<String> skipFranchises = const {},
     }) => ranker.deal(
       candidates,
       using ?? signals,
@@ -962,6 +963,7 @@ class DeckController extends Notifier<DeckState> {
       recentExposures: exposures,
       explorePreference: _temporary.effectiveExploration,
       skip: skip,
+      skipFranchises: skipFranchises,
     );
 
     final previous = keepTop ? state.top : null;
@@ -979,13 +981,34 @@ class DeckController extends Notifier<DeckState> {
         _visibleId!,
       if (unseenEligible) ..._temporary.shown,
     };
+    // One card per franchise for the whole session (not just per deal), so
+    // six One Piece films or every Gintama season do not take turns. Only
+    // while other franchises remain, so the deck never runs dry over it.
+    final shownFranchises = {
+      if (keep != null) keep.title.franchiseKey,
+      for (final id in _temporary.shown)
+        if (id != keep?.title.id) ?byId[id]?.franchiseKey,
+    };
+    final franchiseSkip =
+        exactPool.any(
+          (t) =>
+              !exactSkip.contains(t.id) &&
+              !shownFranchises.contains(t.franchiseKey),
+        )
+        ? shownFranchises
+        : const <String>{};
     // AI picks mix into exact matches only (still hard-filtered by the
     // ranker); the relaxed ladder steps below never use them.
     final aiPicks = await _sourcePicks(profileId, settings);
     if (!ref.mounted) return const LadderResult([], {});
     final dealt = dealWithPicks(
-      (dealPool, dealSize) =>
-          dealer(dealPool, filters, size: dealSize, skip: exactSkip),
+      (dealPool, dealSize) => dealer(
+        dealPool,
+        filters,
+        size: dealSize,
+        skip: exactSkip,
+        skipFranchises: franchiseSkip,
+      ),
       pool,
       aiPicks,
       size: keep == null ? Ranker.deckSize : Ranker.deckSize - 1,

@@ -137,10 +137,38 @@ class LibraryRepository {
       ...imported.names,
       for (final t in seenTitles.values) ...workNames(t),
     };
+    // AniList ids of everything watched or read (not planned or dropped), so
+    // a later season or a film is dealt only to people who saw what it
+    // follows.
+    final followedIds = {
+      ...known,
+      for (final u in ut)
+        if (!{
+          LibraryState.none,
+          LibraryState.planned,
+          LibraryState.dropped,
+        }.contains(LibraryState.parse(u.state)))
+          u.titleId,
+    };
+    final seenAnilist = <int>{};
+    if (followedIds.isNotEmpty) {
+      final rows =
+          await (db.select(db.catalogIdentities)..where(
+                (i) =>
+                    i.provider.equals('anilist') &
+                    i.titleId.isIn(followedIds.toList()),
+              ))
+              .get();
+      for (final r in rows) {
+        final id = int.tryParse(r.providerId);
+        if (id != null) seenAnilist.add(id);
+      }
+    }
     final base = ProfileSignals(
       excluded: {for (final x in ex) x.titleId},
       known: known,
       seenNames: seenNames,
+      seenAnilist: seenAnilist,
       historyYears: historyYears,
       mediumWeights: {
         for (final e in mediumWeights.entries)
@@ -177,6 +205,7 @@ class LibraryRepository {
       excluded: base.excluded,
       known: base.known,
       seenNames: base.seenNames,
+      seenAnilist: base.seenAnilist,
       historyYears: base.historyYears,
       mediumWeights: base.mediumWeights,
       excludedFranchises: base.excludedFranchises,
