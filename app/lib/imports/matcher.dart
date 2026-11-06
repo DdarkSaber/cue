@@ -214,8 +214,13 @@ bool _kindFits(MediaKind? wanted, MediaKind got) {
 /// original work's), then a similar title offered for a tick, else the
 /// review queue.
 class ImportMatcher {
-  ImportMatcher(this.catalog);
+  ImportMatcher(this.catalog, {Future<void> Function(Duration)? sleep})
+    : _sleep = sleep ?? Future<void>.delayed;
   final CatalogRepository catalog;
+  final Future<void> Function(Duration) _sleep;
+
+  /// Waits before retrying a batch the catalog refused (busy, rate limited).
+  static const retryWaits = [Duration(seconds: 5), Duration(seconds: 20)];
 
   /// AniList caps query complexity: 12 titles x 5 results stays under it.
   static const batchSize = 12;
@@ -239,6 +244,27 @@ class ImportMatcher {
     screen: _isScreen(r.kind) && r.kind != MediaKind.movie,
     preserveParts: !_isScreen(r.kind) || r.kind == MediaKind.movie,
   );
+
+  /// Runs [call], retrying after [retryWaits] when the catalog is busy or
+  /// failing (honouring a longer Retry-After, up to a minute). Null when it
+  /// still fails or the device is offline.
+  Future<T?> _withRetry<T>(Future<T> Function() call) async {
+    for (var attempt = 0; ; attempt++) {
+      try {
+        return await call();
+      } on CatalogUnavailable catch (e) {
+        if (e.code == 'offline' || attempt >= retryWaits.length) return null;
+        var wait = retryWaits[attempt];
+        final asked = e.retryAfter;
+        if (asked != null && asked > wait) {
+          wait = asked > const Duration(minutes: 1)
+              ? const Duration(minutes: 1)
+              : asked;
+        }
+        await _sleep(wait);
+      }
+    }
+  }
 
   Future<String?> _malIdentity(NormalizedRecord r) async {
     if (r.malId == null) return null;
@@ -471,11 +497,14 @@ class ImportMatcher {
               records[i].kind == MediaKind.unknown)
             records[i].malId!,
       ];
-      final res = await gateway.match(
-        const [],
-        malAnime: anime,
-        malManga: manga,
+      // A refused batch is retried after a wait; if it keeps failing its
+      // titles simply carry on to the name passes below (AniList search,
+      // then MyAnimeList's own search, where the MAL id makes the match
+      // exact). One bad batch never stops the rest of the import.
+      final res = await _withRetry(
+        () => gateway.match(const [], malAnime: anime, malManga: manga),
       );
+      if (res == null) continue;
       await catalog.upsert(res.mal);
       for (final i in chunk) {
         final id = await _malIdentity(records[i]);
