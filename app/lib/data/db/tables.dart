@@ -27,6 +27,9 @@ class CatalogTitles extends Table {
   TextColumn get backdropUrl => text().nullable()();
   TextColumn get synopsis => text().nullable()();
   TextColumn get franchiseId => text().nullable()();
+
+  /// AniList ids this entry follows (earlier season or parent series), JSON.
+  TextColumn get continuesJson => text().nullable()();
   BoolColumn get adult => boolean().withDefault(const Constant(false))();
 
   /// True once the full title (seasons, keywords) has been fetched.

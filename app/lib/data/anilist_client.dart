@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
@@ -116,6 +117,7 @@ class AniListClient {
   bannerImage
   description(asHtml: false)
   tags { name rank isAdult isMediaSpoiler }
+  relations { edges { relationType node { id type format } } }
 ''';
 
   /// Discovery orders, each with its own page cursor. A big watched library
@@ -158,7 +160,6 @@ class AniListClient {
       '''query (\$id: Int) {
   Media(id: \$id) {
     $_fields
-    relations { edges { relationType node { id type } } }
   }
 }''';
 
@@ -521,11 +522,27 @@ class AniListClient {
     final relations =
         (((m['relations'] as Map?)?['edges'] as List?) ?? const [])
             .cast<Map<dynamic, dynamic>>();
+    int? nodeId(Map<dynamic, dynamic> e, String relation) {
+      final node = e['node'] as Map?;
+      if (e['relationType'] != relation || node?['type'] != m['type']) {
+        return null;
+      }
+      // A short OVA or special "before" a series is side material: the
+      // series is still the way in.
+      if (relation == 'PREQUEL' &&
+          const {'SPECIAL', 'OVA', 'MUSIC'}.contains(node!['format'])) {
+        return null;
+      }
+      return (node!['id'] as num).toInt();
+    }
+
+    // What this entry continues: an earlier season, or the main series a
+    // film/special/OVA belongs to. Such entries are only dealt to people who
+    // watched (or read) what they follow, never cold.
+    final parents = [for (final e in relations) ?nodeId(e, 'PARENT')];
     final related = [
-      for (final e in relations)
-        if ((e['relationType'] == 'PREQUEL' || e['relationType'] == 'PARENT') &&
-            (e['node'] as Map?)?['type'] == m['type'])
-          ((e['node'] as Map)['id'] as num).toInt(),
+      for (final e in relations) ?nodeId(e, 'PREQUEL'),
+      ...parents,
     ];
     final id = (m['id'] as num).toInt();
     final kind = m['type'] == 'ANIME'
@@ -576,9 +593,14 @@ class AniListClient {
       // Gintama and Psycho-Pass carry minor ones, and treating those as 18+
       // hid much of mainstream anime and manhwa from imports and the deck.
       'adult': m['isAdult'] == true,
+      'continues': related.toSet().toList(),
+      // The main series when there is one (all One Piece films share it),
+      // otherwise the earliest linked entry.
       'franchiseKey': relations.isEmpty
           ? null
-          : 'anilist:${[id, ...related].reduce((a, b) => a < b ? a : b)}',
+          : parents.isNotEmpty
+          ? 'anilist:${parents.reduce(min)}'
+          : 'anilist:${[id, ...related].reduce(min)}',
     });
   }
 }

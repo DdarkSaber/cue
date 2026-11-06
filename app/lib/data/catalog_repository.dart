@@ -112,6 +112,9 @@ class CatalogRepository {
                   backdropUrl: Value(j['backdropUrl'] as String?),
                   synopsis: Value(j['synopsis'] as String?),
                   franchiseId: Value(j['franchiseKey'] as String?),
+                  continuesJson: j['continues'] is List
+                      ? Value(jsonEncode(j['continues']))
+                      : const Value.absent(),
                   adult: Value(j['adult'] == true),
                   detailed: Value(detailed || (existing?.detailed ?? false)),
                   updatedAt: now,
@@ -241,6 +244,9 @@ class CatalogRepository {
                 score: Value((j['score'] as num?)?.toInt()),
                 posterUrl: Value(_allowedPoster(j['posterUrl'] as String?)),
                 franchiseId: Value(j['franchiseKey'] as String?),
+                continuesJson: j['continues'] is List
+                    ? Value(jsonEncode(j['continues']))
+                    : const Value.absent(),
                 adult: Value(j['adult'] == true),
                 updatedAt: now,
               ),
@@ -275,6 +281,33 @@ class CatalogRepository {
     return u != null && u.scheme == 'https' && hosts.contains(u.host)
         ? url
         : null;
+  }
+
+  /// Import names already matched with confidence (or by the person in
+  /// review), so running the same file again, even after cancelling, does
+  /// not look them up again. Kept with the catalog identities, on device.
+  static String importNameKey(MediaKind? kind, String name) =>
+      '${kind == null || kind == MediaKind.unknown ? 'any' : kind.name}:'
+      '${name.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim()}';
+
+  Future<String?> rememberedImportName(MediaKind? kind, String name) =>
+      findByIdentity('import-name', importNameKey(kind, name));
+
+  Future<void> rememberImportName(
+    MediaKind? kind,
+    String name,
+    String titleId,
+  ) async {
+    if (name.trim().isEmpty) return;
+    await db
+        .into(db.catalogIdentities)
+        .insertOnConflictUpdate(
+          CatalogIdentitiesCompanion.insert(
+            titleId: titleId,
+            provider: 'import-name',
+            providerId: importNameKey(kind, name),
+          ),
+        );
   }
 
   Future<String?> findByIdentity(

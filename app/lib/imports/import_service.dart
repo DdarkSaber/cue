@@ -659,11 +659,15 @@ class ImportService {
   }
 
   /// Resolves a queued observation to a catalog title the person picked.
+  /// Links a review entry to [titleId]. [alsoSeen] are further entries the
+  /// same row stands for (other seasons, films): added with the same status
+  /// but unrated, so one show does not count several times for taste.
   Future<void> resolve(
     String profileId,
     SourceObservation o,
-    String titleId,
-  ) async {
+    String titleId, {
+    Iterable<String> alsoSeen = const [],
+  }) async {
     await db.transaction(() async {
       if (await observationProfile(o) != profileId) {
         throw StateError('This entry belongs to another library');
@@ -714,6 +718,26 @@ class ImportService {
         o.batchId,
         _now(),
       );
+      // The person's own pick: the same name in a later import matches it.
+      await catalog.rememberImportName(original.kind, original.title, titleId);
+      for (final extra in alsoSeen) {
+        if (extra == titleId) continue;
+        await _merge(
+          profileId,
+          extra,
+          NormalizedRecord(
+            sourceEntryKey: '${original.sourceEntryKey}:also:$extra',
+            title: original.title,
+            kind: original.kind,
+            state: original.state == LibraryState.none
+                ? LibraryState.seen
+                : original.state,
+            activityDate: original.activityDate,
+          ),
+          o.batchId,
+          _now(),
+        );
+      }
       await LibraryRepository(db, clock: _now).recomputeWeights(profileId);
     });
   }

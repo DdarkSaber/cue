@@ -303,6 +303,10 @@ class ImportMatcher {
       if (id == null && r.malId != null) {
         id = await _malIdentity(r);
       }
+      // Matched in an earlier run of this (or another) import.
+      if (id == null && r.anilistId == null && r.malId == null) {
+        id = await catalog.rememberedImportName(r.kind, r.title);
+      }
       if (id != null) {
         final title = await catalog.titleById(id);
         if (title == null ||
@@ -398,6 +402,19 @@ class ImportMatcher {
       }
     }
 
+    for (final m in out) {
+      if (m == null ||
+          m.titleId == null ||
+          (m.matchClass != MatchClass.exactId &&
+              m.matchClass != MatchClass.confirmed)) {
+        continue;
+      }
+      await catalog.rememberImportName(
+        m.record.kind,
+        m.record.title,
+        m.titleId!,
+      );
+    }
     return [
       for (var i = 0; i < records.length; i++)
         out[i] ??

@@ -40,7 +40,7 @@ void main() {
         final version = await db
             .customSelect('PRAGMA user_version')
             .getSingle();
-        expect(version.read<int>('user_version'), 6);
+        expect(version.read<int>('user_version'), greaterThanOrEqualTo(6));
       } finally {
         await db.close();
         await dir.delete(recursive: true);

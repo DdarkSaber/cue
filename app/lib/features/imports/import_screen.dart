@@ -26,6 +26,7 @@ import '../library/rating_deck.dart';
 import 'import_job.dart';
 import 'sign_in_import.dart';
 import 'source_names.dart';
+import 'import_notifications.dart';
 
 part 'steps/choose_source.dart';
 part 'steps/map_columns.dart';
@@ -228,7 +229,11 @@ class ImportScreenState extends ConsumerState<ImportScreen> {
   }
 
   void _back() {
-    if (_step == _Step.choose || _step == _Step.summary) {
+    // Matching keeps going in importJobProvider: Back only leaves the screen
+    // (the deck banner and notification follow it). Cancel is its own button.
+    if (_step == _Step.choose ||
+        _step == _Step.summary ||
+        (_step == _Step.matching && !_parsing)) {
       context.go(CueRoutes.library);
     } else if (_step != _Step.committing) {
       _reset();
@@ -284,9 +289,14 @@ class ImportScreenState extends ConsumerState<ImportScreen> {
         label: _parsing
             ? 'Reading your file…'
             : 'Matching ${_progress.$1} of ${_progress.$2} against the catalog…'
-                  '${_progress.$2 > 150 ? '\nAnime and comic lookups are limited to about 30 a minute, so a big list takes a couple of minutes. You can leave this screen and keep swiping; the deck shows the progress.' : ''}'
+                  '${switch (ref.read(importJobProvider.notifier).timeLeft) {
+                    final left? => '\n${timeLeftLabel(left)}',
+                    null => '',
+                  }}'
+                  '\nYou can go back or minimise Cue: matching carries on, and the deck and your notifications show the progress.'
                   '\nProgress is saved on this device. If the app closes or you go offline, open Import again and matching carries on from where it stopped.',
         value: _progress.$2 == 0 ? null : _progress.$1 / _progress.$2,
+        onCancel: _parsing ? null : _reset,
       ),
       _Step.preview => _Preview(
         staged: _staged!,

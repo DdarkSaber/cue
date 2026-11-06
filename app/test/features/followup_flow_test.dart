@@ -202,8 +202,11 @@ void main() {
       expect(find.text('Needs review (1)'), findsOneWidget);
       await t.tap(find.text('Unmatched invented story'));
       await t.pumpAndSettle();
-      await t.ensureVisible(find.text('This one'));
-      await t.tap(find.text('This one'));
+      await t.ensureVisible(find.byType(Checkbox));
+      await t.tap(find.byType(Checkbox));
+      await t.pump();
+      await t.ensureVisible(find.text('Link this title'));
+      await t.tap(find.text('Link this title'));
       await t.pumpAndSettle();
       final check = await t.runAsync(() async {
         return (

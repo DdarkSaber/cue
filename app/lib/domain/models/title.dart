@@ -80,6 +80,7 @@ class Title {
     this.backdropUrl,
     this.synopsis,
     this.franchiseId,
+    this.continues = const [],
     this.adult = false,
     this.detailed = false,
   });
@@ -103,6 +104,10 @@ class Title {
   final String? backdropUrl;
   final String? synopsis;
   final String? franchiseId;
+
+  /// AniList ids of what this entry follows: an earlier season, or the main
+  /// series of a film/special. Empty when unknown or standalone.
+  final List<int> continues;
   final bool adult;
   final bool detailed;
 
@@ -206,6 +211,9 @@ class Title {
     backdropUrl: r.backdropUrl,
     synopsis: r.synopsis,
     franchiseId: r.franchiseId,
+    continues: r.continuesJson == null
+        ? const []
+        : List<int>.from(jsonDecode(r.continuesJson!) as List),
     adult: r.adult,
     detailed: r.detailed,
   );

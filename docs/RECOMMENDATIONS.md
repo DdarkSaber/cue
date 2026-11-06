@@ -301,6 +301,21 @@ default; it sends the typed sentence to Groq with Gemini as a fallback for
 allowlisted hints, not title recommendations. Real Gemini key validity remains
 unverified; see [Testing](TESTING.md).
 
+## Seasons, films and franchises
+
+AniList links every season to the one before it, and films, specials and OVAs
+to their main series. Cue uses those links so a long show is one way in:
+
+- A later season, or a film/special/OVA of a series, is only a new pick once
+  you have watched (or read) what it follows. Season 1 is how a show is dealt
+  to someone new; after that the next season can come up.
+- Planned and dropped titles do not count as seen for this.
+- A short OVA or special listed before a series does not make the series a
+  sequel: the series is still the way in.
+- One card per franchise for the whole session, not only per deal, while
+  other franchises remain. All films of a series share it.
+- Revisit and your library are not affected.
+
 ## Deliberate exclusions
 
 Ordinary discovery excludes saved library titles, including watching, reading
