@@ -365,20 +365,7 @@ class HttpCatalogGateway implements CatalogGateway {
       throw const CatalogUnavailable('offline');
     }
     if (res.statusCode == 404) return null;
-    Object? body;
-    try {
-      body = jsonDecode(utf8.decode(res.bodyBytes));
-    } on FormatException {
-      throw const CatalogUnavailable('bad_response');
-    }
-    if (res.statusCode != 200) {
-      final code = body is Map ? body['error'] as String? : null;
-      throw CatalogUnavailable(
-        code ?? 'http_${res.statusCode}',
-        retryAfter: _retryAfter(res),
-      );
-    }
-    return body;
+    return _decode(res);
   }
 
   Future<Object?> _send(http.Request req) async {
@@ -392,11 +379,21 @@ class HttpCatalogGateway implements CatalogGateway {
     } on Exception {
       throw const CatalogUnavailable('offline');
     }
+    return _decode(res);
+  }
+
+  /// The JSON body of a 200, or the Worker's error code otherwise. A
+  /// failure without a readable body (a bare 401 from an older Worker, a
+  /// proxy's HTML page) is reported as `http_<status>`, so callers can tell
+  /// it from a broken 200.
+  static Object? _decode(http.Response res) {
     Object? body;
     try {
       body = jsonDecode(utf8.decode(res.bodyBytes));
     } on FormatException {
-      throw const CatalogUnavailable('bad_response');
+      if (res.statusCode == 200) {
+        throw const CatalogUnavailable('bad_response');
+      }
     }
     if (res.statusCode != 200) {
       final code = body is Map ? body['error'] as String? : null;

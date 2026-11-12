@@ -292,8 +292,10 @@ class FakeGateway implements CatalogGateway {
     String? codeVerifier,
   }) async => const OAuthTokens('token', refresh: 'refresh');
 
-  /// Set to make a renewal fail.
-  bool refreshFails = false;
+  /// Set to make a renewal fail with this error code (`token_expired`
+  /// when MyAnimeList refused the refresh token, `upstream_error` for an
+  /// outage).
+  String? refreshError;
   final refreshCalls = <String>[];
 
   @override
@@ -302,7 +304,8 @@ class FakeGateway implements CatalogGateway {
     String refreshToken,
   ) async {
     refreshCalls.add(refreshToken);
-    if (refreshFails) throw const CatalogUnavailable('upstream_error');
+    final error = refreshError;
+    if (error != null) throw CatalogUnavailable(error);
     return OAuthTokens(
       'renewed',
       refresh: 'refresh2',
@@ -325,13 +328,13 @@ class FakeGateway implements CatalogGateway {
     String token,
   ) async {
     signedInCalls.add(token);
-    if (rejectedTokens.contains(token)) {
-      throw const CatalogUnavailable('upstream_error');
-    }
+    final error = rejectedTokens[token];
+    if (error != null) throw CatalogUnavailable(error);
     return const [];
   }
 
-  /// Tokens the provider no longer accepts.
-  final rejectedTokens = <String>{};
+  /// Tokens the list call fails for, with the error code it fails with
+  /// (`token_expired` for a token MyAnimeList no longer accepts).
+  final rejectedTokens = <String, String>{};
   final signedInCalls = <String>[];
 }
