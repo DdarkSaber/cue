@@ -30,6 +30,7 @@ class SwipeDeck extends StatefulWidget {
     this.reduceMotion = false,
     this.haptics = true,
     this.onTryNow,
+    this.onPosterHold,
     this.choices,
     this.cardLabel = 'Recommendation',
   });
@@ -49,6 +50,9 @@ class SwipeDeck extends StatefulWidget {
   final bool reduceMotion;
   final bool haptics;
   final void Function(String titleId)? onTryNow;
+
+  /// The top card was held to see its whole poster.
+  final void Function(String titleId)? onPosterHold;
 
   @override
   State<SwipeDeck> createState() => SwipeDeckState();
@@ -347,6 +351,11 @@ class SwipeDeckState extends State<SwipeDeck>
                                     title: top.title,
                                     reason: top.reason,
                                     onDetails: widget.onDetails,
+                                    onHold: widget.onPosterHold == null
+                                        ? null
+                                        : () => widget.onPosterHold!(
+                                            top.title.id,
+                                          ),
                                   ),
                                 ),
                               ),

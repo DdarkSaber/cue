@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import 'candidate_sources.dart';
+import 'card_signal_tracker.dart';
+import '../../data/card_signal_repository.dart';
 import '../../data/catalog_gateway.dart';
 import '../../data/catalog_repository.dart'
     show CatalogPageState, CatalogRepository, RequestBudget;
@@ -203,8 +205,62 @@ class DeckController extends Notifier<DeckState> {
   DateTime? _missingKindAt;
   bool _pruned = false;
 
+  // How each card on the main deck was looked at. Kept on this device only,
+  // and never allowed to block or break a swipe.
+  late final _signals = CardSignalTracker(clock: ref.read(clockProvider));
+  CardSignalRepository? _signalStore;
+  bool _signalsPruned = false;
+
+  /// The details of the top card were opened.
+  void signalDetailsOpened(String titleId) => _signals.detailsOpened(titleId);
+
+  /// The top card was held to see its whole poster.
+  void signalPosterHeld(String titleId) => _signals.posterHeld(titleId);
+
+  /// Follows the top card: a new title on the main deck starts measuring,
+  /// and the one it replaced is stored as left undecided.
+  void _trackTop(DeckState next) {
+    try {
+      final profileId = _dealtProfile;
+      if (profileId == null || ref.read(deckFiltersProvider).isRevisit) {
+        _storeSignal(_signals.finish());
+        return;
+      }
+      final top = next.top;
+      // An empty deck between two deals is not the card leaving.
+      if (top == null) return _signals.hide();
+      if (top.title.id != _signals.titleId || profileId != _signals.profileId) {
+        _storeSignal(_signals.finish());
+      }
+      _signals.show(profileId, top);
+    } on Object {
+      // Signals are best effort.
+    }
+  }
+
+  void _storeSignal(CardSignal? signal) {
+    final store = _signalStore;
+    if (signal == null || store == null) return;
+    final prune = !_signalsPruned;
+    _signalsPruned = true;
+    unawaited(() async {
+      try {
+        await store.record(signal);
+        if (prune) await store.prune(signal.profileId);
+      } on Object {
+        // Signals are best effort.
+      }
+    }());
+  }
+
   @override
   DeckState build() {
+    try {
+      _signalStore = ref.read(cardSignalRepositoryProvider);
+    } on Object {
+      _signalStore = null;
+    }
+    listenSelf((_, next) => _trackTop(next));
     final profile = ref.watch(profileIdProvider);
     final settingsLoading = ref.watch(
       settingsProvider.select((s) => s.isLoading),
@@ -222,7 +278,11 @@ class DeckController extends Notifier<DeckState> {
         ),
       ),
     );
-    final life = AppLifecycleListener(onResume: _retryNowIfOffline);
+    final life = AppLifecycleListener(
+      onResume: _retryNowIfOffline,
+      onHide: _signals.pause,
+      onShow: _signals.resume,
+    );
     ref.onDispose(() {
       life.dispose();
       _retryTimer?.cancel();
@@ -1252,6 +1312,7 @@ class DeckController extends Notifier<DeckState> {
     }
     final filters = ref.read(deckFiltersProvider);
     final rest = state.cards.skip(1).toList();
+    final signal = _signals.titleId == card.title.id ? _signals.finish() : null;
     state = state.copyWith(cards: rest, clearError: true);
     try {
       if (await _profile != profileId) {
@@ -1271,6 +1332,7 @@ class DeckController extends Notifier<DeckState> {
             mood: filters.mood == QuickMood.forYou ? null : filters.mood.name,
             defer: defer,
           );
+      _storeSignal(signal?.withDecision(d.code, result.eventId));
       if (!ref.mounted) return result;
       if (await _profile != profileId) {
         ref.read(decisionVersionProvider.notifier).bump();
@@ -1362,6 +1424,7 @@ class DeckController extends Notifier<DeckState> {
         !_inFlight.add(card.title.id)) {
       return null;
     }
+    final signal = _signals.titleId == card.title.id ? _signals.finish() : null;
     state = state.copyWith(
       cards: state.cards.skip(1).toList(),
       clearError: true,
@@ -1377,6 +1440,7 @@ class DeckController extends Notifier<DeckState> {
       final result = await ref
           .read(decisionServiceProvider)
           .tryNow(profileId, card.title);
+      _storeSignal(signal?.withDecision('try_now', result.eventId));
       if (!ref.mounted) return result;
       if (await _profile != profileId) {
         ref.read(decisionVersionProvider.notifier).bump();
@@ -1440,6 +1504,16 @@ class DeckController extends Notifier<DeckState> {
     if (!ref.mounted) return null;
     final filters = ref.read(deckFiltersProvider);
     final undone = await ref.read(decisionServiceProvider).undoLast(profileId);
+    final undoneEvent = undone?.eventId;
+    final signalStore = _signalStore;
+    if (undoneEvent != null && signalStore != null) {
+      // An undone swipe must not teach.
+      unawaited(
+        signalStore
+            .clearDecision(undoneEvent)
+            .then<void>((_) {}, onError: (Object _) {}),
+      );
+    }
     if (!ref.mounted) return undone;
     ref.read(decisionVersionProvider.notifier).bump();
     bool current() =>

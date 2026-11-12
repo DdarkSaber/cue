@@ -9,6 +9,7 @@ import '../data/ai_recommendation_repository.dart'
     show AiRecommendationRepository;
 import '../data/anilist_client.dart';
 import '../data/backup_service.dart';
+import '../data/card_signal_repository.dart';
 import '../data/catalog_gateway.dart';
 import '../data/catalog_repository.dart';
 import '../data/db/database.dart';
@@ -101,6 +102,12 @@ final decisionServiceProvider = Provider<DecisionService>(
     ref.watch(databaseProvider),
     clock: ref.watch(clockProvider),
   ),
+);
+
+/// How each deck card was looked at. This device only: never in backup,
+/// export or sync.
+final cardSignalRepositoryProvider = Provider<CardSignalRepository>(
+  (ref) => CardSignalRepository(ref.watch(databaseProvider)),
 );
 
 final rankerProvider = Provider<Ranker>(
