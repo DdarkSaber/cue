@@ -123,7 +123,7 @@ void main() {
     expect(
       find.text(
         'Learning from your swipes would have ranked a card you saved above '
-        'one you skipped 62% of the time, against 51% before.',
+        'one you skipped 62% of the time, against 51% for a guess.',
       ),
       findsOneWidget,
     );

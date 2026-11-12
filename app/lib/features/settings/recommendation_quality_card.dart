@@ -105,7 +105,7 @@ class RecommendationQualityCard extends StatelessWidget {
     if (learned == null || baseline == null || learned.events == 0) return null;
     return 'Learning from your swipes would have ranked a card you saved '
         'above one you skipped ${_percent(learned.auc)}% of the time, '
-        'against ${_percent(baseline.auc)}% before.';
+        'against ${_percent(baseline.auc)}% for a guess.';
   }
 
   @override

@@ -21,6 +21,9 @@ import '../../domain/mood/mood_engine.dart';
 import '../../domain/mood/mode_model.dart' show Mode;
 import '../../domain/mood/mood_features.dart';
 import '../../domain/mood/sessions.dart' show sessionGap;
+import '../../domain/learning/learned_taste.dart';
+import '../../domain/learning/swipe_model.dart';
+import '../../data/learned_taste_repository.dart';
 import '../../domain/ranker.dart';
 import '../../domain/mood_rules.dart';
 import '../../domain/reasons.dart';
@@ -207,6 +210,30 @@ class DeckController extends Notifier<DeckState> {
 
   // How each card on the main deck was looked at. Kept on this device only,
   // and never allowed to block or break a swipe.
+  /// What this profile's own swipes have taught, rebuilt from the stored
+  /// history whenever it may be stale (another profile, an undo).
+  LearnedTaste? _taste;
+  String? _tasteProfile;
+
+  Future<LearnedTaste?> _learnedTaste(
+    String profileId,
+    List<Title> pool,
+    ProfileSignals signals,
+  ) async {
+    if (_taste != null && _tasteProfile == profileId) return _taste;
+    try {
+      final built = await ref
+          .read(learnedTasteRepositoryProvider)
+          .build(profileId, pool: pool, seeded: signals.becauseOf.keys.toSet());
+      _taste = built;
+      _tasteProfile = profileId;
+      return built;
+    } on Object {
+      // Ranking falls back to the hand-tuned score alone.
+      return null;
+    }
+  }
+
   late final _signals = CardSignalTracker(clock: ref.read(clockProvider));
   CardSignalRepository? _signalStore;
   bool _signalsPruned = false;
@@ -997,6 +1024,8 @@ class DeckController extends Notifier<DeckState> {
             .keys
             .toSet();
     if (!ref.mounted) return const LadderResult([], {});
+    final swipeTaste = await _learnedTaste(profileId, pool, signals);
+    if (!ref.mounted) return const LadderResult([], {});
     List<RankedCard> dealer(
       List<Title> candidates,
       DeckFilters f, {
@@ -1022,6 +1051,7 @@ class DeckController extends Notifier<DeckState> {
       clusters: clusters,
       recentExposures: exposures,
       explorePreference: _temporary.effectiveExploration,
+      swipeTaste: swipeTaste,
       skip: skip,
       skipFranchises: skipFranchises,
     );
@@ -1350,6 +1380,17 @@ class DeckController extends Notifier<DeckState> {
         Decision.notNow => notNowReason == NotNowReason.savingLater ? 0 : -0.2,
         Decision.watched => 0.1,
       });
+      if (!filters.isRevisit && _tasteProfile == profileId) {
+        final lesson =
+            decisionLabel(
+              d,
+              savingForLater: notNowReason == NotNowReason.savingLater,
+            ) ??
+            (signal == null ? null : LearnedTasteRepository.implicit(signal));
+        if (lesson != null) {
+          _taste?.learn(card.title, lesson.label, lesson.weight);
+        }
+      }
       // The session may have closed while the app was hidden.
       final engine = _engine;
       if (engine != null && !engine.inSession) {
@@ -1541,6 +1582,8 @@ class DeckController extends Notifier<DeckState> {
         }
       }
     }
+    // The undone swipe must not keep teaching: rebuild from history.
+    _taste = null;
     _engine?.undo(titleId);
     if (!current()) return undone;
     await ref.read(libraryRepositoryProvider).recomputeWeights(profileId);

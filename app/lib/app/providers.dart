@@ -5,6 +5,8 @@ import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
+import '../data/learned_taste_repository.dart';
+import '../data/outcome_stats_repository.dart';
 import '../data/ai_recommendation_repository.dart'
     show AiRecommendationRepository;
 import '../data/anilist_client.dart';
@@ -83,6 +85,20 @@ final catalogRepositoryProvider = Provider<CatalogRepository>(
   ),
 );
 
+final outcomeStatsRepositoryProvider = Provider<OutcomeStatsRepository>(
+  (ref) => OutcomeStatsRepository(
+    ref.watch(databaseProvider),
+    ref.watch(catalogRepositoryProvider),
+    clock: ref.watch(clockProvider),
+  ),
+);
+final learnedTasteRepositoryProvider = Provider<LearnedTasteRepository>(
+  (ref) => LearnedTasteRepository(
+    ref.watch(outcomeStatsRepositoryProvider),
+    ref.watch(cardSignalRepositoryProvider),
+    ref.watch(catalogRepositoryProvider),
+  ),
+);
 final profileRepositoryProvider = Provider<ProfileRepository>(
   (ref) => ProfileRepository(
     ref.watch(databaseProvider),
