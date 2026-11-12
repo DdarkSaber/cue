@@ -631,9 +631,16 @@ class HttpCatalogGateway implements CatalogGateway {
       for (final i in (l as List?) ?? const [])
         CatalogItemDto(Map<String, dynamic>.from(i as Map)),
     ];
-    return MatchResponse([
-      for (final r in (body['results'] as List?) ?? const []) list(r),
-    ], list(body['mal']));
+    // `failed`: positions the Worker could not look up (an upstream outage),
+    // which are "not checked", never "no match". Older Workers leave it out.
+    return MatchResponse(
+      [for (final r in (body['results'] as List?) ?? const []) list(r)],
+      list(body['mal']),
+      failed: {
+        for (final i in (body['failed'] as List?) ?? const [])
+          if (i is num) i.toInt(),
+      },
+    );
   }
 
   List<CatalogItemDto> _items(Object? body) => [
@@ -961,8 +968,14 @@ class HybridCatalogGateway implements CatalogGateway {
       for (var attempt = 0; attempt < 2 && !ok; attempt++) {
         try {
           final r = await worker.match([for (final i in chunk) items[i]]);
-          for (var j = 0; j < chunk.length && j < r.results.length; j++) {
-            out[chunk[j]].addAll(r.results[j]);
+          for (var j = 0; j < chunk.length; j++) {
+            // A position the Worker could not look up (or left out) is
+            // reported as not checked, not as "no match".
+            if (r.failed.contains(j) || j >= r.results.length) {
+              failed.add(chunk[j]);
+            } else {
+              out[chunk[j]].addAll(r.results[j]);
+            }
           }
           ok = true;
         } on CatalogUnavailable {
