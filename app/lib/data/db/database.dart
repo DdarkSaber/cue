@@ -28,6 +28,7 @@ part 'database.g.dart';
     MoodStates,
     MoodSessions,
     RecommendationStates,
+    CardSignals,
   ],
 )
 class CueDatabase extends _$CueDatabase {
@@ -44,8 +45,13 @@ class CueDatabase extends _$CueDatabase {
     ),
   );
 
+  Future<void> _cardSignalIndex() => customStatement(
+    'CREATE INDEX IF NOT EXISTS idx_card_signals_profile_time '
+    'ON card_signals (profile_id, shown_at)',
+  );
+
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -63,6 +69,7 @@ class CueDatabase extends _$CueDatabase {
         'CREATE INDEX IF NOT EXISTS idx_catalog_kind '
         'ON catalog_titles (media_kind)',
       );
+      await _cardSignalIndex();
     },
     onUpgrade: (m, from, to) async {
       if (from < 2) {
@@ -85,6 +92,10 @@ class CueDatabase extends _$CueDatabase {
         if (!cols.any((c) => c.read<String>('name') == 'continues_json')) {
           await m.addColumn(catalogTitles, catalogTitles.continuesJson);
         }
+      }
+      if (from < 8) {
+        await m.createTable(cardSignals);
+        await _cardSignalIndex();
       }
     },
     beforeOpen: (details) async {
