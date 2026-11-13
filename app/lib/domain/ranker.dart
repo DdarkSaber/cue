@@ -584,8 +584,66 @@ class Ranker {
     return (-(worst + second) / 2 / 10).clamp(0, 0.3).toDouble();
   }
 
+  /// At most this many cards of a [size]-card deck share a primary theme.
+  static int themeCap(int size) => max(2, (size * 0.2).ceil());
+
+  /// [themeCap], raised only as far as needed for the eligible candidates
+  /// to fill [size] cards under it (a pool of one or two themes cannot be
+  /// held to two cards each), so the deck's slots keep their purpose.
+  static int _feasibleCap(
+    List<RankedCard> scored,
+    Map<String, String> themes,
+    int size,
+  ) {
+    final franchises = <String, Set<String>>{};
+    for (final c in scored) {
+      franchises
+          .putIfAbsent(themes[c.title.id] ?? '', () => {})
+          .add(c.title.franchiseKey);
+    }
+    final free = franchises.remove('')?.length ?? 0;
+    var cap = themeCap(size);
+    while (cap < size) {
+      var fill = free;
+      for (final f in franchises.values) {
+        fill += min(f.length, cap);
+      }
+      if (fill >= size) break;
+      cap++;
+    }
+    return cap;
+  }
+
+  /// Title id -> its primary theme: the genre rarest in [pool] (highest
+  /// idf) among the title's genres, ties by name. Titles without genres
+  /// have none and are never capped.
+  static Map<String, String> primaryThemes(List<Title> pool) {
+    final df = <String, int>{};
+    for (final t in pool) {
+      for (final g in {for (final g in t.genres) g.toLowerCase()}) {
+        df[g] = (df[g] ?? 0) + 1;
+      }
+    }
+    final n = pool.length;
+    final out = <String, String>{};
+    for (final t in pool) {
+      String? best;
+      var bestIdf = double.negativeInfinity;
+      for (final g in {for (final g in t.genres) g.toLowerCase()}) {
+        final idf = log(n / df[g]!);
+        if (idf > bestIdf || (idf == bestIdf && g.compareTo(best!) < 0)) {
+          best = g;
+          bestIdf = idf;
+        }
+      }
+      if (best != null) out[t.id] = best;
+    }
+    return out;
+  }
+
   /// Adaptive familiar/adjacent/explore slots when a preference is supplied;
-  /// otherwise retains the legacy 7/2/1 allocation. One card per franchise.
+  /// otherwise retains the legacy 7/2/1 allocation. One card per franchise,
+  /// and at most [themeCap] cards per primary theme while others remain.
   List<RankedCard> deal(
     List<Title> pool,
     ProfileSignals s,
@@ -670,6 +728,8 @@ class Ranker {
           ),
       ];
     }
+    final themes = primaryThemes(pool);
+    final cap = _feasibleCap(scored, themes, size);
     if (explorePreference != null) {
       return [
         for (final c in _adaptive(
@@ -680,6 +740,8 @@ class Ranker {
           explorePreference,
           recentExposures,
           swipeTaste,
+          themes,
+          cap,
         ))
           RankedCard(
             c.title,
@@ -697,9 +759,16 @@ class Ranker {
 
     final franchises = <String>{};
     final picked = <RankedCard>[];
-    bool take(RankedCard c) {
+    final perTheme = <String, int>{};
+    bool take(RankedCard c, {bool capped = true}) {
       if (picked.length >= size) return false;
-      if (!franchises.add(c.title.franchiseKey)) return false;
+      if (franchises.contains(c.title.franchiseKey)) return false;
+      final theme = themes[c.title.id];
+      if (capped && theme != null && (perTheme[theme] ?? 0) >= cap) {
+        return false;
+      }
+      franchises.add(c.title.franchiseKey);
+      if (theme != null) perTheme[theme] = (perTheme[theme] ?? 0) + 1;
       picked.add(c);
       return true;
     }
@@ -760,6 +829,11 @@ class Ranker {
       if (picked.length >= size) break;
       take(c);
     }
+    // The theme cap never shortens the deck: fill from what it skipped.
+    for (final c in scored) {
+      if (picked.length >= size) break;
+      take(c, capped: false);
+    }
 
     final ordered = List.of(picked);
     if (broadFirstRun) {
@@ -787,6 +861,8 @@ class Ranker {
     double preference,
     Set<String> recent,
     LearnedTaste? swipeTaste,
+    Map<String, String> themes,
+    int cap,
   ) {
     final familiar =
         (size *
@@ -799,10 +875,17 @@ class Ranker {
     final picked = <RankedCard>[];
     final varied = <RankedCard>[];
     final franchises = <String>{};
-    bool take(RankedCard c, {bool variety = false}) {
-      if (picked.length >= size || !franchises.add(c.title.franchiseKey)) {
+    final perTheme = <String, int>{};
+    bool take(RankedCard c, {bool variety = false, bool capped = true}) {
+      if (picked.length >= size || franchises.contains(c.title.franchiseKey)) {
         return false;
       }
+      final theme = themes[c.title.id];
+      if (capped && theme != null && (perTheme[theme] ?? 0) >= cap) {
+        return false;
+      }
+      franchises.add(c.title.franchiseKey);
+      if (theme != null) perTheme[theme] = (perTheme[theme] ?? 0) + 1;
       picked.add(c);
       if (variety) varied.add(c);
       return true;
@@ -836,8 +919,7 @@ class Ranker {
             (recent.contains(c.title.id) ? 0 : 0.2);
         return value(b).compareTo(value(a));
       });
-      if (candidates.isEmpty) break;
-      take(candidates.first, variety: true);
+      if (!candidates.any((c) => take(c, variety: true))) break;
     }
     while (picked.length < size) {
       final candidates =
@@ -864,12 +946,16 @@ class Ranker {
             (c.title.year != null && c.title.year! >= 2023 ? 0.05 : 0);
         return value(b).compareTo(value(a));
       });
-      if (candidates.isEmpty) break;
-      take(candidates.first, variety: true);
+      if (!candidates.any((c) => take(c, variety: true))) break;
     }
     for (final c in scored) {
       if (picked.length >= size) break;
       take(c);
+    }
+    // The theme cap never shortens the deck: fill from what it skipped.
+    for (final c in scored) {
+      if (picked.length >= size) break;
+      take(c, capped: false);
     }
     final ordered = picked.where((c) => !varied.contains(c)).toList();
     for (var i = 0; i < varied.length; i++) {

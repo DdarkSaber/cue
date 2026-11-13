@@ -189,4 +189,70 @@ void main() {
       expect(Ranker.penaltyOf({'a', 'b'}, const {'a': -9.0, 'b': -8.0}), 0.3);
     });
   });
+
+  group('theme cap', () {
+    final romance = [
+      for (var i = 0; i < 10; i++)
+        _t('r$i', genres: const ['Romance'], score: 95),
+    ];
+    final others = [
+      for (var i = 0; i < 20; i++)
+        _t('o$i', genres: [_genres[i % _genres.length]], score: 55),
+    ];
+
+    test('primary theme is the rarest genre in the pool, ties by name', () {
+      final pool = [
+        _t('a', genres: const ['Action', 'Romance']),
+        _t('b', genres: const ['Action']),
+        _t('c', genres: const ['Action', 'Comedy']),
+        _t('d', genres: const ['Zany', 'Comedy']),
+        _t('e', genres: const []),
+      ];
+      final themes = Ranker.primaryThemes(pool);
+      expect(themes['a'], 'romance');
+      expect(themes['b'], 'action');
+      // Comedy (2 titles) is commoner than Zany (1).
+      expect(themes['d'], 'zany');
+      expect(themes['c'], 'comedy');
+      expect(themes.containsKey('e'), isFalse);
+      expect(Ranker.themeCap(10), 2);
+      expect(Ranker.themeCap(20), 4);
+    });
+
+    for (final explore in [0.35, null]) {
+      test('at most two Romance-primary cards in ten (explore $explore)', () {
+        for (var seed = 1; seed <= 5; seed++) {
+          final cards = deal(
+            [...romance, ...others],
+            const ProfileSignals(),
+            seed: seed,
+            explore: explore,
+          );
+          expect(cards, hasLength(10));
+          final n = cards
+              .take(10)
+              .where((c) => c.title.genres.contains('Romance'))
+              .length;
+          expect(n, lessThanOrEqualTo(2), reason: 'seed $seed');
+          // The best of the capped theme still lead.
+          expect(
+            cards.where((c) => c.title.genres.contains('Romance')),
+            isNotEmpty,
+          );
+        }
+      });
+
+      test('the cap never shortens the deck (explore $explore)', () {
+        final cards = deal(
+          [
+            ...romance,
+            _t('x', genres: const ['Action']),
+          ],
+          const ProfileSignals(),
+          explore: explore,
+        );
+        expect(cards, hasLength(10));
+      });
+    }
+  });
 }
