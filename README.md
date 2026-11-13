@@ -161,6 +161,37 @@ Install `app/build/app/outputs/flutter-apk/app-release.apk` on your phone.
 Release signing uses `app/android/key.properties`; without it, the build uses
 the **debug key**, not store-release credentials.
 
+#### Signed releases from GitHub Actions
+
+`.github/workflows/release.yml` builds a release-signed APK when a `v*` tag is
+pushed (or when run by hand with an existing tag) and attaches it to that
+tag's GitHub release. It never falls back to the debug key: if a signing
+secret is missing, the run fails.
+
+Create an upload keystore once, outside the repo, and keep it and its
+passwords somewhere safe (losing it means users cannot update in place):
+
+```sh
+keytool -genkeypair -v -keystore upload.jks -storetype JKS \
+  -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+base64 -w0 upload.jks > upload.jks.b64   # macOS: base64 -i upload.jks -o upload.jks.b64
+```
+
+Then add four repository secrets (Settings → Secrets and variables →
+Actions):
+
+| Secret | Value |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | contents of `upload.jks.b64` |
+| `ANDROID_KEYSTORE_PASSWORD` | the keystore password |
+| `ANDROID_KEY_ALIAS` | the alias (`upload` above) |
+| `ANDROID_KEY_PASSWORD` | the key password |
+
+Delete `upload.jks.b64` afterwards. To build signed locally instead, put the
+keystore at `app/android/upload.jks` and write `app/android/key.properties`
+with `storeFile=../upload.jks`, `storePassword`, `keyAlias` and `keyPassword`
+(both files are gitignored).
+
 [Development, optional keys and deployment](docs/SETUP.md)
 
 ## Tech stack

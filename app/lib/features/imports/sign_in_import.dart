@@ -165,8 +165,17 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
     if (mounted) setState(() => _token = t.access);
   }
 
-  /// Renews the access token with the kept refresh token; null when that is
-  /// not possible (no refresh token, or the provider refused it).
+  /// Whether [e] says the provider refused the sign-in itself, as opposed
+  /// to an outage, a rate limit or a broken answer. Only then is the kept
+  /// sign-in dropped. The Worker answers 401 `token_expired`; for the
+  /// renewal call only, a bare 401 from an older Worker counts too.
+  static bool _refused(CatalogUnavailable e, {bool renewal = false}) =>
+      e.code == 'token_expired' || (renewal && e.code == 'http_401');
+
+  /// Renews the access token with the kept refresh token. Null when that is
+  /// not possible: no refresh token, or the provider refused it. Any other
+  /// failure (offline, outage, rate limit) is rethrown so the caller keeps
+  /// the sign-in.
   Future<String?> _renew() async {
     final id = widget.provider.id;
     final rt = await ref.read(tokenStoreProvider).readRefresh(id);
@@ -176,35 +185,41 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
       await _keep(t);
       return t.access;
     } on CatalogUnavailable catch (e) {
-      if (e.code == 'offline') rethrow;
-      return null;
+      if (_refused(e, renewal: true)) return null;
+      rethrow;
     }
   }
 
   /// Reads the list again with the kept sign-in, renewing it first when it
   /// has expired (or is about to) and once more if the provider refuses it.
-  /// Only when renewing fails is the person asked to sign in again.
+  /// The person is asked to sign in again only when the provider says the
+  /// sign-in itself is no longer valid; an outage keeps it.
   Future<void> _importAgain() async {
     var token = _token;
     if (token == null) return;
-    await _run(() async {
+    await _run(keepsSignIn: true, () async {
       final gateway = ref.read(catalogGatewayProvider);
       final id = widget.provider.id;
       final expiry = await ref.read(tokenStoreProvider).readExpiry(id);
       final soon = DateTime.now().add(const Duration(hours: 1));
       if (expiry != null && expiry.isBefore(soon)) {
-        token = await _renew() ?? token;
+        try {
+          token = await _renew() ?? token;
+        } on CatalogUnavailable catch (e) {
+          // The renewal service is down: the kept token may still work.
+          if (e.code == 'offline') rethrow;
+        }
       }
       try {
         return await gateway.listSignedIn(id, token!);
       } on CatalogUnavailable catch (e) {
-        if (e.code == 'offline') rethrow;
+        if (!_refused(e)) rethrow;
         final renewed = await _renew();
         if (renewed != null) {
           try {
             return await gateway.listSignedIn(id, renewed);
           } on CatalogUnavailable catch (e2) {
-            if (e2.code == 'offline') rethrow;
+            if (!_refused(e2)) rethrow;
           }
         }
         await _signOut();
@@ -223,7 +238,12 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
     }
   }
 
-  Future<void> _run(Future<List<Map<String, dynamic>>> Function() load) async {
+  /// [keepsSignIn]: the call used the kept sign-in, so a failure says that
+  /// sign-in is still there to try again with.
+  Future<void> _run(
+    Future<List<Map<String, dynamic>>> Function() load, {
+    bool keepsSignIn = false,
+  }) async {
     setState(() {
       _busy = true;
       _message = null;
@@ -248,6 +268,9 @@ class _SignInSourceRowState extends ConsumerState<SignInSourceRow> {
           'offline' => 'Offline. Try again when connected.',
           'expired' =>
             'Your ${widget.provider.label} sign-in expired. Sign in again.',
+          _ when keepsSignIn && _token != null =>
+            '${widget.provider.label} is not answering right now. Your '
+                'sign-in is kept; try again in a minute.',
           _ => '${widget.provider.label} did not answer. Try again later.',
         },
       );

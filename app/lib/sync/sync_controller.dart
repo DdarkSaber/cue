@@ -53,6 +53,9 @@ String syncMessage(Object e) => switch (e) {
   SyncFailed(code: 'bad_code') =>
     'That is not a Cue sync code. Check the 32 characters.',
   SyncFailed(code: 'no_copy') => 'No synced library found for that code.',
+  SyncFailed(code: 'quota') =>
+    'Sync storage is full right now; your library is safe on this device. '
+        'Try again tomorrow.',
   SyncFailed(code: 'http_503') => 'Sync is not set up on this Cue yet.',
   SyncFailed(code: 'http_403') =>
     'That code does not match the synced library.',

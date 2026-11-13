@@ -247,6 +247,7 @@ void main() {
       final service = TechnicalDiagnostics(
         'https://synthetic.test',
         store,
+        clock: () => server.now,
         clientFactory: () => MockClient(server.call),
       );
       addTearDown(service.dispose);
@@ -260,30 +261,118 @@ void main() {
     },
   );
 
-  test('quota and transport errors do not rotate a live capability', () async {
-    final server = _Server();
-    var fail = false;
+  // The service and the synthetic server share one clock. With the wall
+  // clock on the device side, a session the server created on its fixed
+  // date (2026-11-01, expiring 2026-11-08) looked expired to the client from
+  // 2026-11-08 on, so it was retired locally whatever the server answered.
+  TechnicalDiagnostics live(_Server server, Map<String, http.Response>? fail) {
     final service = TechnicalDiagnostics(
       'https://synthetic.test',
       ConsentMemory(),
-      clientFactory: () => MockClient(
-        (r) => fail
-            ? Future.value(http.Response('{"error":"unavailable"}', 503))
-            : server.call(r),
-      ),
+      clock: () => server.now,
+      clientFactory: () => MockClient((r) {
+        final f = fail?[r.method];
+        if (f != null) {
+          server.requests.add(r);
+          return Future.value(f);
+        }
+        return server.call(r);
+      }),
     );
     addTearDown(service.dispose);
+    return service;
+  }
+
+  test(
+    'transport errors and rate limits do not rotate a live capability',
+    () async {
+      for (final failure in [
+        http.Response('{"error":"unavailable"}', 503),
+        http.Response('{"error":"rate_limited"}', 429),
+      ]) {
+        final server = _Server();
+        final fail = <String, http.Response>{};
+        final service = live(server, fail);
+        await service.load();
+        await service.setEnabled(true);
+        _event(service);
+        await service.upload();
+        final code = service.recoveryCode;
+        expect(code, isNotNull);
+        fail['PUT'] = failure;
+        _event(service);
+        await service.upload();
+        expect(service.recoveryCode, code);
+        expect(service.pendingCount, 1);
+        expect(server.requests.map((r) => r.method), ['POST', 'PUT']);
+        expect(
+          service.message,
+          failure.statusCode == 429
+              ? contains('Retry later')
+              : contains('unavailable'),
+        );
+      }
+    },
+  );
+
+  test('a full session rolls over to a new one in the same upload', () async {
+    final server = _Server();
+    final fail = <String, http.Response>{};
+    final service = live(server, fail);
     await service.load();
     await service.setEnabled(true);
     _event(service);
     await service.upload();
-    final code = service.recoveryCode;
-    fail = true;
+    final first = service.recoveryCode!;
+    fail['PUT'] = http.Response('{"error":"quota_exceeded"}', 429);
+    _event(service);
     _event(service);
     await service.upload();
-    expect(service.recoveryCode, code);
+    expect(server.requests.map((r) => r.method), ['POST', 'PUT', 'POST']);
+    expect(service.recoveryCode, isNot(first));
+    expect(service.pendingCount, 0);
+    // Nothing that was pending was dropped: both went to the new session.
+    expect(server.sessions[service.sessionId]!.events, hasLength(2));
+    expect(service.message, contains('new private code'));
+    // Later uploads use the new code.
+    fail.clear();
+    _event(service);
+    await service.upload();
+    expect(server.requests.last.method, 'PUT');
+    expect(server.sessions[service.sessionId]!.events, hasLength(3));
+  });
+
+  test('a rollover refused by the global cap stops without looping', () async {
+    final server = _Server();
+    final fail = <String, http.Response>{};
+    final service = live(server, fail);
+    await service.load();
+    await service.setEnabled(true);
+    _event(service);
+    await service.upload();
+    fail['PUT'] = http.Response('{"error":"quota_exceeded"}', 429);
+    fail['POST'] = http.Response('{"error":"quota_exceeded"}', 429);
+    _event(service);
+    await service.upload();
+    // One PUT and one rollover POST, never a second rollover.
+    expect(server.requests.map((r) => r.method), ['POST', 'PUT', 'POST']);
+    expect(service.recoveryCode, isNull);
     expect(service.pendingCount, 1);
-    expect(service.message, contains('unavailable'));
+    expect(service.message, contains('quota'));
+    // The next upload tries one new session again, still bounded.
+    await service.upload();
+    expect(server.requests.map((r) => r.method), [
+      'POST',
+      'PUT',
+      'POST',
+      'POST',
+    ]);
+    expect(service.pendingCount, 1);
+    // Once the cap frees up, the pending event is delivered.
+    fail.clear();
+    await service.upload();
+    expect(service.pendingCount, 0);
+    expect(service.recoveryCode, isNotNull);
   });
 
   test('creation persistence failure fails closed without exposing unrecorded code', () async {
@@ -292,6 +381,7 @@ void main() {
     final service = TechnicalDiagnostics(
       'https://synthetic.test',
       store,
+      clock: () => server.now,
       clientFactory: () => MockClient(server.call),
     );
     addTearDown(service.dispose);
@@ -314,6 +404,7 @@ void main() {
     final service = TechnicalDiagnostics(
       'https://synthetic.test',
       ConsentMemory(),
+      clock: () => server.now,
       clientFactory: () => MockClient((r) {
         if (first) {
           first = false;
@@ -358,6 +449,7 @@ void main() {
       final service = TechnicalDiagnostics(
         'https://synthetic.test',
         store,
+        clock: () => server.now,
         clientFactory: () => MockClient(server.call),
       );
       addTearDown(service.dispose);
