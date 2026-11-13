@@ -11,6 +11,7 @@ import 'mood_tags.dart';
 import 'reasons.dart';
 import 'recommendation_context.dart';
 import 'franchise_identity.dart';
+import 'learning/learned_taste.dart';
 
 /// Everything personal the ranker may use. Built from the active profile
 /// only; no names or constants about any person.
@@ -344,6 +345,7 @@ class Ranker {
     bool preferShorter = false,
     List<InterestCluster> clusters = const [],
     Set<String> recentExposures = const {},
+    LearnedTaste? swipeTaste,
   }) {
     final features = t.features;
     final clusterTaste = clusters.isEmpty ? null : clusterAffinity(t, clusters);
@@ -387,7 +389,8 @@ class Ranker {
     final learned = f.mood == QuickMood.forYou && (target?.confidence ?? 0) > 0;
     final moodW = learned ? 0.10 + 0.25 * target!.confidence : 0.20;
     final tasteW = max(0.25, 0.40 - (moodW - 0.20));
-    return tasteW * taste +
+    final hand =
+        tasteW * taste +
         moodW * mood +
         0.15 * quality +
         0.15 * freshness +
@@ -398,6 +401,10 @@ class Ranker {
         (recentExposures.contains(t.id) ? 0.04 : 0) +
         (preferShorter ? _lengthPreference(t) : 0) +
         seedBoost(s.becauseOf[t.id]?.length ?? 0);
+    // What this person's own swipes say, trusted more as they accumulate.
+    // Revisit deals from the library, which swipes on new picks say little
+    // about.
+    return swipeTaste == null || f.isRevisit ? hand : swipeTaste.mix(t, hand);
   }
 
   /// Taste-seeded boost: +0.04 when one liked title's "more like this"
@@ -464,8 +471,10 @@ class Ranker {
     Set<String> skipFranchises = const {},
     bool shortestFirst = false,
     int size = deckSize,
+    LearnedTaste? swipeTaste,
   }) {
     final scored = <RankedCard>[];
+    if (swipeTaste != null && swipeTaste.blend > 0) swipeTaste.calibrate(pool);
     for (final t in pool) {
       if (skip.contains(t.id) || skipFranchises.contains(t.franchiseKey)) {
         continue;
@@ -492,6 +501,7 @@ class Ranker {
             preferShorter: preferShorter,
             clusters: clusters,
             recentExposures: recentExposures,
+            swipeTaste: swipeTaste,
           ) +
           _random.nextDouble() * 0.02;
       scored.add(
@@ -531,6 +541,7 @@ class Ranker {
           clusters,
           explorePreference,
           recentExposures,
+          swipeTaste,
         ))
           RankedCard(
             c.title,
@@ -637,6 +648,7 @@ class Ranker {
     List<InterestCluster> clusters,
     double preference,
     Set<String> recent,
+    LearnedTaste? swipeTaste,
   ) {
     final familiar =
         (size *
@@ -699,8 +711,15 @@ class Ranker {
               )
               .toList()
             ..shuffle(_random);
+      // One draw per candidate: a sort must compare stable values.
+      final worth = <String, double>{
+        if (swipeTaste != null && swipeTaste.blend > 0)
+          for (final c in candidates)
+            c.title.id: swipeTaste.explore(c.title, _random),
+      };
       candidates.sort((a, b) {
         double value(RankedCard c) =>
+            (worth[c.title.id] ?? 0) +
             (picked.any((p) => p.title.kind == c.title.kind) ? 0 : 1) +
             0.5 * kindAffinity(signals, c.title.kind) +
             (recent.contains(c.title.id) ? 0 : 0.2) +
