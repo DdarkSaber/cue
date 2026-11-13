@@ -4,6 +4,8 @@ import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
+import '../diagnostics/technical_diagnostics.dart'
+    show DiagnosticOperation, diagnosticOperationHeader;
 import '../domain/models/title.dart';
 import 'catalog_gateway.dart';
 import 'request_priority.dart';
@@ -18,12 +20,24 @@ class AniListClient {
     Future<void> Function(Duration)? sleep,
     DateTime Function()? clock,
     this.maxPerMinute = defaultMaxPerMinute,
+    this.onInvalid,
+    this.tagOperations = false,
   }) : _client = client ?? http.Client(),
        _sleep = sleep ?? Future<void>.delayed,
        _now = clock ?? DateTime.now;
   final http.Client _client;
   final Future<void> Function(Duration) _sleep;
   final DateTime Function() _now;
+
+  /// Called when AniList answered 200 with an unusable body (GraphQL
+  /// `errors`, not JSON), so diagnostics can count it as a failure; the
+  /// HTTP layer only sees the 200. Gets the operation, never the body.
+  final void Function(DiagnosticOperation operation)? onInvalid;
+
+  /// Adds [diagnosticOperationHeader] to each request. Only for a client
+  /// wrapped in a DiagnosticHttpClient, which removes the header before the
+  /// request leaves the device: AniList never receives it.
+  final bool tagOperations;
 
   /// Requests this client lets through in any 60 seconds, shared by every
   /// caller (deck refills, taste seeds, AI-pick lookups, imports). AniList's
@@ -89,6 +103,10 @@ class AniListClient {
     final wait = slot.difference(now);
     if (wait > Duration.zero) await _sleep(wait);
   }
+
+  /// Retries after a 429 (three attempts in all). Callers must not add
+  /// their own retries for a `rate_limited` with `retriesSpent`.
+  static const rateLimitRetries = 2;
 
   /// AniList's degraded limit is 30 a minute; after a 429 never go faster.
   static const _minGapAfter429 = Duration(milliseconds: 2050);
@@ -196,13 +214,18 @@ class AniListClient {
 
   static const _viewer = 'query { Viewer { name } }';
 
+  /// [op] labels the request for technical diagnostics (a header the
+  /// diagnostics client strips before sending); nothing else about the
+  /// request is labelled.
   Future<Map<String, dynamic>?> _query(
     String query,
     Map<String, Object?> variables, {
+    required DiagnosticOperation op,
     String? token,
   }) async {
     late http.Response res;
-    // A 429 waits as long as AniList asks, then tries again (three times).
+    // A 429 waits as long as AniList asks, then tries again: at most
+    // [rateLimitRetries] times, so one call never blocks for minutes.
     for (var attempt = 0; ; attempt++) {
       await _acquire();
       await _pace();
@@ -213,6 +236,7 @@ class AniListClient {
               headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
+                if (tagOperations) diagnosticOperationHeader: op.name,
                 'Authorization': ?(token == null ? null : 'Bearer $token'),
               },
               // Unset variables are left out, never sent as null: AniList
@@ -239,10 +263,11 @@ class AniListClient {
       if (res.statusCode != 429) break;
       if (_gap < _minGapAfter429) _gap = _minGapAfter429;
       final reported = int.tryParse(res.headers['retry-after'] ?? '');
-      if (attempt >= 3) {
+      if (attempt >= rateLimitRetries) {
         throw CatalogUnavailable(
           'rate_limited',
           retryAfter: reported == null ? null : Duration(seconds: reported),
+          retriesSpent: true,
         );
       }
       final after = reported ?? 60;
@@ -256,10 +281,12 @@ class AniListClient {
     try {
       final body = jsonDecode(utf8.decode(res.bodyBytes)) as Map;
       if (body['errors'] is List && (body['errors'] as List).isNotEmpty) {
+        onInvalid?.call(op);
         throw const CatalogUnavailable('upstream_error');
       }
       return (body['data'] as Map?)?.cast<String, dynamic>();
     } on FormatException {
+      onInvalid?.call(op);
       throw const CatalogUnavailable('bad_response');
     }
   }
@@ -295,7 +322,7 @@ class AniListClient {
           : const ['CANCELLED'],
       // ID breaks ties so pages stay stable while scores move.
       'sort': [order, 'ID'],
-    });
+    }, op: DiagnosticOperation.discover);
     final p = data?['Page'] as Map?;
     return CatalogPageDto([
       for (final m in (p?['media'] as List?) ?? const []) normalize(m as Map),
@@ -303,7 +330,9 @@ class AniListClient {
   }
 
   Future<CatalogItemDto?> title(String id) async {
-    final data = await _query(_title, {'id': int.parse(id)});
+    final data = await _query(_title, {
+      'id': int.parse(id),
+    }, op: DiagnosticOperation.title);
     final m = data?['Media'] as Map?;
     return m == null ? null : normalize(m);
   }
@@ -317,7 +346,7 @@ class AniListClient {
       'country': kind == MediaKind.manhwa || kind == MediaKind.manhua
           ? k?.country
           : null,
-    });
+    }, op: DiagnosticOperation.search);
     final p = data?['Page'] as Map?;
     return [
       for (final m in (p?['media'] as List?) ?? const []) normalize(m as Map),
@@ -349,6 +378,8 @@ class AniListClient {
     final data = await _query(
       'query (${decls.join(', ')}) { ${parts.join(' ')} }',
       vars,
+      // Import matching is the only caller.
+      op: DiagnosticOperation.match,
     );
     return [
       for (var i = 0; i < items.length; i++)
@@ -369,7 +400,7 @@ class AniListClient {
     final data = await _query(_byIds, {
       'ids': ids.take(50).toList(),
       'type': anime ? 'ANIME' : 'MANGA',
-    });
+    }, op: DiagnosticOperation.title);
     final p = data?['Page'] as Map?;
     return [
       for (final m in (p?['media'] as List?) ?? const []) normalize(m as Map),
@@ -381,7 +412,7 @@ class AniListClient {
     final data = await _query(_byMal, {
       'ids': ids.take(50).toList(),
       'type': type,
-    });
+    }, op: DiagnosticOperation.title);
     final p = data?['Page'] as Map?;
     return [
       for (final m in (p?['media'] as List?) ?? const []) normalize(m as Map),
@@ -397,7 +428,7 @@ class AniListClient {
       final chunk = ids.skip(s).take(recommendationBatch).toList();
       final data = await _query(_recommendations(chunk.length), {
         for (var i = 0; i < chunk.length; i++) 'i$i': chunk[i],
-      });
+      }, op: DiagnosticOperation.title);
       for (var i = 0; i < chunk.length; i++) {
         final nodes =
             (((data?['r$i'] as Map?)?['recommendations'] as Map?)?['nodes']
@@ -423,7 +454,12 @@ class AniListClient {
 
   /// The name of the account a sign-in token belongs to.
   Future<String?> viewerName(String token) async {
-    final v = await _query(_viewer, const {}, token: token);
+    final v = await _query(
+      _viewer,
+      const {},
+      op: DiagnosticOperation.import,
+      token: token,
+    );
     return (v?['Viewer'] as Map?)?['name'] as String?;
   }
 
@@ -434,16 +470,23 @@ class AniListClient {
   }) async {
     var user = name;
     if (user == null && token != null) {
-      final v = await _query(_viewer, const {}, token: token);
+      final v = await _query(
+        _viewer,
+        const {},
+        op: DiagnosticOperation.import,
+        token: token,
+      );
       user = (v?['Viewer'] as Map?)?['name'] as String?;
       if (user == null) throw const CatalogUnavailable('upstream_error');
     }
     final out = <Map<String, dynamic>>[];
     for (final type in ['ANIME', 'MANGA']) {
-      final data = await _query(_list, {
-        'name': user,
-        'type': type,
-      }, token: token);
+      final data = await _query(
+        _list,
+        {'name': user, 'type': type},
+        op: DiagnosticOperation.import,
+        token: token,
+      );
       final groups =
           ((data?['MediaListCollection'] as Map?)?['lists'] as List?) ??
           const [];

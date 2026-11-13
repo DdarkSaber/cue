@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:cue/data/anilist_client.dart';
+import 'package:cue/data/catalog_gateway.dart';
 import 'package:cue/diagnostics/technical_diagnostics.dart';
+import 'package:cue/domain/models/title.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -244,5 +247,164 @@ void main() {
     expect(service.enabled, isFalse);
     expect(service.pendingCount, 0);
     expect(service.message, contains('off'));
+  });
+
+  group('operation labels and body failures', () {
+    late List<http.Request> uploads;
+    late TechnicalDiagnostics service;
+
+    setUp(() async {
+      uploads = [];
+      service = TechnicalDiagnostics(
+        'https://synthetic.test',
+        ConsentMemory(),
+        clientFactory: () => MockClient((r) async {
+          uploads.add(r);
+          return _ack(r);
+        }),
+      );
+      await service.load();
+      await service.setEnabled(true);
+    });
+    tearDown(() => service.dispose());
+
+    Future<List<Map<String, dynamic>>> events() async {
+      await service.upload();
+      return [
+        for (final u in uploads)
+          for (final e in (jsonDecode(u.body) as Map)['events'] as List)
+            Map<String, dynamic>.from(e as Map),
+      ];
+    }
+
+    test(
+      'Worker routes are labelled; sync, uploads and images are not',
+      () async {
+        final wrapped = DiagnosticHttpClient(
+          MockClient((r) async => http.Response('{}', 200)),
+          service,
+        );
+        addTearDown(wrapped.close);
+        for (final path in [
+          '/catalog/mal-search',
+          '/catalog/names',
+          '/catalog/recommendations/tmdb/1',
+          '/ai/recommend',
+          '/sync/abc',
+          '/diagnostics',
+          '/catalog/image',
+        ]) {
+          await wrapped.post(Uri.parse('https://synthetic.test$path'));
+        }
+        final ops = [for (final e in await events()) e['operation']];
+        expect(ops, ['aliases', 'aliases', 'discover', 'mood']);
+      },
+    );
+
+    test('AniList requests carry their own operation, and AniList never sees the tag', () async {
+      final seen = <http.BaseRequest>[];
+      final anilist = AniListClient(
+        client: DiagnosticHttpClient(
+          MockClient((r) async {
+            seen.add(r);
+            return http.Response(
+              jsonEncode({
+                'data': {
+                  'Page': {
+                    'media': [],
+                    'pageInfo': {'hasNextPage': false},
+                  },
+                  'Viewer': {'name': 'x'},
+                },
+              }),
+              200,
+            );
+          }),
+          service,
+          anilist: true,
+        ),
+        tagOperations: true,
+        sleep: (_) async {},
+      );
+      await anilist.discover(MediaKind.anime);
+      await anilist.search('PRIVATE_TITLE');
+      await anilist.searchMany(const [MatchQuery('PRIVATE_TITLE')]);
+      await anilist.byIds(const [1], anime: true);
+      await anilist.viewerName('PRIVATE_TOKEN');
+      expect(
+        seen.every(
+          (r) => !r.headers.keys.any(
+            (k) => k.toLowerCase() == diagnosticOperationHeader.toLowerCase(),
+          ),
+        ),
+        isTrue,
+      );
+      final ops = [for (final e in await events()) e['operation']];
+      expect(ops, ['discover', 'search', 'match', 'title', 'import']);
+      expect(uploads.single.body, isNot(contains('PRIVATE')));
+    });
+
+    test(
+      'a 200 with GraphQL errors or no JSON is reported as invalid',
+      () async {
+        var body = jsonEncode({
+          'errors': [
+            {'message': 'PRIVATE_ERROR'},
+          ],
+        });
+        final anilist = AniListClient(
+          client: DiagnosticHttpClient(
+            MockClient((r) async => http.Response(body, 200)),
+            service,
+            anilist: true,
+          ),
+          tagOperations: true,
+          sleep: (_) async {},
+          onInvalid: (op) =>
+              service.reportInvalid(DiagnosticProvider.anilist, op),
+        );
+        await expectLater(
+          anilist.title('1'),
+          throwsA(isA<CatalogUnavailable>()),
+        );
+        body = '<html>PRIVATE_PAGE</html>';
+        await expectLater(
+          anilist.discover(MediaKind.anime),
+          throwsA(isA<CatalogUnavailable>()),
+        );
+        final all = await events();
+        final invalid = [
+          for (final e in all)
+            if (e['status'] == 'failed') e,
+        ];
+        expect(
+          [for (final e in invalid) e['operation']],
+          ['title', 'discover'],
+        );
+        expect(
+          invalid.every((e) => e['errorCode'] == 'invalid_response'),
+          isTrue,
+        );
+        expect(invalid.every((e) => e['durationMs'] == 0), isTrue);
+        expect(invalid.every((e) => e['provider'] == 'anilist'), isTrue);
+        expect(uploads.single.body, isNot(contains('PRIVATE')));
+      },
+    );
+
+    test('an untagged AniList client sends no tag at all', () async {
+      final seen = <http.BaseRequest>[];
+      final anilist = AniListClient(
+        client: MockClient((r) async {
+          seen.add(r);
+          return http.Response('{"data":{}}', 200);
+        }),
+        sleep: (_) async {},
+      );
+      await anilist.title('1');
+      expect(
+        seen.single.headers.keys.map((k) => k.toLowerCase()),
+        isNot(contains(diagnosticOperationHeader.toLowerCase())),
+      );
+    });
   });
 }
