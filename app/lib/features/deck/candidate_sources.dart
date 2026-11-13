@@ -2,12 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart' hide Title;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 
 import '../../app/config.dart';
 import '../../app/providers.dart';
 import '../../app/tokens.dart';
 import '../../data/ai_recommendation_client.dart';
 import '../../data/ai_recommendation_repository.dart';
+import '../../diagnostics/technical_diagnostics.dart';
 import '../../domain/ai_taste.dart';
 import '../../domain/models/settings.dart';
 import '../../domain/models/title.dart';
@@ -74,9 +76,14 @@ class AiTasteSource implements CandidateSource {
   }
 }
 
-final aiRecommendationClientProvider = Provider<AiRecommendationClient>(
-  (ref) => HttpAiRecommendationClient(cueApiBase),
-);
+final aiRecommendationClientProvider = Provider<AiRecommendationClient>((ref) {
+  final client = DiagnosticHttpClient(
+    http.Client(),
+    ref.watch(technicalDiagnosticsProvider),
+  );
+  ref.onDispose(client.close);
+  return HttpAiRecommendationClient(cueApiBase, client: client);
+});
 
 final aiRecommendationRepositoryProvider = Provider<AiRecommendationRepository>(
   (ref) => AiRecommendationRepository(

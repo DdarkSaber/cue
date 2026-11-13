@@ -73,22 +73,30 @@ void main() {
     expect(sleeps.single, const Duration(seconds: 60));
   });
 
-  test('gives up after three retries with a rate_limited error', () async {
+  test('gives up after two retries with a spent rate_limited error', () async {
     var calls = 0;
+    final waits = <Duration>[];
     final client = AniListClient(
       client: MockClient((_) async {
         calls++;
-        return http.Response('{}', 429, headers: {'retry-after': '1'});
+        return http.Response('{}', 429, headers: {'retry-after': '60'});
       }),
-      sleep: (_) async {},
+      sleep: (d) async => waits.add(d),
     );
     await expectLater(
       client.discover(MediaKind.anime),
       throwsA(
-        isA<CatalogUnavailable>().having((e) => e.code, 'code', 'rate_limited'),
+        isA<CatalogUnavailable>()
+            .having((e) => e.code, 'code', 'rate_limited')
+            .having((e) => e.retriesSpent, 'retriesSpent', isTrue),
       ),
     );
-    expect(calls, 4);
+    expect(calls, 3);
+    // Two Retry-After waits at most: one call never blocks for minutes.
+    expect(
+      waits.where((d) => d == const Duration(seconds: 60)),
+      hasLength(AniListClient.rateLimitRetries),
+    );
   });
 
   test(
