@@ -19,6 +19,34 @@ Future<bool?> showReviewSheet(BuildContext context, SourceObservation o) =>
       body: (_) => _ReviewBody(observation: o),
     );
 
+const reviewFormats = {
+  'TV': 'TV',
+  'TV_SHORT': 'TV short',
+  'MOVIE': 'Movie',
+  'SPECIAL': 'Special',
+  'OVA': 'OVA',
+  'ONA': 'ONA',
+  'ONE_SHOT': 'One-shot',
+};
+
+/// A catalog search result as a title, enough to draw its row and poster.
+Title reviewPreview(CatalogItemDto r) {
+  final j = r.json;
+  return Title(
+    id: 'review:${j['provider']}:${j['providerId']}',
+    kind: r.kind,
+    titleEn: j['titleEn'] as String?,
+    titleRomaji: j['titleRomaji'] as String?,
+    titleNative: j['titleNative'] as String?,
+    year: (j['year'] as num?)?.toInt(),
+    format: j['format'] as String?,
+    status: (j['status'] as String?) ?? 'unknown',
+    episodes: (j['episodes'] as num?)?.toInt(),
+    chapters: (j['chapters'] as num?)?.toInt(),
+    posterUrl: j['posterUrl'] as String?,
+  );
+}
+
 class _ReviewBody extends ConsumerStatefulWidget {
   const _ReviewBody({required this.observation});
   final SourceObservation observation;
@@ -136,39 +164,12 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
     );
   }
 
-  static const _formats = {
-    'TV': 'TV',
-    'TV_SHORT': 'TV short',
-    'MOVIE': 'Movie',
-    'SPECIAL': 'Special',
-    'OVA': 'OVA',
-    'ONA': 'ONA',
-    'ONE_SHOT': 'One-shot',
-  };
-
-  static Title _preview(CatalogItemDto r) {
-    final j = r.json;
-    return Title(
-      id: 'review:${j['provider']}:${j['providerId']}',
-      kind: r.kind,
-      titleEn: j['titleEn'] as String?,
-      titleRomaji: j['titleRomaji'] as String?,
-      titleNative: j['titleNative'] as String?,
-      year: (j['year'] as num?)?.toInt(),
-      format: j['format'] as String?,
-      status: (j['status'] as String?) ?? 'unknown',
-      episodes: (j['episodes'] as num?)?.toInt(),
-      chapters: (j['chapters'] as num?)?.toInt(),
-      posterUrl: j['posterUrl'] as String?,
-    );
-  }
-
   Widget _row(CatalogItemDto r) {
-    final t = _preview(r);
+    final t = reviewPreview(r);
     final ticked = _picked.contains(r);
     final meta = [
       r.kind.label,
-      ?_formats[t.format],
+      ?reviewFormats[t.format],
       if (t.year != null) '${t.year}',
       ?t.lengthLabel,
     ].join(' · ');

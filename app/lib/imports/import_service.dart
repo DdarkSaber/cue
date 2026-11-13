@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart';
 
-import '../data/catalog_gateway.dart' show CatalogItemDto;
+import '../data/catalog_gateway.dart' show CatalogItemDto, CatalogUnavailable;
 import '../data/catalog_repository.dart';
 import '../data/db/database.dart';
 import '../data/profile_repository.dart';
@@ -115,6 +115,32 @@ int _rank(LibraryState s) => switch (s) {
 
 /// Stage, commit and undo imports. Commit is one transaction that records
 /// before and after rows so "Undo this import" reverses only that batch.
+/// What a second look at the review queue achieved.
+class RecheckSummary {
+  const RecheckSummary({
+    this.checked = 0,
+    this.matched = 0,
+    this.suggested = 0,
+    this.unchecked = 0,
+    this.remaining = 0,
+  });
+
+  /// Entries looked at before finishing or being stopped.
+  final int checked;
+
+  /// Linked on their own (one unambiguous exact title).
+  final int matched;
+
+  /// Have a close title waiting for a yes or no.
+  final int suggested;
+
+  /// The lookup could not finish (offline, busy); worth trying again.
+  final int unchecked;
+
+  /// Entries still in the queue afterwards, suggestions included.
+  final int remaining;
+}
+
 class ImportService {
   ImportService(this.db, this.catalog, {DateTime Function()? clock})
     : _now = clock ?? DateTime.now;
@@ -613,6 +639,104 @@ class ImportService {
           ..orderBy([(o) => OrderingTerm.asc(o.rawTitle)]))
         .get();
   }
+
+  static NormalizedRecord _recordOf(SourceObservation o) {
+    final raw = o.recordJson;
+    if (raw != null) {
+      return NormalizedRecord.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    }
+    final state = LibraryState.values.firstWhere(
+      (s) => s.code == o.status,
+      orElse: () => LibraryState.seen,
+    );
+    return NormalizedRecord(
+      sourceEntryKey: o.sourceEntryKey,
+      title: o.rawTitle,
+      state: state == LibraryState.none ? LibraryState.seen : state,
+      ratingOriginal: o.ratingOriginal,
+      ratingScale: o.ratingScale,
+      progressValue: o.progress,
+      activityDate: o.activityDate,
+    );
+  }
+
+  /// Checks the whole review queue again, more thoroughly than the import
+  /// did: the full matching chain first, then a title search per entry
+  /// still unmatched. An unambiguous exact title is linked; a close one is
+  /// stored as a suggestion to confirm; a lookup that could not finish is
+  /// counted as not checked rather than as no match. Stops early when
+  /// [cancelled] answers true.
+  Future<RecheckSummary> recheckReview(
+    String profileId, {
+    void Function(int done, int total)? onProgress,
+    bool Function()? cancelled,
+  }) async {
+    final queue = await reviewQueue(profileId);
+    var matched = 0, suggested = 0, unchecked = 0, done = 0;
+    onProgress?.call(0, queue.length);
+    for (var i = 0; i < queue.length; i += ImportMatcher.batchSize) {
+      if (cancelled?.call() ?? false) break;
+      final chunk = queue.skip(i).take(ImportMatcher.batchSize).toList();
+      final records = [for (final o in chunk) _recordOf(o)];
+      final matcher = ImportMatcher(catalog);
+      List<MatchedRecord?> first;
+      try {
+        first = await matcher.match(records);
+      } on CatalogUnavailable {
+        first = List.filled(chunk.length, null);
+      }
+      for (var j = 0; j < chunk.length; j++) {
+        if (cancelled?.call() ?? false) break;
+        final o = chunk[j];
+        var m = first[j];
+        if (m == null || (!m.resolved && m.candidate == null)) {
+          try {
+            m = await matcher.deepMatch(records[j]);
+          } on CatalogUnavailable {
+            m = null;
+          }
+        }
+        if (m == null || (m.unchecked && !m.resolved && m.candidate == null)) {
+          unchecked++;
+        } else if (m.adultHidden) {
+          // Stays as it is: adult titles are never linked on their own.
+        } else if (m.resolved && m.matchClass != MatchClass.similar) {
+          try {
+            await resolve(profileId, o, m.titleId!);
+            matched++;
+          } on StateError {
+            // Answered by hand while the check ran.
+          }
+        } else if (m.candidate != null) {
+          final json = jsonEncode(m.candidate!.json);
+          if (json != o.candidateJson) {
+            await (db.update(db.sourceObservations)
+                  ..where((x) => x.id.equals(o.id) & x.titleId.isNull()))
+                .write(SourceObservationsCompanion(candidateJson: Value(json)));
+          }
+          suggested++;
+        }
+        onProgress?.call(++done, queue.length);
+      }
+    }
+    if (matched > 0) {
+      await LibraryRepository(db, clock: _now).recomputeWeights(profileId);
+    }
+    return RecheckSummary(
+      checked: done,
+      matched: matched,
+      suggested: suggested,
+      unchecked: unchecked,
+      remaining: (await reviewQueue(profileId)).length,
+    );
+  }
+
+  /// Drops a stored suggestion the person said is wrong; the entry stays in
+  /// the queue to be matched by hand.
+  Future<void> rejectSuggestion(SourceObservation o) =>
+      (db.update(db.sourceObservations)..where((x) => x.id.equals(o.id))).write(
+        const SourceObservationsCompanion(candidateJson: Value(null)),
+      );
 
   /// Takes an entry out of the review queue ("not in my history"). The
   /// import itself and its undo are unaffected.

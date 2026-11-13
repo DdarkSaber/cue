@@ -824,6 +824,41 @@ class ImportMatcher {
     }
   }
 
+  /// A slower second look at one record, for the review queue: the search a
+  /// person would run by hand, tried with the cleaned title, the title as
+  /// written and its other names. One unambiguous exact title is linked;
+  /// otherwise the closest title is offered for a tick. `unchecked` when no
+  /// search could be completed, so a failed lookup is not read as no match.
+  Future<MatchedRecord> deepMatch(NormalizedRecord r) async {
+    final queries = <String>{
+      cleanQuery(r.title, screen: _isScreen(r.kind)),
+      cleanQuery(r.title),
+      for (final t in r.altTitles.take(2)) cleanQuery(t),
+    }..removeWhere((q) => q.trim().isEmpty);
+    final found = <String, CatalogItemDto>{};
+    var answered = false;
+    for (final q in queries.take(3)) {
+      final res = await catalog.search(q);
+      if (res.failureCode == null) answered = true;
+      for (final c in res.items) {
+        if (c.json['adult'] != true) found.putIfAbsent(c.titleId, () => c);
+      }
+      final exact = _exact(r, found.values.toList());
+      if (exact != null) {
+        final ids = await catalog.upsert([exact]);
+        return MatchedRecord(r, ids.first, MatchClass.suggested);
+      }
+    }
+    final like = _similar(r, found.values.toList());
+    if (like != null) return _offer(r, like);
+    return MatchedRecord(
+      r,
+      null,
+      MatchClass.unresolved,
+      unchecked: !answered && found.isEmpty,
+    );
+  }
+
   /// Offered, not linked: the catalog row is added only if ticked.
   MatchedRecord _offer(NormalizedRecord r, CatalogItemDto c) => MatchedRecord(
     r,
