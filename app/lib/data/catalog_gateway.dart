@@ -128,10 +128,18 @@ class WatchProvidersDto {
 
 /// Why a catalog call failed. Codes only; never request content.
 class CatalogUnavailable implements Exception {
-  const CatalogUnavailable(this.code, {this.retryAfter});
+  const CatalogUnavailable(
+    this.code, {
+    this.retryAfter,
+    this.retriesSpent = false,
+  });
 
   /// How long the provider asked us to wait, when it said so (Retry-After).
   final Duration? retryAfter;
+
+  /// The client already waited and retried as often as it will (AniList's
+  /// 429 handling): callers should not stack retries of their own on top.
+  final bool retriesSpent;
 
   /// offline, not_configured, rate_limited, upstream_error, bad_response...
   final String code;
@@ -365,20 +373,7 @@ class HttpCatalogGateway implements CatalogGateway {
       throw const CatalogUnavailable('offline');
     }
     if (res.statusCode == 404) return null;
-    Object? body;
-    try {
-      body = jsonDecode(utf8.decode(res.bodyBytes));
-    } on FormatException {
-      throw const CatalogUnavailable('bad_response');
-    }
-    if (res.statusCode != 200) {
-      final code = body is Map ? body['error'] as String? : null;
-      throw CatalogUnavailable(
-        code ?? 'http_${res.statusCode}',
-        retryAfter: _retryAfter(res),
-      );
-    }
-    return body;
+    return _decode(res);
   }
 
   Future<Object?> _send(http.Request req) async {
@@ -392,11 +387,21 @@ class HttpCatalogGateway implements CatalogGateway {
     } on Exception {
       throw const CatalogUnavailable('offline');
     }
+    return _decode(res);
+  }
+
+  /// The JSON body of a 200, or the Worker's error code otherwise. A
+  /// failure without a readable body (a bare 401 from an older Worker, a
+  /// proxy's HTML page) is reported as `http_<status>`, so callers can tell
+  /// it from a broken 200.
+  static Object? _decode(http.Response res) {
     Object? body;
     try {
       body = jsonDecode(utf8.decode(res.bodyBytes));
     } on FormatException {
-      throw const CatalogUnavailable('bad_response');
+      if (res.statusCode == 200) {
+        throw const CatalogUnavailable('bad_response');
+      }
     }
     if (res.statusCode != 200) {
       final code = body is Map ? body['error'] as String? : null;
@@ -634,9 +639,16 @@ class HttpCatalogGateway implements CatalogGateway {
       for (final i in (l as List?) ?? const [])
         CatalogItemDto(Map<String, dynamic>.from(i as Map)),
     ];
-    return MatchResponse([
-      for (final r in (body['results'] as List?) ?? const []) list(r),
-    ], list(body['mal']));
+    // `failed`: positions the Worker could not look up (an upstream outage),
+    // which are "not checked", never "no match". Older Workers leave it out.
+    return MatchResponse(
+      [for (final r in (body['results'] as List?) ?? const []) list(r)],
+      list(body['mal']),
+      failed: {
+        for (final i in (body['failed'] as List?) ?? const [])
+          if (i is num) i.toInt(),
+      },
+    );
   }
 
   List<CatalogItemDto> _items(Object? body) => [
@@ -964,8 +976,14 @@ class HybridCatalogGateway implements CatalogGateway {
       for (var attempt = 0; attempt < 2 && !ok; attempt++) {
         try {
           final r = await worker.match([for (final i in chunk) items[i]]);
-          for (var j = 0; j < chunk.length && j < r.results.length; j++) {
-            out[chunk[j]].addAll(r.results[j]);
+          for (var j = 0; j < chunk.length; j++) {
+            // A position the Worker could not look up (or left out) is
+            // reported as not checked, not as "no match".
+            if (r.failed.contains(j) || j >= r.results.length) {
+              failed.add(chunk[j]);
+            } else {
+              out[chunk[j]].addAll(r.results[j]);
+            }
           }
           ok = true;
         } on CatalogUnavailable {

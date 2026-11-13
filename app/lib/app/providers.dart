@@ -59,7 +59,12 @@ final catalogGatewayProvider = Provider<CatalogGateway>((ref) {
   ref.onDispose(anilistClient.close);
   return HybridCatalogGateway(
     HttpCatalogGateway(cueApiBase, client: workerClient, proxyImages: kIsWeb),
-    AniListClient(client: anilistClient),
+    AniListClient(
+      client: anilistClient,
+      tagOperations: true,
+      onInvalid: (op) =>
+          diagnostics.reportInvalid(DiagnosticProvider.anilist, op),
+    ),
     web: kIsWeb,
   );
 });
