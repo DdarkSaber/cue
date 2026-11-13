@@ -238,9 +238,47 @@ class TechnicalDiagnostics extends ChangeNotifier {
     DiagnosticStatus status,
     DiagnosticError error,
   ) {
-    if (ticket == null || !enabled || _disposed || ticket.epoch != _epoch) {
-      return;
-    }
+    if (ticket == null) return;
+    _record(
+      ticket.epoch,
+      ticket.provider,
+      ticket.operation,
+      ticket.watch.elapsedMilliseconds,
+      status,
+      error,
+    );
+  }
+
+  /// A response whose headers said 200 but whose body was unusable (GraphQL
+  /// `errors`, not JSON). [DiagnosticHttpClient] only sees headers and has
+  /// already counted the request as ok; the caller that parsed the body
+  /// reports this as one extra `failed` / `invalid_response` event with
+  /// duration 0, so the timing stays header-time. Nothing about the body
+  /// is recorded.
+  void reportInvalid(
+    DiagnosticProvider provider,
+    DiagnosticOperation operation,
+  ) {
+    if (!enabled || !loaded) return;
+    _record(
+      _epoch,
+      provider,
+      operation,
+      0,
+      DiagnosticStatus.failed,
+      DiagnosticError.invalidResponse,
+    );
+  }
+
+  void _record(
+    int epoch,
+    DiagnosticProvider provider,
+    DiagnosticOperation operation,
+    int durationMs,
+    DiagnosticStatus status,
+    DiagnosticError error,
+  ) {
+    if (!enabled || _disposed || epoch != _epoch) return;
     if (_pending.length == 20) {
       message = 'Diagnostics pending limit reached. New event not collected; retry upload or turn off.';
       _changed();
@@ -249,9 +287,9 @@ class TechnicalDiagnostics extends ChangeNotifier {
     _pending.add({
       'requestId': _requestId(),
       'appVersion': diagnosticAppVersion,
-      'provider': ticket.provider.name,
-      'operation': ticket.operation.name,
-      'durationMs': ticket.watch.elapsedMilliseconds.clamp(0, 120000),
+      'provider': provider.name,
+      'operation': operation.name,
+      'durationMs': durationMs.clamp(0, 120000),
       'status': status.name,
       'errorCode': error.code,
     });
@@ -319,8 +357,16 @@ class TechnicalDiagnostics extends ChangeNotifier {
 
       var response = await send(code);
       if (epoch != _epoch || _disposed) return;
-      // The server is authoritative even when the device clock moves backwards.
-      if (code != null && response.statusCode == 404) {
+      // The server is authoritative even when the device clock moves
+      // backwards: a 404 means the session is gone. A full session (100
+      // events) answers quota_exceeded; its code is retired too, so new
+      // events go to a fresh session instead of stalling. This happens at
+      // most once per upload: the POST below is never followed by another,
+      // and a POST refused for quota (the global session cap) just reports.
+      var rolledOver = false;
+      if (code != null &&
+          (response.statusCode == 404 || _quotaExceeded(response))) {
+        rolledOver = response.statusCode != 404;
         code = null;
         if (!await retire()) return;
         if (epoch != _epoch || _disposed || !enabled) return;
@@ -365,7 +411,9 @@ class TechnicalDiagnostics extends ChangeNotifier {
         }
         final ids = batch.map((e) => e['requestId']).toSet();
         _pending.removeWhere((e) => ids.contains(e['requestId']));
-        message = 'Technical diagnostics uploaded. Up to 100 events per seven-day session.';
+        message = rolledOver
+            ? 'The previous diagnostics session was full; a new private code was issued. Up to 100 events per seven-day session.'
+            : 'Technical diagnostics uploaded. Up to 100 events per seven-day session.';
       }
     } on Object {
       if (epoch == _epoch && !_disposed) {
@@ -384,6 +432,18 @@ class TechnicalDiagnostics extends ChangeNotifier {
       if (identical(_uploadClient, client)) _uploadClient = null;
       sending = false;
       _changed();
+    }
+  }
+
+  /// 429 `quota_exceeded`, as opposed to a plain `rate_limited` (retry later
+  /// with the same code). Only the fixed error code is read.
+  static bool _quotaExceeded(http.Response response) {
+    if (response.statusCode != 429) return false;
+    try {
+      final body = jsonDecode(response.body);
+      return body is Map && body['error'] == 'quota_exceeded';
+    } on FormatException {
+      return false;
     }
   }
 
@@ -468,38 +528,57 @@ class TechnicalDiagnostics extends ChangeNotifier {
   }
 }
 
+/// Request header naming the operation of an AniList request (a
+/// [DiagnosticOperation] name). Set by the AniList client, read and removed
+/// by [DiagnosticHttpClient] before sending: AniList never receives it.
+const diagnosticOperationHeader = 'X-Cue-Op';
+
 /// Measures only request-to-response-header timing and allowlisted HTTP status.
-/// Never reads body, headers, search text or URL into a diagnostic event.
+/// Never reads body, search text or URL into a diagnostic event; the only
+/// header read is [diagnosticOperationHeader], a fixed enum name.
 class DiagnosticHttpClient extends http.BaseClient {
   DiagnosticHttpClient(this.inner, this.diagnostics, {this.anilist = false});
   final http.Client inner;
   final TechnicalDiagnostics diagnostics;
   final bool anilist;
 
-  DiagnosticOperation? _operation(Uri uri) {
-    if (anilist) return DiagnosticOperation.match;
+  DiagnosticOperation? _operation(Uri uri, String? tagged) {
+    if (anilist) {
+      // AniList has one endpoint; the client tags each request instead.
+      for (final op in DiagnosticOperation.values) {
+        if (op.name == tagged) return op;
+      }
+      return DiagnosticOperation.match;
+    }
     final parts = uri.pathSegments;
     if (parts.isEmpty) return null;
-    if (parts.length == 2 && parts.first == 'ai' && parts[1] == 'mood') {
-      return DiagnosticOperation.mood;
+    if (parts.length == 2 && parts.first == 'ai') {
+      return switch (parts[1]) {
+        'mood' || 'recommend' => DiagnosticOperation.mood,
+        _ => null,
+      };
     }
     if (parts.first == 'import' || parts.first == 'oauth') {
       return DiagnosticOperation.import;
     }
+    // /sync, /diagnostics and /catalog/image are never recorded.
     if (parts.length < 2 || parts.first != 'catalog') return null;
     return switch (parts[1]) {
-      'discover' => DiagnosticOperation.discover,
+      'discover' || 'recommendations' => DiagnosticOperation.discover,
       'search' => DiagnosticOperation.search,
       'title' => DiagnosticOperation.title,
       'match' => DiagnosticOperation.match,
-      'aliases' => DiagnosticOperation.aliases,
+      'aliases' || 'mal-search' || 'names' => DiagnosticOperation.aliases,
       _ => null,
     };
   }
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    final op = _operation(request.url);
+    final op = _operation(
+      request.url,
+      request.headers.remove(diagnosticOperationHeader),
+    );
     final ticket = op == null
         ? null
         : diagnostics.begin(
