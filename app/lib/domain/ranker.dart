@@ -231,6 +231,59 @@ class SessionMood {
   }
 }
 
+/// Titles saved in this session used as temporary taste seeds: their
+/// provider "more like this" lists count toward [Ranker.coVisit] and earn a
+/// [boost], both fading by [decay] with every later decision. Never stored.
+class SessionSeeds {
+  final _seeds = <String, _SessionSeed>{};
+
+  static const boost = 0.10;
+  static const decay = 0.85;
+
+  bool get isEmpty => _seeds.isEmpty;
+  bool has(String seedId) => _seeds.containsKey(seedId);
+
+  /// [recommended] maps title id -> rank in the saved title's list.
+  void add(String seedId, Map<String, int> recommended) {
+    _seeds[seedId] = _SessionSeed(Map.of(recommended))..weight = 1;
+  }
+
+  /// One more decision was made: every session seed fades.
+  void record() {
+    for (final id in _seeds.keys.toList()) {
+      final s = _seeds[id]!..weight *= decay;
+      if (s.weight < 0.05) _seeds.remove(id);
+    }
+  }
+
+  void clear() => _seeds.clear();
+
+  /// Strength-weighted, rank-decayed edges into [id] (see [Ranker.coVisit]).
+  double edgeSum(String id) {
+    var sum = 0.0;
+    for (final s in _seeds.values) {
+      final rank = s.ranks[id];
+      if (rank != null) sum += s.weight * Ranker.rankDecay(rank);
+    }
+    return sum;
+  }
+
+  /// Up to [boost] for a title a save this session recommended.
+  double bonus(String id) {
+    var best = 0.0;
+    for (final s in _seeds.values) {
+      if (s.ranks.containsKey(id) && s.weight > best) best = s.weight;
+    }
+    return boost * best;
+  }
+}
+
+class _SessionSeed {
+  _SessionSeed(this.ranks);
+  final Map<String, int> ranks;
+  double weight = 1;
+}
+
 class RankedCard {
   const RankedCard(
     this.title,
@@ -356,6 +409,7 @@ class Ranker {
     List<InterestCluster> clusters = const [],
     Set<String> recentExposures = const {},
     LearnedTaste? swipeTaste,
+    SessionSeeds? sessionSeeds,
   }) {
     final features = t.features;
     final clusterTaste = clusters.isEmpty ? null : clusterAffinity(t, clusters);
@@ -408,7 +462,8 @@ class Ranker {
                 0.15 * quality +
                 0.15 * freshness +
                 0.10 * affinity) +
-        coVisitWeight * coVisit(t.id, s) -
+        coVisitWeight * coVisit(t.id, s, session: sessionSeeds) +
+        (sessionSeeds?.bonus(t.id) ?? 0) -
         penalty +
         0.08 * lean +
         0.08 * (temporary?.lean(features) ?? 0) -
@@ -433,16 +488,16 @@ class Ranker {
   /// includes [id] adds its strength times [rankDecay] of the position;
   /// the sum saturates (`1 - exp(-sum)`), so agreement between strong seeds
   /// near the top of their lists approaches 1 and one weak mention stays low.
-  static double coVisit(String id, ProfileSignals s) {
-    final seeds = s.becauseOf[id];
-    if (seeds == null || seeds.isEmpty) return 0;
+  /// Titles saved this session count as seeds too ([session]).
+  static double coVisit(String id, ProfileSignals s, {SessionSeeds? session}) {
+    final seeds = s.becauseOf[id] ?? const <String>[];
     final ranks = s.becauseRank[id];
-    var sum = 0.0;
+    var sum = session?.edgeSum(id) ?? 0.0;
     for (var i = 0; i < seeds.length; i++) {
       final rank = ranks != null && i < ranks.length ? ranks[i] : 0;
       sum += (s.seedStrength[seeds[i]] ?? 1) * rankDecay(rank);
     }
-    return 1 - exp(-sum);
+    return sum <= 0 ? 0 : 1 - exp(-sum);
   }
 
   static double _lengthPreference(Title t) {
@@ -504,6 +559,7 @@ class Ranker {
     bool shortestFirst = false,
     int size = deckSize,
     LearnedTaste? swipeTaste,
+    SessionSeeds? sessionSeeds,
   }) {
     final scored = <RankedCard>[];
     if (swipeTaste != null && swipeTaste.blend > 0) swipeTaste.calibrate(pool);
@@ -534,6 +590,7 @@ class Ranker {
             clusters: clusters,
             recentExposures: recentExposures,
             swipeTaste: swipeTaste,
+            sessionSeeds: sessionSeeds,
           ) +
           _random.nextDouble() * 0.02;
       scored.add(

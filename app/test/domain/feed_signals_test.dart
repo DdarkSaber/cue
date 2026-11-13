@@ -99,11 +99,7 @@ void main() {
       ];
       final unseeded = [
         for (var i = 0; i < 50; i++)
-          _t(
-            'u$i',
-            genres: [_genres[i % _genres.length]],
-            score: 70 + i % 15,
-          ),
+          _t('u$i', genres: [_genres[i % _genres.length]], score: 70 + i % 15),
       ];
       final s = ProfileSignals(
         tasteSeeds: const ['liked'],
@@ -124,6 +120,33 @@ void main() {
           expect(c.becauseOf, ['liked']);
         }
       }
+    });
+  });
+
+  group('session seeds', () {
+    test('a save boosts what it recommends, fading with each decision', () {
+      final seeds = SessionSeeds()..add('saved', {'a': 0, 'b': 5});
+      expect(seeds.bonus('a'), closeTo(0.10, 1e-12));
+      expect(seeds.bonus('z'), 0);
+      expect(seeds.edgeSum('b'), closeTo(0.5, 1e-12));
+      const s = ProfileSignals();
+      expect(
+        Ranker.coVisit('a', s, session: seeds),
+        closeTo(1 - exp(-1), 1e-12),
+      );
+      final ranker = Ranker();
+      final base = ranker.score(_t('a'), s, f);
+      final boosted = ranker.score(_t('a'), s, f, sessionSeeds: seeds);
+      expect(
+        boosted - base,
+        closeTo(0.10 + Ranker.coVisitWeight * (1 - exp(-1)), 1e-9),
+      );
+      seeds.record();
+      expect(seeds.bonus('a'), closeTo(0.085, 1e-12));
+      for (var i = 0; i < 30; i++) {
+        seeds.record();
+      }
+      expect(seeds.isEmpty, isTrue);
     });
   });
 }

@@ -138,6 +138,26 @@ final deckFiltersProvider =
 /// writes decisions and undoes them.
 class DeckController extends Notifier<DeckState> {
   final SessionMood _session = SessionMood();
+
+  /// Titles saved this session whose "more like this" lists steer the
+  /// upcoming cards; see [_seedFromSave].
+  final SessionSeeds _saved = SessionSeeds();
+  DateTime? _lastSaveFetch;
+  int _saveFetches = 0;
+  int _saveEpoch = 0;
+
+  /// A save asks the catalog about the saved title at most this often, and
+  /// at most [maxSaveFetches] times per session.
+  static const saveFetchEvery = Duration(seconds: 20);
+  static const maxSaveFetches = 6;
+
+  void _clearSessionSeeds() {
+    _saved.clear();
+    _lastSaveFetch = null;
+    _saveFetches = 0;
+    _saveEpoch++;
+  }
+
   late final _temporary = RecommendationSession(clock: ref.read(clockProvider));
   bool _wantRetrieval = true;
   bool _skipCurrent = false;
@@ -152,6 +172,7 @@ class DeckController extends Notifier<DeckState> {
   void _activate(String id) {
     if (_temporary.activate(id)) {
       _session.bias.clear();
+      _clearSessionSeeds();
       _visibleId = null;
       _wantRetrieval = true;
     }
@@ -417,6 +438,7 @@ class DeckController extends Notifier<DeckState> {
     _activate(await _profile);
     _temporary.differentDirection();
     _session.bias.clear();
+    _clearSessionSeeds();
     _wantRetrieval = true;
     _skipCurrent = true;
     await _deal();
@@ -428,6 +450,7 @@ class DeckController extends Notifier<DeckState> {
   Future<void> resetSession() async {
     _temporary.reset();
     _session.bias.clear();
+    _clearSessionSeeds();
     _wantRetrieval = true;
     await _deal();
   }
@@ -1052,6 +1075,7 @@ class DeckController extends Notifier<DeckState> {
       recentExposures: exposures,
       explorePreference: _temporary.effectiveExploration,
       swipeTaste: swipeTaste,
+      sessionSeeds: _saved,
       skip: skip,
       skipFranchises: skipFranchises,
     );
@@ -1220,6 +1244,44 @@ class DeckController extends Notifier<DeckState> {
     }());
   }
 
+  /// A card was saved: its "more like this" list becomes a temporary seed,
+  /// so the next cards follow from it. Stored edges are reused; otherwise
+  /// one background lookup (only the title's AniList id is sent), at most
+  /// every [saveFetchEvery] and [maxSaveFetches] times a session, at seed
+  /// priority. Never blocks the swipe; any failure just means no steer.
+  void _seedFromSave(Title title) {
+    if (_saved.has(title.id)) return;
+    final epoch = _saveEpoch;
+    final catalog = ref.read(catalogRepositoryProvider);
+    final now = ref.read(clockProvider)();
+    unawaited(() async {
+      try {
+        var edges = await catalog.seedEdges(title.id);
+        if (edges.isEmpty) {
+          final last = _lastSaveFetch;
+          if (epoch != _saveEpoch ||
+              _saveFetches >= maxSaveFetches ||
+              (last != null && now.difference(last) < saveFetchEvery)) {
+            return;
+          }
+          _lastSaveFetch = now;
+          _saveFetches++;
+          await catalog.fetchSeeded(
+            [title.id],
+            budget: RequestBudget(limit: 1),
+            anilistOnly: true,
+          );
+          edges = await catalog.seedEdges(title.id);
+        }
+        if (!ref.mounted || edges.isEmpty || epoch != _saveEpoch) return;
+        _saved.add(title.id, edges);
+        _rerankUpcoming();
+      } on Object {
+        // Offline or refused: the deck simply is not steered by this save.
+      }
+    }());
+  }
+
   /// New candidates arrived (AI picks, seeded recommendations): rank the
   /// cards not yet shown again. The top card stays where it is.
   void _rerankUpcoming() {
@@ -1380,6 +1442,10 @@ class DeckController extends Notifier<DeckState> {
         Decision.notNow => notNowReason == NotNowReason.savingLater ? 0 : -0.2,
         Decision.watched => 0.1,
       });
+      _saved.record();
+      if (d == Decision.willTry && !filters.isRevisit) {
+        _seedFromSave(card.title);
+      }
       if (!filters.isRevisit && _tasteProfile == profileId) {
         final lesson =
             decisionLabel(
@@ -1489,6 +1555,10 @@ class DeckController extends Notifier<DeckState> {
       }
       _activate(profileId);
       if (!result.repeated) {
+        _saved.record();
+        if (!ref.read(deckFiltersProvider).isRevisit) {
+          _seedFromSave(card.title);
+        }
         _temporary.immediateInterest(card.title, result.eventId);
         _temporary.choice(notNow: false, eventId: result.eventId);
         try {

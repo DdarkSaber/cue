@@ -732,7 +732,14 @@ class CatalogRepository {
   /// the last seven days are skipped. Only provider ids leave the device.
   ///
   /// [seedIds] are catalog ids, strongest first. Returns edges stored.
-  Future<int> fetchSeeded(List<String> seedIds, {RequestBudget? budget}) async {
+  ///
+  /// [anilistOnly] asks only about seeds with an AniList identity (the
+  /// in-session "you just saved this" lookup sends nothing else).
+  Future<int> fetchSeeded(
+    List<String> seedIds, {
+    RequestBudget? budget,
+    bool anilistOnly = false,
+  }) async {
     if (seedIds.isEmpty) return 0;
     final stale = _now().subtract(const Duration(days: 7));
     final asked =
@@ -757,7 +764,7 @@ class CatalogRepository {
               .map((i) => SeedRef('anilist', i.providerId))
               .firstOrNull ??
           mine
-              .where((i) => i.provider == 'tmdb')
+              .where((i) => !anilistOnly && i.provider == 'tmdb')
               .map((i) => SeedRef('tmdb', i.providerId, i.providerKind))
               .firstOrNull;
       if (ref != null) refs[id] = ref;
@@ -814,6 +821,16 @@ class CatalogRepository {
       });
     }
     return stored;
+  }
+
+  /// The stored "more like this" list of one seed: title id -> rank.
+  Future<Map<String, int>> seedEdges(String seedId) async {
+    final rows =
+        await (db.select(db.catalogRecommendations)
+              ..where((r) => r.seedId.equals(seedId))
+              ..orderBy([(r) => OrderingTerm.asc(r.rank)]))
+            .get();
+    return {for (final r in rows) r.titleId: r.rank};
   }
 
   /// Marker row remembering when [pruneRecommendations] last ran.
