@@ -1,4 +1,4 @@
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
@@ -82,12 +82,36 @@ const diagnosticsBodyLimit: MiddlewareHandler<AppEnv> = (c, next) => {
   return boundedDiagnosticsBody(c, next);
 };
 
-/** Diagnostics are additionally capped at 6 KB; sync uploads allow 2 MB. */
+/** Diagnostics are additionally capped at 6 KB; sync uploads allow 1.9 MiB. */
 export const bodyCap: MiddlewareHandler<AppEnv> = (c, next) =>
   c.req.path.startsWith("/sync/") ? syncBodyLimit(c, next)
     : c.req.path.startsWith("/ai/") ? aiBodyLimit(c, next)
     : c.req.path === "/diagnostics" || c.req.path.startsWith("/diagnostics/") ? diagnosticsBodyLimit(c, next)
       : smallBody(c, next);
+
+let warnedNoClientIp = false;
+
+/** Test hook: lets each test see the first-missing-IP line again. */
+export function resetClientIpWarning() {
+  warnedNoClientIp = false;
+}
+
+/**
+ * The rate-limit key. Cloudflare always sets CF-Connecting-IP in production;
+ * X-Forwarded-For or X-Real-IP are client-controlled and would let anyone pick
+ * a fresh bucket per request, so they are never trusted. Without the header
+ * (local dev, or a routing mistake) everyone shares one "unknown" bucket; one
+ * fixed line per isolate makes that visible without logging anything sent.
+ */
+export function clientKey(c: Context<AppEnv>): string {
+  const ip = c.req.header("CF-Connecting-IP");
+  if (ip) return ip;
+  if (!warnedNoClientIp) {
+    warnedNoClientIp = true;
+    console.warn(JSON.stringify({ e: "no_client_ip" }));
+  }
+  return "unknown";
+}
 
 /** Per-IP limit through the Workers rate-limiting binding. Fails closed. */
 export const rateLimit: MiddlewareHandler<AppEnv> = async (c, next) => {
@@ -102,8 +126,7 @@ export const rateLimit: MiddlewareHandler<AppEnv> = async (c, next) => {
             ? (c.env.LOOKUP_LIMITER ?? c.env.HEAVY_LIMITER ?? c.env.RATE_LIMITER)
             : c.env.RATE_LIMITER;
   if (!limiter) return fail(c, 503, "unavailable");
-  const key = c.req.header("CF-Connecting-IP") ?? "unknown";
-  const { success } = await limiter.limit({ key });
+  const { success } = await limiter.limit({ key: clientKey(c) });
   if (!success) {
     c.header("Retry-After", "60");
     return fail(c, 429, "rate_limited");

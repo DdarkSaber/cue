@@ -3,7 +3,7 @@ declare global {
     // Bindings from wrangler.toml; merged into the runtime's `env` type.
     interface Env {
       CATALOG_CACHE: KVNamespace;
-      /** Encrypted sync and separate opt-in technical diagnostics tables. */
+      /** Encrypted sync, opt-in technical diagnostics and the AI daily counters. */
       SYNC_DB: D1Database;
       RATE_LIMITER: RateLimit;
       /** Looser per-IP limit for poster loads on the web app. */
@@ -12,6 +12,8 @@ declare global {
       AI_LIMITER?: RateLimit;
       /** Stricter per-IP limit for /catalog/match and /catalog/aliases (many upstream calls per request). */
       HEAVY_LIMITER?: RateLimit;
+      /** Per-IP limit for creating sync copies (PUT /sync/:id at version 0). Falls back to RATE_LIMITER. */
+      SYNC_CREATE_LIMITER?: RateLimit;
       /** Per-IP limit for /catalog/mal-search and /catalog/names (up to 8 cached lookups each). */
       LOOKUP_LIMITER?: RateLimit;
       ALLOWED_ORIGINS: string;

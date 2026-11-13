@@ -1,6 +1,7 @@
 import { NotConfiguredError, UpstreamError } from "../catalog/types";
 import type { Env } from "../env";
 import { isOpen, recordFailure, recordSuccess } from "../resilience";
+import { sha256Hex } from "../sync/store";
 
 /**
  * Optional, opt-in mood hints: turns one typed sentence into feature names
@@ -156,17 +157,54 @@ async function gemini(key: string, model: string, text: string, allowed: string[
 
 /** Across everyone, per UTC day, so a leaked URL cannot drain the free tier. */
 export const DAILY_AI_CAP = 500;
+/** Per client per UTC day, so one IP cannot spend everyone's daily cap. */
+export const DAILY_AI_CAP_PER_CLIENT = 60;
+/** Counter rows older than this are deleted, a few per call. */
+const AI_USAGE_KEEP_DAYS = 7;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const dayOf = (now: Date) => now.toISOString().slice(0, 10);
 
 /**
- * Counts one AI call for today; false once today's cap is reached. A KV error
- * propagates: callers refuse the call (503) rather than let spend go uncounted.
+ * Adds one to a counter row unless it already reached `cap`, atomically.
+ * RETURNING yields no row when the conditional update is skipped.
  */
-export async function underDailyCap(kv: KVNamespace, now = new Date()): Promise<boolean> {
-  const key = `ai:day:${now.toISOString().slice(0, 10)}`;
-  const used = Number((await kv.get(key)) ?? 0);
-  if (used >= DAILY_AI_CAP) return false;
-  // KV is eventually consistent, so the cap is approximate; that is enough here.
-  await kv.put(key, String(used + 1), { expirationTtl: 2 * 24 * 60 * 60 });
+async function bump(db: D1Database, key: string, cap: number): Promise<boolean> {
+  const res = await db
+    .prepare(
+      `INSERT INTO ai_usage (day, used) VALUES (?, 1)
+       ON CONFLICT(day) DO UPDATE SET used = used + 1 WHERE used < ?
+       RETURNING used`,
+    )
+    .bind(key, cap)
+    .all<{ used: number }>();
+  if (!res.success) throw new Error("AiUsageUnavailable");
+  return res.results.length === 1;
+}
+
+/**
+ * Counts one AI call for today in D1; false once this client's or everyone's
+ * cap is reached. The client is checked first so a refused client spends
+ * nothing of the global cap. Only a day-salted hash of the client key is
+ * stored. A D1 error propagates: callers refuse the call (503) rather than
+ * let spend go uncounted. D1, not KV, so catalog cache writes (which share
+ * the free tier's daily KV write allowance) can never switch AI off.
+ */
+export async function underDailyCap(db: D1Database, client: string, now = new Date()): Promise<boolean> {
+  const day = dayOf(now);
+  const hashed = (await sha256Hex(`${day}|${client}`)).slice(0, 16);
+  if (!(await bump(db, `${day}|${hashed}`, DAILY_AI_CAP_PER_CLIENT))) return false;
+  if (!(await bump(db, day, DAILY_AI_CAP))) return false;
+  try {
+    // Opportunistic and bounded; keys start with the day, so they sort by it.
+    const cutoff = dayOf(new Date(now.getTime() - AI_USAGE_KEEP_DAYS * DAY_MS));
+    await db
+      .prepare("DELETE FROM ai_usage WHERE day IN (SELECT day FROM ai_usage WHERE day < ? LIMIT 25)")
+      .bind(cutoff)
+      .run();
+  } catch {
+    // Old rows wait for the next call.
+  }
   return true;
 }
 

@@ -14,7 +14,14 @@ import { CINEMETA_KINDS, cinemetaType, discoverCinemeta, searchCinemeta, titleCi
 import { discoverMal, searchMal, type MalSearchItem } from "./mal";
 import { wikiNames, type WikiName } from "./wikipedia";
 import { discoverTvmaze, searchTvmaze, titleTvmaze, tvmazeLastPage } from "./tvmaze";
-import { type CatalogItem, type CatalogPage, type CatalogProvider, type MediaKind, NotConfiguredError } from "./types";
+import {
+  type CatalogItem,
+  type CatalogPage,
+  type CatalogProvider,
+  type MediaKind,
+  NotConfiguredError,
+  UpstreamError,
+} from "./types";
 
 type Mood = "hype" | "comfort" | "gripping" | "feels";
 
@@ -86,16 +93,20 @@ export function title(env: Env, provider: CatalogProvider, id: string, type: Tit
   );
 }
 
+/** One cache key for a title search, shared by /catalog/search and /catalog/match. */
+function searchKey(q: string, kind: MediaKind | undefined) {
+  return `search:${kind ?? "-"}:${q.toLowerCase().replace(/\s+/g, " ")}`;
+}
+
 /**
  * Match candidates for imports. Anime and reading go to AniList; dramas,
  * series and movies go to TMDB when keyed, else TVmaze (series only).
  * With no kind, both sides are asked.
  */
 export function search(env: Env, q: string, kind: MediaKind | undefined) {
-  const norm = q.toLowerCase().replace(/\s+/g, " ");
   return cached<CatalogItem[]>(
     env.CATALOG_CACHE,
-    `search:${kind ?? "-"}:${norm}`,
+    searchKey(q, kind),
     TTL.search,
     async () => {
       const screen = () => searchScreen(env, q, kind);
@@ -103,6 +114,14 @@ export function search(env: Env, q: string, kind: MediaKind | undefined) {
       return screen();
     },
   );
+}
+
+/**
+ * Every source failing is an outage, not "no match": throw, so it is neither
+ * cached as an empty answer nor reported to the app as one.
+ */
+function bothFailed(a: PromiseSettledResult<unknown>, b: PromiseSettledResult<unknown>) {
+  if (a.status === "rejected" && b.status === "rejected") throw new UpstreamError("all sources");
 }
 
 /**
@@ -120,6 +139,7 @@ export async function searchScreen(
     // TVmaze first; Cinemeta's IMDb-style titles catch the English names
     // TVmaze lacks (a K-drama's licensed title versus its fan title).
     const [tv, imdb] = await Promise.allSettled([searchTvmaze(q), searchCinemeta(q, "series")]);
+    bothFailed(tv, imdb);
     const seen = new Set<string>();
     return [
       ...(tv.status === "fulfilled" ? tv.value : []),
@@ -130,6 +150,7 @@ export async function searchScreen(
     });
   }
   const [tv, film] = await Promise.allSettled([searchTvmaze(q), searchCinemeta(q, "movie")]);
+  bothFailed(tv, film);
   return [
     ...(tv.status === "fulfilled" ? tv.value.slice(0, 4) : []),
     ...(film.status === "fulfilled" ? film.value.slice(0, 3) : []),
@@ -263,24 +284,31 @@ export function providers(env: Env, id: string, type: TitleType, region: string)
 /**
  * Batch match for imports: screen titles only (TMDB if keyed, else TVmaze and
  * Cinemeta), one by one, well under the per-request subrequest limit. Anime
- * and comics are matched by the app against AniList directly.
+ * and comics are matched by the app against AniList directly. Each lookup
+ * shares /catalog/search's cache entry. `failed` lists the indexes whose
+ * lookup failed (outage, open circuit), so the app can retry them later
+ * instead of treating them as "no match".
  */
 export async function match(env: Env, items: { q: string; kind?: MediaKind }[]) {
   const screenIdx = items.map((it, i) => (it.kind && DEVICE_KINDS.has(it.kind) ? -1 : i)).filter((i) => i >= 0);
   const results: CatalogItem[][] = items.map(() => []);
+  const failed: number[] = [];
   // Five at a time: well inside TVmaze's rate limit and the subrequest cap.
   for (let s = 0; s < screenIdx.length; s += 5) {
     await Promise.all(
       screenIdx.slice(s, s + 5).map(async (i) => {
         const it = items[i]!;
         try {
-          const found = await searchScreen(env, it.q, it.kind);
-          results[i]!.push(...found.slice(0, 6));
+          const { value } = await cached<CatalogItem[]>(env.CATALOG_CACHE, searchKey(it.q, it.kind), TTL.search, () =>
+            searchScreen(env, it.q, it.kind),
+          );
+          results[i]!.push(...value.slice(0, 6));
         } catch {
           // One failed lookup leaves that title unresolved, not the batch.
+          failed.push(i);
         }
       }),
     );
   }
-  return { results, mal: [] as CatalogItem[] };
+  return { results, mal: [] as CatalogItem[], failed: failed.sort((a, b) => a - b) };
 }
