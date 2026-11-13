@@ -201,6 +201,7 @@ class LibraryRepository {
       kindRatings: kindRatings,
     );
     final seeds = selectTasteSeeds(base);
+    final because = await _becauseOf(seeds);
     return ProfileSignals(
       excluded: base.excluded,
       known: base.known,
@@ -218,7 +219,9 @@ class LibraryRepository {
       weakHistoryIds: base.weakHistoryIds,
       kindRatings: base.kindRatings,
       tasteSeeds: seeds,
-      becauseOf: await _becauseOf(seeds),
+      becauseOf: because.seeds,
+      becauseRank: because.ranks,
+      seedStrength: tasteSeedStrength(base, seeds, _now()),
     );
   }
 
@@ -302,8 +305,16 @@ class LibraryRepository {
   }
 
   /// Public "more like this" edges from these seeds, joined in memory.
-  Future<Map<String, List<String>>> _becauseOf(List<String> seeds) async {
-    if (seeds.isEmpty) return const {};
+  /// Candidate -> recommending seeds (strongest seed first), and in
+  /// parallel the candidate's rank in each of those seeds' lists.
+  Future<({Map<String, List<String>> seeds, Map<String, List<int>> ranks})>
+  _becauseOf(List<String> seeds) async {
+    if (seeds.isEmpty) {
+      return (
+        seeds: const <String, List<String>>{},
+        ranks: const <String, List<int>>{},
+      );
+    }
     final rows = await (db.select(
       db.catalogRecommendations,
     )..where((r) => r.seedId.isIn(seeds))).get();
@@ -313,11 +324,15 @@ class LibraryRepository {
       return bySeed != 0 ? bySeed : a.rank.compareTo(b.rank);
     });
     final out = <String, List<String>>{};
+    final ranks = <String, List<int>>{};
     for (final r in rows) {
       final list = out.putIfAbsent(r.titleId, () => []);
-      if (!list.contains(r.seedId)) list.add(r.seedId);
+      if (!list.contains(r.seedId)) {
+        list.add(r.seedId);
+        ranks.putIfAbsent(r.titleId, () => []).add(r.rank);
+      }
     }
-    return out;
+    return (seeds: out, ranks: ranks);
   }
 
   /// Evidence titles are counted when weights are recomputed and stored

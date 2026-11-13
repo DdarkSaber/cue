@@ -284,6 +284,29 @@ List<String> selectTasteSeeds(
   ].take(limit).toList();
 }
 
+/// How much one taste seed's "also liked" list counts: its rating (a
+/// Favourite counts fully, Enjoyed two thirds, Once was enough half; unrated
+/// watched history about a third) times how recently it was engaged with
+/// ([recencyWeight]). The same evidence that ordered [selectTasteSeeds].
+Map<String, double> tasteSeedStrength(
+  ProfileSignals signals,
+  List<String> seeds,
+  DateTime now,
+) => {
+  for (final id in seeds)
+    if (signals.library[id] case final e?)
+      id:
+          (e.rating == null ? 0.35 : (e.rating!.weight / 3).clamp(0.0, 1.0)) *
+          recencyWeight(
+            e.actualWatchedAt,
+            now,
+            inProgress:
+                e.state == LibraryState.watching ||
+                e.state == LibraryState.reading ||
+                e.state == LibraryState.caughtUp,
+          ),
+};
+
 class RetrievalRequest {
   const RetrievalRequest(this.kind, this.route, {this.mood});
   final MediaKind kind;

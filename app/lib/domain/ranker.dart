@@ -34,7 +34,17 @@ class ProfileSignals {
     this.kindRatings = const {},
     this.tasteSeeds = const [],
     this.becauseOf = const {},
+    this.becauseRank = const {},
+    this.seedStrength = const {},
   });
+
+  /// Parallel to [becauseOf]: the candidate's 0-based rank in each listed
+  /// seed's provider list. Missing ranks count as rank 0.
+  final Map<String, List<int>> becauseRank;
+
+  /// Seed id -> how much that liked title's list counts (rating weight and
+  /// recency; see [tasteSeedStrength]). Missing seeds count as 1.
+  final Map<String, double> seedStrength;
 
   /// The profile's strongest liked titles, strongest first (see
   /// [selectTasteSeeds]). Seeded retrieval asks providers about these.
@@ -221,6 +231,97 @@ class SessionMood {
   }
 }
 
+/// In-session "not this": a genre or tag the person rejected (Not
+/// interested) on [after] cards this session is suppressed, so candidates
+/// with it lose [penalty] (never excluded). Saving a card with that feature
+/// lifts it again. Never stored.
+class SessionSuppression {
+  final _rejects = <String, int>{};
+  final _suppressed = <String>{};
+
+  static const after = 3;
+  static const penalty = 0.25;
+
+  Set<String> get suppressed => Set.unmodifiable(_suppressed);
+
+  void reject(Set<String> features) {
+    for (final f in features) {
+      final n = (_rejects[f] ?? 0) + 1;
+      _rejects[f] = n;
+      if (n >= after) _suppressed.add(f);
+    }
+  }
+
+  void save(Set<String> features) {
+    for (final f in features) {
+      if (_suppressed.remove(f)) _rejects.remove(f);
+    }
+  }
+
+  double penaltyFor(Set<String> features) =>
+      _suppressed.isNotEmpty && features.any(_suppressed.contains)
+      ? penalty
+      : 0;
+
+  void clear() {
+    _rejects.clear();
+    _suppressed.clear();
+  }
+}
+
+/// Titles saved in this session used as temporary taste seeds: their
+/// provider "more like this" lists count toward [Ranker.coVisit] and earn a
+/// [boost], both fading by [decay] with every later decision. Never stored.
+class SessionSeeds {
+  final _seeds = <String, _SessionSeed>{};
+
+  static const boost = 0.10;
+  static const decay = 0.85;
+
+  bool get isEmpty => _seeds.isEmpty;
+  bool has(String seedId) => _seeds.containsKey(seedId);
+
+  /// [recommended] maps title id -> rank in the saved title's list.
+  void add(String seedId, Map<String, int> recommended) {
+    _seeds[seedId] = _SessionSeed(Map.of(recommended))..weight = 1;
+  }
+
+  /// One more decision was made: every session seed fades.
+  void record() {
+    for (final id in _seeds.keys.toList()) {
+      final s = _seeds[id]!..weight *= decay;
+      if (s.weight < 0.05) _seeds.remove(id);
+    }
+  }
+
+  void clear() => _seeds.clear();
+
+  /// Strength-weighted, rank-decayed edges into [id] (see [Ranker.coVisit]).
+  double edgeSum(String id) {
+    var sum = 0.0;
+    for (final s in _seeds.values) {
+      final rank = s.ranks[id];
+      if (rank != null) sum += s.weight * Ranker.rankDecay(rank);
+    }
+    return sum;
+  }
+
+  /// Up to [boost] for a title a save this session recommended.
+  double bonus(String id) {
+    var best = 0.0;
+    for (final s in _seeds.values) {
+      if (s.ranks.containsKey(id) && s.weight > best) best = s.weight;
+    }
+    return boost * best;
+  }
+}
+
+class _SessionSeed {
+  _SessionSeed(this.ranks);
+  final Map<String, int> ranks;
+  double weight = 1;
+}
+
 class RankedCard {
   const RankedCard(
     this.title,
@@ -334,7 +435,7 @@ class Ranker {
     return t.episodes != null && t.episodes! <= 13;
   }
 
-  /// Stage 2: score in 0..1.
+  /// Stage 2: score, about 0..1 (adjustments can take it a little past).
   double score(
     Title t,
     ProfileSignals s,
@@ -346,6 +447,8 @@ class Ranker {
     List<InterestCluster> clusters = const [],
     Set<String> recentExposures = const {},
     LearnedTaste? swipeTaste,
+    SessionSeeds? sessionSeeds,
+    SessionSuppression? suppression,
   }) {
     final features = t.features;
     final clusterTaste = clusters.isEmpty ? null : clusterAffinity(t, clusters);
@@ -384,34 +487,58 @@ class Ranker {
     // exploration and variety slots. (This used to be inverted: the more a
     // format was rated, the less it was dealt, so anime fans saw movies.)
     final affinity = kindAffinity(s, t.kind);
-    final penalty = _penalty(features, s.weights);
+    final penalty = penaltyOf(features, s.weights);
     final lean = session?.lean(features) ?? 0;
     final learned = f.mood == QuickMood.forYou && (target?.confidence ?? 0) > 0;
     final moodW = learned ? 0.10 + 0.25 * target!.confidence : 0.20;
     final tasteW = max(0.25, 0.40 - (moodW - 0.20));
+    // The hand-tuned components share 0.8; "also liked" (co-visitation from
+    // the person's liked titles) takes the other 0.2.
     final hand =
-        tasteW * taste +
-        moodW * mood +
-        0.15 * quality +
-        0.15 * freshness +
-        0.10 * affinity -
-        penalty +
+        handShare *
+            (tasteW * taste +
+                moodW * mood +
+                0.15 * quality +
+                0.15 * freshness +
+                0.10 * affinity) +
+        coVisitWeight * coVisit(t.id, s, session: sessionSeeds) +
+        (sessionSeeds?.bonus(t.id) ?? 0) -
+        penalty -
+        (suppression?.penaltyFor(features) ?? 0) +
         0.08 * lean +
         0.08 * (temporary?.lean(features) ?? 0) -
         (recentExposures.contains(t.id) ? 0.04 : 0) +
-        (preferShorter ? _lengthPreference(t) : 0) +
-        seedBoost(s.becauseOf[t.id]?.length ?? 0);
+        (preferShorter ? _lengthPreference(t) : 0);
     // What this person's own swipes say, trusted more as they accumulate.
     // Revisit deals from the library, which swipes on new picks say little
     // about.
     return swipeTaste == null || f.isRevisit ? hand : swipeTaste.mix(t, hand);
   }
 
-  /// Taste-seeded boost: +0.04 when one liked title's "more like this"
-  /// list includes the candidate, +0.04 more per further liked seed, capped
-  /// at +0.12. Modest on purpose: agreement between several of your likes
-  /// counts, one list alone does not outrank taste and mood.
-  static double seedBoost(int seeds) => min(0.12, 0.04 * seeds);
+  /// Weight of [coVisit] in the score, and the share left to the
+  /// hand-tuned taste/mood/quality/freshness/affinity components.
+  static const coVisitWeight = 0.20;
+  static const handShare = 1 - coVisitWeight;
+
+  /// How much a provider list's rank still counts: 1 at the top, half at
+  /// rank 5, a third at rank 10.
+  static double rankDecay(int rank) => 1 / (1 + rank / 5);
+
+  /// 0..1 "also liked" signal: every liked seed whose "more like this" list
+  /// includes [id] adds its strength times [rankDecay] of the position;
+  /// the sum saturates (`1 - exp(-sum)`), so agreement between strong seeds
+  /// near the top of their lists approaches 1 and one weak mention stays low.
+  /// Titles saved this session count as seeds too ([session]).
+  static double coVisit(String id, ProfileSignals s, {SessionSeeds? session}) {
+    final seeds = s.becauseOf[id] ?? const <String>[];
+    final ranks = s.becauseRank[id];
+    var sum = session?.edgeSum(id) ?? 0.0;
+    for (var i = 0; i < seeds.length; i++) {
+      final rank = ranks != null && i < ranks.length ? ranks[i] : 0;
+      sum += (s.seedStrength[seeds[i]] ?? 1) * rankDecay(rank);
+    }
+    return sum <= 0 ? 0 : 1 - exp(-sum);
+  }
 
   static double _lengthPreference(Title t) {
     // Episode/chapter counts cannot establish a film's runtime.
@@ -440,18 +567,83 @@ class Ranker {
     return ((cos + 1) / 2).clamp(0, 1).toDouble();
   }
 
-  /// Up to 0.3 for features the profile rated badly, from data only.
-  static double _penalty(Set<String> features, Map<String, double> weights) {
-    var worst = 0.0;
+  /// Up to 0.3 for features the profile rated badly, from data only: the
+  /// mean of the title's two most negative feature weights (a missing second
+  /// counts as 0), over 10. One stray bad tag costs half what two do.
+  static double penaltyOf(Set<String> features, Map<String, double> weights) {
+    var worst = 0.0, second = 0.0;
     for (final f in features) {
       final w = weights[f] ?? 0;
-      if (w < worst) worst = w;
+      if (w < worst) {
+        second = worst;
+        worst = w;
+      } else if (w < second) {
+        second = w;
+      }
     }
-    return (-worst / 10).clamp(0, 0.3).toDouble();
+    return (-(worst + second) / 2 / 10).clamp(0, 0.3).toDouble();
+  }
+
+  /// At most this many cards of a [size]-card deck share a primary theme.
+  static int themeCap(int size) => max(2, (size * 0.2).ceil());
+
+  /// [themeCap], raised only as far as needed for the eligible candidates
+  /// to fill [size] cards under it (a pool of one or two themes cannot be
+  /// held to two cards each), so the deck's slots keep their purpose.
+  static int _feasibleCap(
+    List<RankedCard> scored,
+    Map<String, String> themes,
+    int size,
+  ) {
+    final franchises = <String, Set<String>>{};
+    for (final c in scored) {
+      franchises
+          .putIfAbsent(themes[c.title.id] ?? '', () => {})
+          .add(c.title.franchiseKey);
+    }
+    final free = franchises.remove('')?.length ?? 0;
+    var cap = themeCap(size);
+    while (cap < size) {
+      var fill = free;
+      for (final f in franchises.values) {
+        fill += min(f.length, cap);
+      }
+      if (fill >= size) break;
+      cap++;
+    }
+    return cap;
+  }
+
+  /// Title id -> its primary theme: the genre rarest in [pool] (highest
+  /// idf) among the title's genres, ties by name. Titles without genres
+  /// have none and are never capped.
+  static Map<String, String> primaryThemes(List<Title> pool) {
+    final df = <String, int>{};
+    for (final t in pool) {
+      for (final g in {for (final g in t.genres) g.toLowerCase()}) {
+        df[g] = (df[g] ?? 0) + 1;
+      }
+    }
+    final n = pool.length;
+    final out = <String, String>{};
+    for (final t in pool) {
+      String? best;
+      var bestIdf = double.negativeInfinity;
+      for (final g in {for (final g in t.genres) g.toLowerCase()}) {
+        final idf = log(n / df[g]!);
+        if (idf > bestIdf || (idf == bestIdf && g.compareTo(best!) < 0)) {
+          best = g;
+          bestIdf = idf;
+        }
+      }
+      if (best != null) out[t.id] = best;
+    }
+    return out;
   }
 
   /// Adaptive familiar/adjacent/explore slots when a preference is supplied;
-  /// otherwise retains the legacy 7/2/1 allocation. One card per franchise.
+  /// otherwise retains the legacy 7/2/1 allocation. One card per franchise,
+  /// and at most [themeCap] cards per primary theme while others remain.
   List<RankedCard> deal(
     List<Title> pool,
     ProfileSignals s,
@@ -472,6 +664,8 @@ class Ranker {
     bool shortestFirst = false,
     int size = deckSize,
     LearnedTaste? swipeTaste,
+    SessionSeeds? sessionSeeds,
+    SessionSuppression? suppression,
   }) {
     final scored = <RankedCard>[];
     if (swipeTaste != null && swipeTaste.blend > 0) swipeTaste.calibrate(pool);
@@ -502,6 +696,8 @@ class Ranker {
             clusters: clusters,
             recentExposures: recentExposures,
             swipeTaste: swipeTaste,
+            sessionSeeds: sessionSeeds,
+            suppression: suppression,
           ) +
           _random.nextDouble() * 0.02;
       scored.add(
@@ -532,6 +728,8 @@ class Ranker {
           ),
       ];
     }
+    final themes = primaryThemes(pool);
+    final cap = _feasibleCap(scored, themes, size);
     if (explorePreference != null) {
       return [
         for (final c in _adaptive(
@@ -542,6 +740,8 @@ class Ranker {
           explorePreference,
           recentExposures,
           swipeTaste,
+          themes,
+          cap,
         ))
           RankedCard(
             c.title,
@@ -559,9 +759,16 @@ class Ranker {
 
     final franchises = <String>{};
     final picked = <RankedCard>[];
-    bool take(RankedCard c) {
+    final perTheme = <String, int>{};
+    bool take(RankedCard c, {bool capped = true}) {
       if (picked.length >= size) return false;
-      if (!franchises.add(c.title.franchiseKey)) return false;
+      if (franchises.contains(c.title.franchiseKey)) return false;
+      final theme = themes[c.title.id];
+      if (capped && theme != null && (perTheme[theme] ?? 0) >= cap) {
+        return false;
+      }
+      franchises.add(c.title.franchiseKey);
+      if (theme != null) perTheme[theme] = (perTheme[theme] ?? 0) + 1;
       picked.add(c);
       return true;
     }
@@ -622,6 +829,11 @@ class Ranker {
       if (picked.length >= size) break;
       take(c);
     }
+    // The theme cap never shortens the deck: fill from what it skipped.
+    for (final c in scored) {
+      if (picked.length >= size) break;
+      take(c, capped: false);
+    }
 
     final ordered = List.of(picked);
     if (broadFirstRun) {
@@ -649,6 +861,8 @@ class Ranker {
     double preference,
     Set<String> recent,
     LearnedTaste? swipeTaste,
+    Map<String, String> themes,
+    int cap,
   ) {
     final familiar =
         (size *
@@ -661,10 +875,17 @@ class Ranker {
     final picked = <RankedCard>[];
     final varied = <RankedCard>[];
     final franchises = <String>{};
-    bool take(RankedCard c, {bool variety = false}) {
-      if (picked.length >= size || !franchises.add(c.title.franchiseKey)) {
+    final perTheme = <String, int>{};
+    bool take(RankedCard c, {bool variety = false, bool capped = true}) {
+      if (picked.length >= size || franchises.contains(c.title.franchiseKey)) {
         return false;
       }
+      final theme = themes[c.title.id];
+      if (capped && theme != null && (perTheme[theme] ?? 0) >= cap) {
+        return false;
+      }
+      franchises.add(c.title.franchiseKey);
+      if (theme != null) perTheme[theme] = (perTheme[theme] ?? 0) + 1;
       picked.add(c);
       if (variety) varied.add(c);
       return true;
@@ -698,8 +919,7 @@ class Ranker {
             (recent.contains(c.title.id) ? 0 : 0.2);
         return value(b).compareTo(value(a));
       });
-      if (candidates.isEmpty) break;
-      take(candidates.first, variety: true);
+      if (!candidates.any((c) => take(c, variety: true))) break;
     }
     while (picked.length < size) {
       final candidates =
@@ -726,12 +946,16 @@ class Ranker {
             (c.title.year != null && c.title.year! >= 2023 ? 0.05 : 0);
         return value(b).compareTo(value(a));
       });
-      if (candidates.isEmpty) break;
-      take(candidates.first, variety: true);
+      if (!candidates.any((c) => take(c, variety: true))) break;
     }
     for (final c in scored) {
       if (picked.length >= size) break;
       take(c);
+    }
+    // The theme cap never shortens the deck: fill from what it skipped.
+    for (final c in scored) {
+      if (picked.length >= size) break;
+      take(c, capped: false);
     }
     final ordered = picked.where((c) => !varied.contains(c)).toList();
     for (var i = 0; i < varied.length; i++) {
