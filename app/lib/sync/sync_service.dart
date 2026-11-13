@@ -95,11 +95,27 @@ class HttpSyncRemote implements SyncRemote {
   Map<String, dynamic> _json(http.Response r) =>
       Map<String, dynamic>.from(jsonDecode(utf8.decode(r.bodyBytes)) as Map);
 
+  /// The failure for a non-200 answer. Storage full (429 quota_exceeded)
+  /// is `quota`; anything else keeps its HTTP status.
+  static SyncFailed _failure(http.Response r) {
+    if (r.statusCode == 429) {
+      try {
+        final b = jsonDecode(utf8.decode(r.bodyBytes));
+        if (b is Map && b['error'] == 'quota_exceeded') {
+          return const SyncFailed('quota');
+        }
+      } on FormatException {
+        // Not the Worker's JSON: fall through to the status.
+      }
+    }
+    return SyncFailed('http_${r.statusCode}');
+  }
+
   @override
   Future<({int version, String data})?> get(String id, String token) async {
     final r = await _send('GET', id, token);
     if (r.statusCode == 404) return null;
-    if (r.statusCode != 200) throw SyncFailed('http_${r.statusCode}');
+    if (r.statusCode != 200) throw _failure(r);
     final j = _json(r);
     return (version: (j['version'] as num).toInt(), data: j['data'] as String);
   }
@@ -113,7 +129,7 @@ class HttpSyncRemote implements SyncRemote {
     if (r.statusCode == 409) {
       throw SyncConflict((_json(r)['version'] as num).toInt());
     }
-    if (r.statusCode != 200) throw SyncFailed('http_${r.statusCode}');
+    if (r.statusCode != 200) throw _failure(r);
     return (_json(r)['version'] as num).toInt();
   }
 
@@ -121,7 +137,7 @@ class HttpSyncRemote implements SyncRemote {
   Future<void> delete(String id, String token) async {
     final r = await _send('DELETE', id, token);
     if (r.statusCode != 200 && r.statusCode != 404) {
-      throw SyncFailed('http_${r.statusCode}');
+      throw _failure(r);
     }
   }
 }
