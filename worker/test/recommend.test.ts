@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fakeEnv, fakeKv, mockUpstream, postJson } from "./helpers";
+import { fakeEnv, fakeKv, mockUpstream, postJson, aiEnv } from "./helpers";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -21,7 +21,7 @@ describe("POST /ai/recommend", () => {
   });
 
   it("rejects oversized or malformed profiles", async () => {
-    const env = fakeEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: fakeKv() });
+    const env = aiEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: fakeKv() });
     const many = Array.from({ length: 26 }, (_, i) => ({ title: `t${i}`, kind: "anime" }));
     expect((await postJson("/ai/recommend", { ...profile, liked: many }, env)).status).toBe(400);
     expect((await postJson("/ai/recommend", { ...profile, liked: [] }, env)).status).toBe(400);
@@ -44,7 +44,7 @@ describe("POST /ai/recommend", () => {
         "junk",
       ]),
     );
-    const res = await postJson("/ai/recommend", profile, fakeEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: fakeKv() }));
+    const res = await postJson("/ai/recommend", profile, aiEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: fakeKv() }));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       provider: "groq",
@@ -63,7 +63,7 @@ describe("POST /ai/recommend", () => {
         : Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify({ suggestions: [good] }) }] } }] }),
     );
     const kv = fakeKv();
-    const env = fakeEnv({ GROQ_API_KEY: "k", GEMINI_API_KEY: "g", CATALOG_CACHE: kv });
+    const env = aiEnv({ GROQ_API_KEY: "k", GEMINI_API_KEY: "g", CATALOG_CACHE: kv });
     const first = await (await postJson("/ai/recommend", profile, env)).json();
     expect(first).toEqual({ provider: "gemini", suggestions: [good] });
     const n = calls.length;
@@ -77,7 +77,7 @@ describe("POST /ai/recommend", () => {
 
   it("answers 502 when every provider gives nothing usable", async () => {
     mockUpstream(vi, () => reply([{ title: "X", kind: "anime", because: "nope", why: "y" }]));
-    const res = await postJson("/ai/recommend", profile, fakeEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: fakeKv() }));
+    const res = await postJson("/ai/recommend", profile, aiEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: fakeKv() }));
     expect(res.status).toBe(502);
   });
 });

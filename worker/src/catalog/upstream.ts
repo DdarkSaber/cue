@@ -1,5 +1,5 @@
 import { backoffMs, isOpen, recordFailure, recordSuccess, retryAfterMs, sleep } from "../resilience";
-import { UpstreamError } from "./types";
+import { AuthRejectedError, UpstreamError } from "./types";
 
 export const UPSTREAM_TIMEOUT_MS = 5000;
 
@@ -12,6 +12,15 @@ const MAX_RETRY_WAIT_MS = 1500;
 
 const retryable = (status: number) => status === 429 || (status >= 500 && status <= 599);
 
+export interface FetchOptions {
+  /**
+   * Statuses meaning "the person's credentials were refused" (only for calls
+   * made with their token). Thrown as AuthRejectedError, never retried, and
+   * never counted against the circuit: the provider answered, so it is up.
+   */
+  authRejected?: readonly number[];
+}
+
 /**
  * Fetches JSON from a fixed provider URL with a timeout and a size cap.
  * Redirects are refused so a provider can never bounce us elsewhere.
@@ -22,6 +31,7 @@ const retryable = (status: number) => status === 429 || (status >= 500 && status
 export async function fetchJson(
   url: string,
   init: RequestInit = {},
+  opts: FetchOptions = {},
 ): Promise<unknown> {
   const host = new URL(url).hostname;
   const retries = (init.method ?? "GET").toUpperCase() === "GET" ? MAX_RETRIES : 0;
@@ -49,6 +59,10 @@ export async function fetchJson(
       throw new UpstreamError(res ? `status ${res.status}` : "fetch");
     }
     recordSuccess(host);
+    if (opts.authRejected?.includes(res.status)) {
+      void res.body?.cancel();
+      throw new AuthRejectedError(`status ${res.status}`);
+    }
     if (res.status === 404) return null;
     if (!res.ok) throw new UpstreamError(`status ${res.status}`);
     const length = Number(res.headers.get("Content-Length") ?? 0);

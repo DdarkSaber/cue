@@ -159,6 +159,6 @@ export function bearer(header: string | undefined): string | null {
 export const syncParams = z.object({ id: z.string().regex(/^[a-f0-9]{32}$/) });
 export const syncBody = z.object({
   version: z.number().int().min(0).max(1e9),
-  // Base64 ciphertext; the 2 MB body cap bounds it first.
+  // Base64 ciphertext; the 1.9 MiB body cap bounds it first.
   data: z.string().min(16).max(2_900_000).regex(/^[A-Za-z0-9+/=_-]+$/),
 });

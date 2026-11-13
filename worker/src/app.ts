@@ -2,8 +2,8 @@ import { Hono } from "hono";
 
 import { proxyImage } from "./catalog/image";
 import * as catalog from "./catalog/service";
-import { NotConfiguredError, UpstreamError } from "./catalog/types";
-import type { AppEnv, Env } from "./env";
+import { AuthRejectedError, NotConfiguredError, UpstreamError } from "./catalog/types";
+import type { AppEnv } from "./env";
 import * as lists from "./imports/lists";
 import { same, sha256Hex, SyncStore } from "./sync/store";
 import { diagnosticsBody, diagnosticsId, diagnosticsToken } from "./diagnostics/schemas";
@@ -23,6 +23,7 @@ import {
   allowedOrigins,
   apiHeaders,
   bodyCap,
+  clientKey,
   corsPolicy,
   originGuard,
   rateLimit,
@@ -64,9 +65,10 @@ export function createApp() {
     c.header("Retry-After", "30");
     return fail(c, 503, "unavailable");
   };
-  const spendAi = async (env: Env): Promise<"ok" | "cap" | "store"> => {
+  const spendAi = async (c: Ctx): Promise<"ok" | "cap" | "store"> => {
+    if (!c.env.SYNC_DB) return "store";
     try {
-      return (await underDailyCap(env.CATALOG_CACHE)) ? "ok" : "cap";
+      return (await underDailyCap(c.env.SYNC_DB, clientKey(c))) ? "ok" : "cap";
     } catch {
       return "store";
     }
@@ -243,13 +245,12 @@ export function createApp() {
     return { id: p.data.id, token, store: new SyncStore(c.env.SYNC_DB) };
   };
 
+  // A wrong token answers 404 like a missing id, so ids cannot be probed.
   app.get("/sync/:id", async (c) => {
     const a = syncAuth(c);
     if ("res" in a) return a.res;
     const blob = await a.store.get(a.id, a.token);
-    if (blob === null) return fail(c, 404, "not_found");
-    if (blob === "forbidden") return fail(c, 403, "forbidden");
-    return c.json(blob);
+    return blob === null ? fail(c, 404, "not_found") : c.json(blob);
   });
 
   app.put("/sync/:id", async (c) => {
@@ -257,18 +258,30 @@ export function createApp() {
     if ("res" in a) return a.res;
     const b = check(c, syncBody, await jsonBody(c));
     if (!b.ok) return b.res;
+    // Creates take new space: a much stricter per-IP limit than updates.
+    if (b.data.version === 0) {
+      const limiter = c.env.SYNC_CREATE_LIMITER ?? c.env.RATE_LIMITER;
+      if (!limiter) return fail(c, 503, "unavailable");
+      if (!(await limiter.limit({ key: clientKey(c) })).success) {
+        c.header("Retry-After", "60");
+        return fail(c, 429, "rate_limited");
+      }
+    }
     const r = await a.store.put(a.id, a.token, b.data.version, b.data.data, Date.now());
     if (r.ok) return c.json({ version: r.version });
     if (r.reason === "conflict") return fail(c, 409, "conflict", { version: r.version });
-    return fail(c, r.reason === "forbidden" ? 403 : 404, r.reason);
+    if (r.reason === "quota_exceeded") {
+      c.header("Retry-After", "86400");
+      return fail(c, 429, "quota_exceeded");
+    }
+    return fail(c, 404, "not_found");
   });
 
   app.delete("/sync/:id", async (c) => {
     const a = syncAuth(c);
     if ("res" in a) return a.res;
     const r = await a.store.delete(a.id, a.token);
-    if (r === "deleted") return c.json({ deleted: true });
-    return fail(c, r === "forbidden" ? 403 : 404, r);
+    return r === "deleted" ? c.json({ deleted: true }) : fail(c, 404, "not_found");
   });
 
   // Optional, client-consented technical diagnostics. CORS is not authorization.
@@ -335,7 +348,7 @@ export function createApp() {
     if (!b.ok) return b.res;
     if (!(c.env.GROQ_API_KEY || c.env.GEMINI_API_KEY)) return fail(c, 503, "not_configured");
     if (!aiAvailable(c.env)) return aiDown(c);
-    const cap = await spendAi(c.env);
+    const cap = await spendAi(c);
     if (cap !== "ok") return aiRefused(c, cap);
     return c.json(await moodHints(c.env, b.data.text, b.data.allowed));
   });
@@ -351,7 +364,7 @@ export function createApp() {
     if (!aiAvailable(c.env)) return aiDown(c);
     // Identical in-flight requests share one provider call and one cap unit.
     const out = await shared(key, async () => {
-      const cap = await spendAi(c.env);
+      const cap = await spendAi(c);
       if (cap !== "ok") return cap;
       const fresh = await recommend(c.env, b.data);
       await storeRecommendations(c.env.CATALOG_CACHE, key, fresh);
@@ -364,6 +377,11 @@ export function createApp() {
 
   app.onError((err, c) => {
     if (err instanceof NotConfiguredError) return fail(c, 503, "not_configured");
+    if (err instanceof AuthRejectedError) {
+      // The person's sign-in is no longer valid; the app renews or signs out.
+      console.error(JSON.stringify({ e: "auth_rejected", m: err.message, r: c.req.routePath }));
+      return fail(c, 401, "token_expired");
+    }
     if (err instanceof UpstreamError) {
       // The message is a fixed reason or an HTTP status, never request data.
       console.error(JSON.stringify({ e: "upstream", m: err.message, r: c.req.routePath }));

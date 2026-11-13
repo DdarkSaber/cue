@@ -1,5 +1,5 @@
 import { NotConfiguredError, UpstreamError } from "../catalog/types";
-import { fetchJson } from "../catalog/upstream";
+import { fetchJson, type FetchOptions } from "../catalog/upstream";
 import type { Env } from "../env";
 
 /**
@@ -22,6 +22,15 @@ export interface ListEntry {
 
 const MAX_ENTRIES = 20000;
 
+/**
+ * MAL answers 401 (sometimes 403) when the person's access token expired or
+ * was revoked. That must reach the app as token_expired, not as an outage,
+ * so the app renews or signs out only when the sign-in is really gone.
+ */
+const BEARER_REJECTED: FetchOptions = { authRejected: [401, 403] };
+/** The token endpoint refuses a used, expired or revoked grant with 400/401 (invalid_grant). */
+const GRANT_REJECTED: FetchOptions = { authRejected: [400, 401] };
+
 type Row = Record<string, any>;
 
 // --- MyAnimeList -------------------------------------------------------------
@@ -30,6 +39,7 @@ async function malPages(
   first: string,
   headers: Record<string, string>,
   type: "anime" | "manga",
+  opts: FetchOptions = {},
 ): Promise<ListEntry[]> {
   const out: ListEntry[] = [];
   let url: string | null = first;
@@ -37,7 +47,7 @@ async function malPages(
   for (let page = 0; url && page < 20; page++) {
     const u = new URL(url);
     if (u.hostname !== "api.myanimelist.net") break;
-    const body = (await fetchJson(url, { headers })) as Row | null;
+    const body = (await fetchJson(url, { headers }, opts)) as Row | null;
     for (const d of body?.data ?? []) {
       const n = d.node ?? {};
       const s = d.list_status ?? {};
@@ -96,8 +106,8 @@ export async function malByUser(env: Env, name: string) {
 export async function malViewer(token: string) {
   const headers = { Authorization: `Bearer ${token}` };
   const [a, m] = await Promise.all([
-    malPages(malUrl("@me", "anime"), headers, "anime"),
-    malPages(malUrl("@me", "manga"), headers, "manga"),
+    malPages(malUrl("@me", "anime"), headers, "anime", BEARER_REJECTED),
+    malPages(malUrl("@me", "manga"), headers, "manga", BEARER_REJECTED),
   ]);
   return [...a, ...m];
 }
@@ -106,7 +116,7 @@ export async function malViewer(token: string) {
 export async function malMe(token: string): Promise<string | null> {
   const me = (await fetchJson("https://api.myanimelist.net/v2/users/@me", {
     headers: { Authorization: `Bearer ${token}` },
-  })) as Row | null;
+  }, BEARER_REJECTED)) as Row | null;
   return typeof me?.name === "string" ? me.name : null;
 }
 
@@ -144,7 +154,7 @@ async function malToken(env: Env, params: Record<string, string | undefined>): P
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
-  })) as Row | null;
+  }, GRANT_REJECTED)) as Row | null;
   const token = res?.access_token;
   if (typeof token !== "string" || token.length === 0) throw new UpstreamError("token");
   return {

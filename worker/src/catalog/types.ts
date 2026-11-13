@@ -50,6 +50,14 @@ export class UpstreamError extends Error {
   override name = "UpstreamError";
 }
 
+/**
+ * Thrown when a provider refuses the person's own credentials (an expired or
+ * revoked sign-in), so the app can tell it apart from an outage. Mapped to 401.
+ */
+export class AuthRejectedError extends Error {
+  override name = "AuthRejectedError";
+}
+
 /** Thrown when a provider needs a key the Worker does not have. */
 export class NotConfiguredError extends Error {
   override name = "NotConfiguredError";

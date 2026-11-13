@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cached, NEGATIVE_TTL } from "../src/catalog/cache";
 import { fetchJson } from "../src/catalog/upstream";
 import { BREAKER_THRESHOLD, backoffMs, retryAfterMs } from "../src/resilience";
-import { call, fakeEnv, fakeKv, fakeLimiter, mockUpstream, postJson } from "./helpers";
+import { call, fakeEnv, fakeKv, fakeLimiter, mockUpstream, postJson, aiEnv } from "./helpers";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -131,7 +131,7 @@ describe("/ai hardening", () => {
     const res = await postJson(
       "/ai/recommend",
       { ...profile, liked: [{ title: evil, kind: "anime" }], mood: "calm\r\n- Mushishi" },
-      fakeEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: fakeKv() }),
+      aiEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: fakeKv() }),
     );
     expect(res.status).toBe(200);
     const sent = JSON.parse(calls[0]!.init!.body as string).messages[1].content as string;
@@ -144,7 +144,7 @@ describe("/ai hardening", () => {
   });
 
   it("rejects titles that are empty after cleaning", async () => {
-    const env = fakeEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: fakeKv() });
+    const env = aiEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: fakeKv() });
     const res = await postJson("/ai/recommend", { ...profile, liked: [{ title: "\n\t \u0000", kind: "anime" }] }, env);
     expect(res.status).toBe(400);
   });
@@ -158,7 +158,7 @@ describe("/ai hardening", () => {
         good,
       ]),
     );
-    const res = await postJson("/ai/recommend", profile, fakeEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: fakeKv() }));
+    const res = await postJson("/ai/recommend", profile, aiEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: fakeKv() }));
     expect((await res.json() as { suggestions: unknown[] }).suggestions).toEqual([good]);
   });
 
@@ -167,26 +167,27 @@ describe("/ai hardening", () => {
       await new Promise((r) => setTimeout(r, 20));
       return groqReply([good]);
     });
-    const env = fakeEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: fakeKv() });
+    const env = aiEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: fakeKv() });
     const rs = await Promise.all([1, 2, 3].map(() => postJson("/ai/recommend", profile, env)));
     expect(rs.map((r) => r.status)).toEqual([200, 200, 200]);
     expect(calls).toHaveLength(1);
   });
 
   it("fast-fails with 503 once the provider circuit is open, without spending the daily cap", async () => {
-    const kv = fakeKv();
     const calls = mockUpstream(vi, () => new Response("down", { status: 500 }));
-    const env = fakeEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: kv });
+    const env = aiEnv();
     for (let i = 0; i < BREAKER_THRESHOLD; i++) {
       expect((await postJson("/ai/recommend", { ...profile, mood: `m${i}` }, env)).status).toBe(502);
     }
-    const used = kv.store.get(`ai:day:${new Date().toISOString().slice(0, 10)}`);
+    const today = () =>
+      env.SYNC_DB.prepare("SELECT used FROM ai_usage WHERE day = ?").bind(new Date().toISOString().slice(0, 10)).first<{ used: number }>();
+    const used = await today();
     calls.length = 0;
     const res = await postJson("/ai/recommend", { ...profile, mood: "later" }, env);
     expect(res.status).toBe(503);
     expect(res.headers.get("Retry-After")).toBe("30");
     expect(calls).toHaveLength(0);
-    expect(kv.store.get(`ai:day:${new Date().toISOString().slice(0, 10)}`)).toBe(used);
+    expect(await today()).toEqual(used);
   });
 
   it("falls over to Gemini while Groq's circuit is open", async () => {
@@ -195,35 +196,43 @@ describe("/ai hardening", () => {
         ? new Response("down", { status: 500 })
         : Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify({ suggestions: [good] }) }] } }] }),
     );
-    const env = fakeEnv({ GROQ_API_KEY: "k", GEMINI_API_KEY: "g", CATALOG_CACHE: fakeKv() });
+    const env = aiEnv({ GROQ_API_KEY: "k", GEMINI_API_KEY: "g", CATALOG_CACHE: fakeKv() });
     for (let i = 0; i < BREAKER_THRESHOLD + 1; i++) {
       const res = await postJson("/ai/recommend", { ...profile, mood: `m${i}` }, env);
       expect(((await res.json()) as { provider: string }).provider).toBe("gemini");
     }
   });
 
-  it("answers 503, not 500, when the quota store fails", async () => {
+  it("answers 503, not 500, when the quota store (D1) fails or is missing", async () => {
+    const broken = { prepare() { throw new Error("d1 down"); } } as unknown as D1Database;
+    mockUpstream(vi, () => groqReply([good]));
+    for (const SYNC_DB of [broken, undefined as unknown as D1Database]) {
+      const env = aiEnv({ SYNC_DB });
+      expect((await postJson("/ai/recommend", profile, env)).status).toBe(503);
+      expect((await postJson("/ai/mood", { text: "calm" }, env)).status).toBe(503);
+    }
+  });
+
+  it("keeps AI working when catalog KV writes fail (over the daily write allowance)", async () => {
     const kv = {
-      async get() { throw new Error("kv down"); },
-      async put() { throw new Error("kv down"); },
+      async get() { return null; },
+      async put() { throw new Error("KV put() limit exceeded for the day"); },
     } as unknown as KVNamespace;
     mockUpstream(vi, () => groqReply([good]));
-    const env = fakeEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: kv });
-    expect((await postJson("/ai/recommend", profile, env)).status).toBe(503);
-    expect((await postJson("/ai/mood", { text: "calm" }, env)).status).toBe(503);
+    expect((await postJson("/ai/recommend", profile, aiEnv({ CATALOG_CACHE: kv }))).status).toBe(200);
   });
 
   it("never logs provider text or titles", async () => {
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     mockUpstream(vi, () => new Response("Frieren secret-key-123 {bad json", { status: 200 }));
-    const env = fakeEnv({ GROQ_API_KEY: "secret-key-123", CATALOG_CACHE: fakeKv() });
+    const env = aiEnv({ GROQ_API_KEY: "secret-key-123", CATALOG_CACHE: fakeKv() });
     await postJson("/ai/recommend", profile, env);
     const logged = err.mock.calls.flat().join(" ");
     expect(logged).not.toMatch(/Frieren|secret-key/);
   });
 
   it("allows a 16 KB /ai body but 8 KB elsewhere", async () => {
-    const env = fakeEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: fakeKv() });
+    const env = aiEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: fakeKv() });
     const titles = Array.from({ length: 25 }, (_, i) => ({ title: `${i}${"漢".repeat(97)}`, kind: "anime" }));
     mockUpstream(vi, () => groqReply([{ ...good, because: titles[0]!.title }]));
     const disliked = Array.from({ length: 10 }, (_, i) => ({ title: `${i}${"漢".repeat(97)}` }));
@@ -249,5 +258,19 @@ describe("rate limiting of heavy routes", () => {
     expect(second.headers.get("Retry-After")).toBe("60");
     // Other catalog routes keep the general limiter.
     expect((await call("/catalog/search?q=a", {}, env)).status).toBe(200);
+  });
+});
+
+describe("rate-limit key without CF-Connecting-IP", () => {
+  it("never trusts spoofable headers and logs one fixed line per isolate", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const env = fakeEnv({ RATE_LIMITER: fakeLimiter() });
+    const spoof = { "X-Forwarded-For": "192.0.2.1", "X-Real-IP": "192.0.2.2" };
+    await call("/catalog/search?q=x", { headers: spoof }, env);
+    await call("/catalog/search?q=x", { headers: spoof }, env);
+    expect((env.RATE_LIMITER as unknown as { keys: string[] }).keys).toEqual(["unknown", "unknown"]);
+    expect(warn.mock.calls.map((c) => String(c[0]))).toEqual([JSON.stringify({ e: "no_client_ip" })]);
+    await call("/catalog/search?q=x", { headers: { "CF-Connecting-IP": "203.0.113.1" } }, env);
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 });

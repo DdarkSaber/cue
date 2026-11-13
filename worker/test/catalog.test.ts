@@ -190,4 +190,57 @@ describe("batch match for imports", () => {
     expect(body.results).toHaveLength(2);
     expect(calls.filter((c) => c.url.hostname === "api.tvmaze.com")).toHaveLength(1);
   });
+
+  it("shares /catalog/search's cache entries, so a cached title costs no upstream call", async () => {
+    const calls = mockUpstream(vi, (url) =>
+      url.hostname === "api.tvmaze.com"
+        ? Response.json([{ show: { id: 9, name: "Synthetic Drama", premiered: "2020-01-01" } }])
+        : Response.json({ metas: [] }),
+    );
+    const env = fakeEnv({ CATALOG_CACHE: fakeKv() });
+    await call("/catalog/search?q=Synthetic%20Drama&kind=kdrama", {}, env);
+    const n = calls.length;
+    const res = await postJson("/catalog/match", { items: [{ q: "synthetic  drama", kind: "kdrama" }] }, env);
+    const body = (await res.json()) as { results: unknown[][]; mal: unknown[]; failed: number[] };
+    expect(calls.length).toBe(n);
+    expect(body.results[0]).toHaveLength(1);
+    expect(body).toMatchObject({ mal: [], failed: [] });
+  });
+
+  it("reports failed lookups by index; others still return; empty is not a failure", async () => {
+    mockUpstream(vi, (url) => {
+      const q = url.searchParams.get("q") ?? decodeURIComponent(url.pathname);
+      if (/broken/i.test(q)) return new Response("down", { status: 500 });
+      if (url.hostname === "api.tvmaze.com" && /found/i.test(q)) {
+        return Response.json([{ show: { id: 9, name: "Found Show", premiered: "2020-01-01" } }]);
+      }
+      return url.hostname === "api.tvmaze.com" ? Response.json([]) : Response.json({ metas: [] });
+    });
+    const res = await postJson(
+      "/catalog/match",
+      {
+        items: [
+          { q: "Found Show", kind: "kdrama" },
+          { q: "Broken Show", kind: "kdrama" },
+          { q: "Nothing Here", kind: "kdrama" },
+          { q: "A Comic", kind: "manhwa" },
+        ],
+      },
+      fakeEnv({ CATALOG_CACHE: fakeKv() }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { results: unknown[][]; mal: unknown[]; failed: number[] };
+    expect(body.results).toHaveLength(4);
+    expect(body.results[0]!.length).toBeGreaterThan(0);
+    expect(body.results[2]).toEqual([]);
+    expect(body.failed).toEqual([1]);
+    expect(body.mal).toEqual([]);
+  });
+
+  it("a failed lookup is not cached as an empty answer", async () => {
+    const kv = fakeKv();
+    mockUpstream(vi, () => new Response("down", { status: 500 }));
+    await postJson("/catalog/match", { items: [{ q: "Broken Show", kind: "kdrama" }] }, fakeEnv({ CATALOG_CACHE: kv }));
+    expect([...kv.store.keys()].some((k) => k.includes("search:"))).toBe(false);
+  });
 });
