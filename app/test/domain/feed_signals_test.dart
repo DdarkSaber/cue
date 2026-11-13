@@ -149,4 +149,44 @@ void main() {
       expect(seeds.isEmpty, isTrue);
     });
   });
+
+  group('negatives', () {
+    test('three rejections sharing a feature suppress it for the session', () {
+      final s = SessionSuppression();
+      s.reject({'romance', 'school'});
+      s.reject({'romance', 'drama'});
+      expect(s.penaltyFor({'romance'}), 0);
+      s.reject({'romance'});
+      expect(s.suppressed, {'romance'});
+      expect(s.penaltyFor({'romance', 'action'}), SessionSuppression.penalty);
+      expect(s.penaltyFor({'action'}), 0);
+      // Penalised, not excluded: the score drops by exactly the penalty.
+      final ranker = Ranker();
+      const p = ProfileSignals();
+      final title = _t('r', genres: const ['Romance']);
+      expect(
+        ranker.score(title, p, f) - ranker.score(title, p, f, suppression: s),
+        closeTo(SessionSuppression.penalty, 1e-9),
+      );
+      // Saving a card with it lifts the suppression, and the count restarts.
+      s.save({'romance', 'comedy'});
+      expect(s.suppressed, isEmpty);
+      s.reject({'romance'});
+      expect(s.suppressed, isEmpty);
+    });
+
+    test('long-term penalty is the mean of the two worst feature weights', () {
+      const weights = {'gore': -3.0, 'ecchi': -2.0, 'action': 1.0};
+      expect(
+        Ranker.penaltyOf({'gore', 'action'}, weights),
+        closeTo(0.15, 1e-12),
+      );
+      expect(
+        Ranker.penaltyOf({'gore', 'ecchi', 'action'}, weights),
+        closeTo(0.25, 1e-12),
+      );
+      expect(Ranker.penaltyOf({'action'}, weights), 0);
+      expect(Ranker.penaltyOf({'a', 'b'}, const {'a': -9.0, 'b': -8.0}), 0.3);
+    });
+  });
 }

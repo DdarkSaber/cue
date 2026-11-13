@@ -231,6 +231,44 @@ class SessionMood {
   }
 }
 
+/// In-session "not this": a genre or tag the person rejected (Not
+/// interested) on [after] cards this session is suppressed, so candidates
+/// with it lose [penalty] (never excluded). Saving a card with that feature
+/// lifts it again. Never stored.
+class SessionSuppression {
+  final _rejects = <String, int>{};
+  final _suppressed = <String>{};
+
+  static const after = 3;
+  static const penalty = 0.25;
+
+  Set<String> get suppressed => Set.unmodifiable(_suppressed);
+
+  void reject(Set<String> features) {
+    for (final f in features) {
+      final n = (_rejects[f] ?? 0) + 1;
+      _rejects[f] = n;
+      if (n >= after) _suppressed.add(f);
+    }
+  }
+
+  void save(Set<String> features) {
+    for (final f in features) {
+      if (_suppressed.remove(f)) _rejects.remove(f);
+    }
+  }
+
+  double penaltyFor(Set<String> features) =>
+      _suppressed.isNotEmpty && features.any(_suppressed.contains)
+      ? penalty
+      : 0;
+
+  void clear() {
+    _rejects.clear();
+    _suppressed.clear();
+  }
+}
+
 /// Titles saved in this session used as temporary taste seeds: their
 /// provider "more like this" lists count toward [Ranker.coVisit] and earn a
 /// [boost], both fading by [decay] with every later decision. Never stored.
@@ -410,6 +448,7 @@ class Ranker {
     Set<String> recentExposures = const {},
     LearnedTaste? swipeTaste,
     SessionSeeds? sessionSeeds,
+    SessionSuppression? suppression,
   }) {
     final features = t.features;
     final clusterTaste = clusters.isEmpty ? null : clusterAffinity(t, clusters);
@@ -448,7 +487,7 @@ class Ranker {
     // exploration and variety slots. (This used to be inverted: the more a
     // format was rated, the less it was dealt, so anime fans saw movies.)
     final affinity = kindAffinity(s, t.kind);
-    final penalty = _penalty(features, s.weights);
+    final penalty = penaltyOf(features, s.weights);
     final lean = session?.lean(features) ?? 0;
     final learned = f.mood == QuickMood.forYou && (target?.confidence ?? 0) > 0;
     final moodW = learned ? 0.10 + 0.25 * target!.confidence : 0.20;
@@ -464,7 +503,8 @@ class Ranker {
                 0.10 * affinity) +
         coVisitWeight * coVisit(t.id, s, session: sessionSeeds) +
         (sessionSeeds?.bonus(t.id) ?? 0) -
-        penalty +
+        penalty -
+        (suppression?.penaltyFor(features) ?? 0) +
         0.08 * lean +
         0.08 * (temporary?.lean(features) ?? 0) -
         (recentExposures.contains(t.id) ? 0.04 : 0) +
@@ -527,14 +567,21 @@ class Ranker {
     return ((cos + 1) / 2).clamp(0, 1).toDouble();
   }
 
-  /// Up to 0.3 for features the profile rated badly, from data only.
-  static double _penalty(Set<String> features, Map<String, double> weights) {
-    var worst = 0.0;
+  /// Up to 0.3 for features the profile rated badly, from data only: the
+  /// mean of the title's two most negative feature weights (a missing second
+  /// counts as 0), over 10. One stray bad tag costs half what two do.
+  static double penaltyOf(Set<String> features, Map<String, double> weights) {
+    var worst = 0.0, second = 0.0;
     for (final f in features) {
       final w = weights[f] ?? 0;
-      if (w < worst) worst = w;
+      if (w < worst) {
+        second = worst;
+        worst = w;
+      } else if (w < second) {
+        second = w;
+      }
     }
-    return (-worst / 10).clamp(0, 0.3).toDouble();
+    return (-(worst + second) / 2 / 10).clamp(0, 0.3).toDouble();
   }
 
   /// Adaptive familiar/adjacent/explore slots when a preference is supplied;
@@ -560,6 +607,7 @@ class Ranker {
     int size = deckSize,
     LearnedTaste? swipeTaste,
     SessionSeeds? sessionSeeds,
+    SessionSuppression? suppression,
   }) {
     final scored = <RankedCard>[];
     if (swipeTaste != null && swipeTaste.blend > 0) swipeTaste.calibrate(pool);
@@ -591,6 +639,7 @@ class Ranker {
             recentExposures: recentExposures,
             swipeTaste: swipeTaste,
             sessionSeeds: sessionSeeds,
+            suppression: suppression,
           ) +
           _random.nextDouble() * 0.02;
       scored.add(

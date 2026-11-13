@@ -142,6 +142,7 @@ class DeckController extends Notifier<DeckState> {
   /// Titles saved this session whose "more like this" lists steer the
   /// upcoming cards; see [_seedFromSave].
   final SessionSeeds _saved = SessionSeeds();
+  final SessionSuppression _suppression = SessionSuppression();
   DateTime? _lastSaveFetch;
   int _saveFetches = 0;
   int _saveEpoch = 0;
@@ -151,8 +152,9 @@ class DeckController extends Notifier<DeckState> {
   static const saveFetchEvery = Duration(seconds: 20);
   static const maxSaveFetches = 6;
 
-  void _clearSessionSeeds() {
+  void _clearSessionSignals() {
     _saved.clear();
+    _suppression.clear();
     _lastSaveFetch = null;
     _saveFetches = 0;
     _saveEpoch++;
@@ -172,7 +174,7 @@ class DeckController extends Notifier<DeckState> {
   void _activate(String id) {
     if (_temporary.activate(id)) {
       _session.bias.clear();
-      _clearSessionSeeds();
+      _clearSessionSignals();
       _visibleId = null;
       _wantRetrieval = true;
     }
@@ -438,7 +440,7 @@ class DeckController extends Notifier<DeckState> {
     _activate(await _profile);
     _temporary.differentDirection();
     _session.bias.clear();
-    _clearSessionSeeds();
+    _clearSessionSignals();
     _wantRetrieval = true;
     _skipCurrent = true;
     await _deal();
@@ -450,7 +452,7 @@ class DeckController extends Notifier<DeckState> {
   Future<void> resetSession() async {
     _temporary.reset();
     _session.bias.clear();
-    _clearSessionSeeds();
+    _clearSessionSignals();
     _wantRetrieval = true;
     await _deal();
   }
@@ -1076,6 +1078,7 @@ class DeckController extends Notifier<DeckState> {
       explorePreference: _temporary.effectiveExploration,
       swipeTaste: swipeTaste,
       sessionSeeds: _saved,
+      suppression: _suppression,
       skip: skip,
       skipFranchises: skipFranchises,
     );
@@ -1443,6 +1446,8 @@ class DeckController extends Notifier<DeckState> {
         Decision.watched => 0.1,
       });
       _saved.record();
+      if (d == Decision.notInterested) _suppression.reject(card.title.features);
+      if (d == Decision.willTry) _suppression.save(card.title.features);
       if (d == Decision.willTry && !filters.isRevisit) {
         _seedFromSave(card.title);
       }
@@ -1556,6 +1561,7 @@ class DeckController extends Notifier<DeckState> {
       _activate(profileId);
       if (!result.repeated) {
         _saved.record();
+        _suppression.save(card.title.features);
         if (!ref.read(deckFiltersProvider).isRevisit) {
           _seedFromSave(card.title);
         }
