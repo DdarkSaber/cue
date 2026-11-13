@@ -247,13 +247,16 @@ class ImportMatcher {
 
   /// Runs [call], retrying after [retryWaits] when the catalog is busy or
   /// failing (honouring a longer Retry-After, up to a minute). Null when it
-  /// still fails or the device is offline.
+  /// still fails or the device is offline. A rate limit the AniList client
+  /// already waited out and retried is not retried again here: stacked
+  /// retries could hold one batch for ten minutes without a word.
   Future<T?> _withRetry<T>(Future<T> Function() call) async {
     for (var attempt = 0; ; attempt++) {
       try {
         return await call();
       } on CatalogUnavailable catch (e) {
         if (e.code == 'offline' || attempt >= retryWaits.length) return null;
+        if (e.retriesSpent) return null;
         var wait = retryWaits[attempt];
         final asked = e.retryAfter;
         if (asked != null && asked > wait) {

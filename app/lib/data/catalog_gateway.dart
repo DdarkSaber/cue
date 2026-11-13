@@ -128,10 +128,18 @@ class WatchProvidersDto {
 
 /// Why a catalog call failed. Codes only; never request content.
 class CatalogUnavailable implements Exception {
-  const CatalogUnavailable(this.code, {this.retryAfter});
+  const CatalogUnavailable(
+    this.code, {
+    this.retryAfter,
+    this.retriesSpent = false,
+  });
 
   /// How long the provider asked us to wait, when it said so (Retry-After).
   final Duration? retryAfter;
+
+  /// The client already waited and retried as often as it will (AniList's
+  /// 429 handling): callers should not stack retries of their own on top.
+  final bool retriesSpent;
 
   /// offline, not_configured, rate_limited, upstream_error, bad_response...
   final String code;

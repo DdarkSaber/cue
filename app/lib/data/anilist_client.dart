@@ -90,6 +90,10 @@ class AniListClient {
     if (wait > Duration.zero) await _sleep(wait);
   }
 
+  /// Retries after a 429 (three attempts in all). Callers must not add
+  /// their own retries for a `rate_limited` with `retriesSpent`.
+  static const rateLimitRetries = 2;
+
   /// AniList's degraded limit is 30 a minute; after a 429 never go faster.
   static const _minGapAfter429 = Duration(milliseconds: 2050);
 
@@ -202,7 +206,8 @@ class AniListClient {
     String? token,
   }) async {
     late http.Response res;
-    // A 429 waits as long as AniList asks, then tries again (three times).
+    // A 429 waits as long as AniList asks, then tries again: at most
+    // [rateLimitRetries] times, so one call never blocks for minutes.
     for (var attempt = 0; ; attempt++) {
       await _acquire();
       await _pace();
@@ -239,10 +244,11 @@ class AniListClient {
       if (res.statusCode != 429) break;
       if (_gap < _minGapAfter429) _gap = _minGapAfter429;
       final reported = int.tryParse(res.headers['retry-after'] ?? '');
-      if (attempt >= 3) {
+      if (attempt >= rateLimitRetries) {
         throw CatalogUnavailable(
           'rate_limited',
           retryAfter: reported == null ? null : Duration(seconds: reported),
+          retriesSpent: true,
         );
       }
       final after = reported ?? 60;
