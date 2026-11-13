@@ -34,7 +34,17 @@ class ProfileSignals {
     this.kindRatings = const {},
     this.tasteSeeds = const [],
     this.becauseOf = const {},
+    this.becauseRank = const {},
+    this.seedStrength = const {},
   });
+
+  /// Parallel to [becauseOf]: the candidate's 0-based rank in each listed
+  /// seed's provider list. Missing ranks count as rank 0.
+  final Map<String, List<int>> becauseRank;
+
+  /// Seed id -> how much that liked title's list counts (rating weight and
+  /// recency; see [tasteSeedStrength]). Missing seeds count as 1.
+  final Map<String, double> seedStrength;
 
   /// The profile's strongest liked titles, strongest first (see
   /// [selectTasteSeeds]). Seeded retrieval asks providers about these.
@@ -334,7 +344,7 @@ class Ranker {
     return t.episodes != null && t.episodes! <= 13;
   }
 
-  /// Stage 2: score in 0..1.
+  /// Stage 2: score, about 0..1 (adjustments can take it a little past).
   double score(
     Title t,
     ProfileSignals s,
@@ -389,29 +399,51 @@ class Ranker {
     final learned = f.mood == QuickMood.forYou && (target?.confidence ?? 0) > 0;
     final moodW = learned ? 0.10 + 0.25 * target!.confidence : 0.20;
     final tasteW = max(0.25, 0.40 - (moodW - 0.20));
+    // The hand-tuned components share 0.8; "also liked" (co-visitation from
+    // the person's liked titles) takes the other 0.2.
     final hand =
-        tasteW * taste +
-        moodW * mood +
-        0.15 * quality +
-        0.15 * freshness +
-        0.10 * affinity -
+        handShare *
+            (tasteW * taste +
+                moodW * mood +
+                0.15 * quality +
+                0.15 * freshness +
+                0.10 * affinity) +
+        coVisitWeight * coVisit(t.id, s) -
         penalty +
         0.08 * lean +
         0.08 * (temporary?.lean(features) ?? 0) -
         (recentExposures.contains(t.id) ? 0.04 : 0) +
-        (preferShorter ? _lengthPreference(t) : 0) +
-        seedBoost(s.becauseOf[t.id]?.length ?? 0);
+        (preferShorter ? _lengthPreference(t) : 0);
     // What this person's own swipes say, trusted more as they accumulate.
     // Revisit deals from the library, which swipes on new picks say little
     // about.
     return swipeTaste == null || f.isRevisit ? hand : swipeTaste.mix(t, hand);
   }
 
-  /// Taste-seeded boost: +0.04 when one liked title's "more like this"
-  /// list includes the candidate, +0.04 more per further liked seed, capped
-  /// at +0.12. Modest on purpose: agreement between several of your likes
-  /// counts, one list alone does not outrank taste and mood.
-  static double seedBoost(int seeds) => min(0.12, 0.04 * seeds);
+  /// Weight of [coVisit] in the score, and the share left to the
+  /// hand-tuned taste/mood/quality/freshness/affinity components.
+  static const coVisitWeight = 0.20;
+  static const handShare = 1 - coVisitWeight;
+
+  /// How much a provider list's rank still counts: 1 at the top, half at
+  /// rank 5, a third at rank 10.
+  static double rankDecay(int rank) => 1 / (1 + rank / 5);
+
+  /// 0..1 "also liked" signal: every liked seed whose "more like this" list
+  /// includes [id] adds its strength times [rankDecay] of the position;
+  /// the sum saturates (`1 - exp(-sum)`), so agreement between strong seeds
+  /// near the top of their lists approaches 1 and one weak mention stays low.
+  static double coVisit(String id, ProfileSignals s) {
+    final seeds = s.becauseOf[id];
+    if (seeds == null || seeds.isEmpty) return 0;
+    final ranks = s.becauseRank[id];
+    var sum = 0.0;
+    for (var i = 0; i < seeds.length; i++) {
+      final rank = ranks != null && i < ranks.length ? ranks[i] : 0;
+      sum += (s.seedStrength[seeds[i]] ?? 1) * rankDecay(rank);
+    }
+    return 1 - exp(-sum);
+  }
 
   static double _lengthPreference(Title t) {
     // Episode/chapter counts cannot establish a film's runtime.

@@ -1,0 +1,129 @@
+import 'dart:math';
+
+import 'package:cue/domain/models/deck_filters.dart';
+import 'package:cue/domain/models/title.dart';
+import 'package:cue/domain/ranker.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+Title _t(
+  String id, {
+  List<String> genres = const ['Action'],
+  List<String> tags = const [],
+  int score = 70,
+  MediaKind kind = MediaKind.anime,
+}) => Title(
+  id: id,
+  kind: kind,
+  titleEn: 'Title $id',
+  year: 2024,
+  genres: genres,
+  tags: tags,
+  score: score,
+  episodes: 12,
+  status: 'finished',
+  country: 'JP',
+);
+
+const _genres = [
+  'Action',
+  'Comedy',
+  'Drama',
+  'Fantasy',
+  'Mystery',
+  'Sci-Fi',
+  'Slice of Life',
+  'Sports',
+  'Thriller',
+  'Adventure',
+];
+
+void main() {
+  final all = {...MediaKind.discoverable};
+  const f = DeckFilters();
+
+  List<RankedCard> deal(
+    List<Title> pool,
+    ProfileSignals s, {
+    int seed = 1,
+    double? explore = 0.35,
+  }) => Ranker(random: Random(seed)).deal(
+    pool,
+    s,
+    f,
+    showAdult: false,
+    enabledKinds: all,
+    titlesById: {for (final t in pool) t.id: t},
+    explorePreference: explore,
+  );
+
+  group('also liked (co-visitation)', () {
+    test('is 0 without edges and saturates with strong agreeing seeds', () {
+      const s = ProfileSignals(
+        becauseOf: {
+          'one': ['a'],
+          'deep': ['a'],
+          'many': ['a', 'b', 'c'],
+        },
+        becauseRank: {
+          'one': [0],
+          'deep': [20],
+          'many': [0, 0, 0],
+        },
+        seedStrength: {'a': 1, 'b': 1, 'c': 1},
+      );
+      expect(Ranker.coVisit('none', s), 0);
+      expect(Ranker.coVisit('one', s), closeTo(1 - exp(-1), 1e-9));
+      expect(Ranker.coVisit('deep', s), closeTo(1 - exp(-1 / 5), 1e-9));
+      expect(Ranker.coVisit('many', s), closeTo(1 - exp(-3), 1e-9));
+      expect(Ranker.rankDecay(5), 0.5);
+    });
+
+    test('weak seeds count less than strong ones', () {
+      const s = ProfileSignals(
+        becauseOf: {
+          'strong': ['fav'],
+          'weak': ['once'],
+        },
+        seedStrength: {'fav': 1.6, 'once': 0.35},
+      );
+      expect(
+        Ranker.coVisit('strong', s),
+        greaterThan(Ranker.coVisit('weak', s)),
+      );
+    });
+
+    test('seeded candidates take most of the familiar slots', () {
+      final seeded = [
+        for (var i = 0; i < 10; i++)
+          _t('s$i', genres: [_genres[i % _genres.length]]),
+      ];
+      final unseeded = [
+        for (var i = 0; i < 50; i++)
+          _t(
+            'u$i',
+            genres: [_genres[i % _genres.length]],
+            score: 70 + i % 15,
+          ),
+      ];
+      final s = ProfileSignals(
+        tasteSeeds: const ['liked'],
+        becauseOf: {
+          for (final t in seeded) t.id: const ['liked'],
+        },
+        becauseRank: {
+          for (var i = 0; i < seeded.length; i++) seeded[i].id: [i],
+        },
+        seedStrength: const {'liked': 1},
+      );
+      for (var seed = 1; seed <= 5; seed++) {
+        final cards = deal([...unseeded, ...seeded], s, seed: seed);
+        final firstSix = cards.take(6).where((c) => c.title.id[0] == 's');
+        expect(firstSix.length, greaterThanOrEqualTo(4), reason: 'seed $seed');
+        // Seeded cards still say why.
+        for (final c in firstSix) {
+          expect(c.becauseOf, ['liked']);
+        }
+      }
+    });
+  });
+}
