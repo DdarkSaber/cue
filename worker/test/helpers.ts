@@ -1,3 +1,5 @@
+import { env as workerEnv } from "cloudflare:workers";
+
 import { createApp } from "../src/app";
 import type { Env } from "../src/env";
 
@@ -104,4 +106,9 @@ export function fakeKv() {
     },
   };
   return kv as unknown as KVNamespace & { store: Map<string, string> };
+}
+
+/** An env for /ai routes: a key, an in-memory cache and the local D1 for the daily counters. */
+export function aiEnv(overrides: Partial<Env> = {}): Env {
+  return fakeEnv({ GROQ_API_KEY: "k", CATALOG_CACHE: fakeKv(), SYNC_DB: workerEnv.SYNC_DB, ...overrides });
 }

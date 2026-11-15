@@ -14,7 +14,8 @@ MAL_CLIENT_ID = "5910123f3d7045299259209ddff88344"
 binding = "CATALOG_CACHE"
 id = "a5e8ed98c574457982805784f20956a2"
 
-# Encrypted sync blobs (M8). Schema in migrations/.
+# Encrypted sync blobs (M8), diagnostics and AI daily counters. Schema in migrations/;
+# apply with `wrangler d1 migrations apply SYNC_DB --remote` before each deploy.
 [[d1_databases]]
 binding = "SYNC_DB"
 database_name = "cue-sync"
@@ -44,6 +45,13 @@ simple = { limit = 20, period = 60 }
 name = "LOOKUP_LIMITER"
 namespace_id = "1005"
 simple = { limit = 30, period = 60 }
+
+# Creating a sync copy (PUT /sync/:id at version 0) takes D1 space: 5 a minute per IP.
+# Updates of an existing copy keep the general limit.
+[[ratelimits]]
+name = "SYNC_CREATE_LIMITER"
+namespace_id = "1006"
+simple = { limit = 5, period = 60 }
 
 # Posters on the web app load in bursts; a separate, looser limit.
 [[ratelimits]]

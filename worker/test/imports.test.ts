@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { BREAKER_THRESHOLD, isOpen } from "../src/resilience";
 import { APP_ORIGIN, call, emptyUpstream, fakeEnv, mockUpstream, postJson } from "./helpers";
 
 afterEach(() => vi.restoreAllMocks());
@@ -120,5 +121,69 @@ describe("list imports", () => {
       env,
     );
     expect(await res.json()).toEqual({ accessToken: "tok", refreshToken: "r", expiresIn: 1 });
+  });
+
+  describe("expired sign-in versus outage", () => {
+    const bearer = { Authorization: "Bearer secret-token-value-123" };
+    const viewer = () => call("/import/mal/list", { method: "POST", headers: bearer });
+    const me = () => call("/import/mal/me", { method: "POST", headers: bearer });
+    const refresh = () =>
+      postJson("/oauth/mal/refresh", { refreshToken: "old-refresh-token" }, fakeEnv({ MAL_CLIENT_ID: "cid" }));
+    const exchange = () =>
+      postJson(
+        "/oauth/mal/token",
+        { code: "c", codeVerifier: "v".repeat(64), redirectUri: "cue://oauth/mal" },
+        fakeEnv({ MAL_CLIENT_ID: "cid" }),
+      );
+
+    it.each([401, 403])("viewer list and me answer 401 token_expired on MAL %i", async (status) => {
+      mockUpstream(vi, () => Response.json({ error: "invalid_token" }, { status }));
+      for (const res of [await viewer(), await me()]) {
+        expect(res.status).toBe(401);
+        expect(await res.json()).toEqual({ error: "token_expired" });
+      }
+    });
+
+    it.each([400, 401])("refresh and code exchange answer 401 token_expired on MAL %i", async (status) => {
+      mockUpstream(vi, () => Response.json({ error: "invalid_grant" }, { status }));
+      for (const res of [await refresh(), await exchange()]) {
+        expect(res.status).toBe(401);
+        expect(await res.json()).toEqual({ error: "token_expired" });
+      }
+    });
+
+    it("an outage stays 502 upstream_error", async () => {
+      mockUpstream(vi, () => new Response("down", { status: 500 }));
+      for (const res of [await viewer(), await me(), await refresh()]) {
+        expect(res.status).toBe(502);
+        expect(await res.json()).toEqual({ error: "upstream_error" });
+      }
+      mockUpstream(vi, () => new Response("busy", { status: 429 }));
+      expect((await refresh()).status).toBe(502);
+    });
+
+    it("a username import with a bad client id is not a sign-in problem", async () => {
+      mockUpstream(vi, () => new Response("no", { status: 401 }));
+      expect((await call("/import/mal/user/someone", {}, fakeEnv({ MAL_CLIENT_ID: "cid" }))).status).toBe(502);
+    });
+
+    it("401s never trip the circuit breaker and are not retried", async () => {
+      const calls = mockUpstream(vi, () => new Response("no", { status: 401 }));
+      for (let i = 0; i < BREAKER_THRESHOLD * 2; i++) expect((await me()).status).toBe(401);
+      expect(calls).toHaveLength(BREAKER_THRESHOLD * 2);
+      expect(isOpen("api.myanimelist.net")).toBe(false);
+      vi.restoreAllMocks();
+      mockUpstream(vi, () => Response.json({ name: "someone" }));
+      expect(await (await me()).json()).toEqual({ name: "someone" });
+    });
+
+    it("never logs the token on a rejected sign-in", async () => {
+      const lines: string[] = [];
+      vi.spyOn(console, "error").mockImplementation((m: unknown) => lines.push(String(m)));
+      vi.spyOn(console, "log").mockImplementation((m: unknown) => lines.push(String(m)));
+      mockUpstream(vi, () => new Response("no", { status: 401 }));
+      await viewer();
+      expect(lines.join("\n")).not.toContain("secret-token-value-123");
+    });
   });
 });

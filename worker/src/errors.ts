@@ -10,6 +10,7 @@ export type ErrorCode =
   | "conflict"
   | "forbidden"
   | "upstream_error"
+  | "token_expired"
   | "origin_not_allowed"
   | "payload_too_large"
   | "rate_limited"
