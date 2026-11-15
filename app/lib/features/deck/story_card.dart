@@ -16,11 +16,15 @@ class StoryCard extends StatelessWidget {
     required this.title,
     required this.reason,
     this.onDetails,
+    this.onHold,
   });
 
   final Title title;
   final String reason;
   final VoidCallback? onDetails;
+
+  /// Called once each time a hold to see the whole poster starts.
+  final VoidCallback? onHold;
 
   /// The scrim behind the copy: [scrimMin] (about 85% near-black) where the
   /// text starts, deepening to [scrimMax] at the card's bottom edge.
@@ -64,6 +68,7 @@ class StoryCard extends StatelessWidget {
 
   Widget _phone(BuildContext context) {
     return _PeekPoster(
+      onHold: onHold,
       poster: Poster(title: title),
       overlay: [
         const DecoratedBox(
@@ -372,7 +377,8 @@ class _EraTag extends StatelessWidget {
 /// out while the finger stays down and come back on release. Swipes, taps
 /// and double taps are unaffected (a hold does not move).
 class _PeekPoster extends StatefulWidget {
-  const _PeekPoster({required this.poster, required this.overlay});
+  const _PeekPoster({required this.poster, required this.overlay, this.onHold});
+  final VoidCallback? onHold;
   final Widget poster;
   final List<Widget> overlay;
 
@@ -385,7 +391,10 @@ class _PeekPosterState extends State<_PeekPoster> {
 
   void _set(bool v) {
     if (_peek == v) return;
-    if (v) HapticFeedback.selectionClick();
+    if (v) {
+      HapticFeedback.selectionClick();
+      widget.onHold?.call();
+    }
     setState(() => _peek = v);
   }
 

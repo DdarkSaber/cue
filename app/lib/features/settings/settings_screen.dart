@@ -22,6 +22,7 @@ import '../deck/decision_style.dart';
 import '../imports/source_names.dart';
 import '../library/review_sheet.dart';
 import 'franchise_exclusions_section.dart';
+import 'recommendation_quality_section.dart';
 
 part 'about_page.dart';
 part 'appearance_page.dart';

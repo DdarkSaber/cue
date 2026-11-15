@@ -151,6 +151,7 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
   Future<void> _openDetails() async {
     final top = ref.read(deckControllerProvider).top;
     if (top == null) return;
+    ref.read(deckControllerProvider.notifier).signalDetailsOpened(top.title.id);
     setState(() => _sheetOpen = true);
     final picked = await showDetailsSheet(
       context,
@@ -278,6 +279,9 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
         swipeMap: settings.swipeMap,
         onSwipe: _onSwipe,
         onDetails: _openDetails,
+        onPosterHold: ref
+            .read(deckControllerProvider.notifier)
+            .signalPosterHeld,
         onTryNow: (id) => unawaited(_tryNow(id)),
         enabled: !_sheetOpen,
         reduceMotion: settings.reduceMotion,

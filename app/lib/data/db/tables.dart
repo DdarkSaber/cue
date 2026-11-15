@@ -288,3 +288,33 @@ class ImportChanges extends Table {
   TextColumn get beforeJson => text().nullable()();
   TextColumn get afterJson => text().nullable()();
 }
+
+// ---------------------------------------------------------------------------
+// Implicit signals (this device only: never in backup, export or sync)
+// ---------------------------------------------------------------------------
+
+/// How one card on the main deck was looked at before it left the top.
+@DataClassName('CardSignalRow')
+class CardSignals extends Table {
+  TextColumn get id => text()();
+  TextColumn get profileId => text().references(Profiles, #id)();
+  TextColumn get titleId => text()();
+  DateTimeColumn get shownAt => dateTime()();
+
+  /// Time on top in milliseconds, without time the app was in the background.
+  IntColumn get dwellMs => integer()();
+  BoolColumn get openedDetails =>
+      boolean().withDefault(const Constant(false))();
+  BoolColumn get heldPoster => boolean().withDefault(const Constant(false))();
+
+  /// Which ranking slot dealt the card: '', 'familiar', 'explore', 'seeded'.
+  TextColumn get slot => text().withDefault(const Constant(''))();
+
+  /// The decision code, or null when the card left the top undecided (or
+  /// the decision was undone).
+  TextColumn get decision => text().nullable()();
+  TextColumn get decisionEventId => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}

@@ -39,6 +39,7 @@ class PreferencesPage extends ConsumerWidget {
           'New suggestions exclude every title in this library, including planned titles. Choose Revisit on the deck for titles marked to rewatch, or watched 3+ years ago.',
           style: TextStyle(fontSize: 13, color: CueColors.textMuted),
         ),
+        const RecommendationQualitySection(),
         const CueSectionLabel('Franchises'),
         const FranchiseExclusionsSection(),
         const CueSectionLabel('Content safety'),

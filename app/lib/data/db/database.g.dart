@@ -8620,6 +8620,638 @@ class RecommendationStatesCompanion
   }
 }
 
+class $CardSignalsTable extends CardSignals
+    with TableInfo<$CardSignalsTable, CardSignalRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CardSignalsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _profileIdMeta = const VerificationMeta(
+    'profileId',
+  );
+  @override
+  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
+    'profile_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES profiles (id)',
+    ),
+  );
+  static const VerificationMeta _titleIdMeta = const VerificationMeta(
+    'titleId',
+  );
+  @override
+  late final GeneratedColumn<String> titleId = GeneratedColumn<String>(
+    'title_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _shownAtMeta = const VerificationMeta(
+    'shownAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> shownAt = GeneratedColumn<DateTime>(
+    'shown_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dwellMsMeta = const VerificationMeta(
+    'dwellMs',
+  );
+  @override
+  late final GeneratedColumn<int> dwellMs = GeneratedColumn<int>(
+    'dwell_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _openedDetailsMeta = const VerificationMeta(
+    'openedDetails',
+  );
+  @override
+  late final GeneratedColumn<bool> openedDetails = GeneratedColumn<bool>(
+    'opened_details',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("opened_details" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _heldPosterMeta = const VerificationMeta(
+    'heldPoster',
+  );
+  @override
+  late final GeneratedColumn<bool> heldPoster = GeneratedColumn<bool>(
+    'held_poster',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("held_poster" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _slotMeta = const VerificationMeta('slot');
+  @override
+  late final GeneratedColumn<String> slot = GeneratedColumn<String>(
+    'slot',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _decisionMeta = const VerificationMeta(
+    'decision',
+  );
+  @override
+  late final GeneratedColumn<String> decision = GeneratedColumn<String>(
+    'decision',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _decisionEventIdMeta = const VerificationMeta(
+    'decisionEventId',
+  );
+  @override
+  late final GeneratedColumn<String> decisionEventId = GeneratedColumn<String>(
+    'decision_event_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    profileId,
+    titleId,
+    shownAt,
+    dwellMs,
+    openedDetails,
+    heldPoster,
+    slot,
+    decision,
+    decisionEventId,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'card_signals';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CardSignalRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('profile_id')) {
+      context.handle(
+        _profileIdMeta,
+        profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_profileIdMeta);
+    }
+    if (data.containsKey('title_id')) {
+      context.handle(
+        _titleIdMeta,
+        titleId.isAcceptableOrUnknown(data['title_id']!, _titleIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleIdMeta);
+    }
+    if (data.containsKey('shown_at')) {
+      context.handle(
+        _shownAtMeta,
+        shownAt.isAcceptableOrUnknown(data['shown_at']!, _shownAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_shownAtMeta);
+    }
+    if (data.containsKey('dwell_ms')) {
+      context.handle(
+        _dwellMsMeta,
+        dwellMs.isAcceptableOrUnknown(data['dwell_ms']!, _dwellMsMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dwellMsMeta);
+    }
+    if (data.containsKey('opened_details')) {
+      context.handle(
+        _openedDetailsMeta,
+        openedDetails.isAcceptableOrUnknown(
+          data['opened_details']!,
+          _openedDetailsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('held_poster')) {
+      context.handle(
+        _heldPosterMeta,
+        heldPoster.isAcceptableOrUnknown(data['held_poster']!, _heldPosterMeta),
+      );
+    }
+    if (data.containsKey('slot')) {
+      context.handle(
+        _slotMeta,
+        slot.isAcceptableOrUnknown(data['slot']!, _slotMeta),
+      );
+    }
+    if (data.containsKey('decision')) {
+      context.handle(
+        _decisionMeta,
+        decision.isAcceptableOrUnknown(data['decision']!, _decisionMeta),
+      );
+    }
+    if (data.containsKey('decision_event_id')) {
+      context.handle(
+        _decisionEventIdMeta,
+        decisionEventId.isAcceptableOrUnknown(
+          data['decision_event_id']!,
+          _decisionEventIdMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CardSignalRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CardSignalRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      profileId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}profile_id'],
+      )!,
+      titleId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title_id'],
+      )!,
+      shownAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}shown_at'],
+      )!,
+      dwellMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}dwell_ms'],
+      )!,
+      openedDetails: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}opened_details'],
+      )!,
+      heldPoster: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}held_poster'],
+      )!,
+      slot: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}slot'],
+      )!,
+      decision: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}decision'],
+      ),
+      decisionEventId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}decision_event_id'],
+      ),
+    );
+  }
+
+  @override
+  $CardSignalsTable createAlias(String alias) {
+    return $CardSignalsTable(attachedDatabase, alias);
+  }
+}
+
+class CardSignalRow extends DataClass implements Insertable<CardSignalRow> {
+  final String id;
+  final String profileId;
+  final String titleId;
+  final DateTime shownAt;
+
+  /// Time on top in milliseconds, without time the app was in the background.
+  final int dwellMs;
+  final bool openedDetails;
+  final bool heldPoster;
+
+  /// Which ranking slot dealt the card: '', 'familiar', 'explore', 'seeded'.
+  final String slot;
+
+  /// The decision code, or null when the card left the top undecided (or
+  /// the decision was undone).
+  final String? decision;
+  final String? decisionEventId;
+  const CardSignalRow({
+    required this.id,
+    required this.profileId,
+    required this.titleId,
+    required this.shownAt,
+    required this.dwellMs,
+    required this.openedDetails,
+    required this.heldPoster,
+    required this.slot,
+    this.decision,
+    this.decisionEventId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['profile_id'] = Variable<String>(profileId);
+    map['title_id'] = Variable<String>(titleId);
+    map['shown_at'] = Variable<DateTime>(shownAt);
+    map['dwell_ms'] = Variable<int>(dwellMs);
+    map['opened_details'] = Variable<bool>(openedDetails);
+    map['held_poster'] = Variable<bool>(heldPoster);
+    map['slot'] = Variable<String>(slot);
+    if (!nullToAbsent || decision != null) {
+      map['decision'] = Variable<String>(decision);
+    }
+    if (!nullToAbsent || decisionEventId != null) {
+      map['decision_event_id'] = Variable<String>(decisionEventId);
+    }
+    return map;
+  }
+
+  CardSignalsCompanion toCompanion(bool nullToAbsent) {
+    return CardSignalsCompanion(
+      id: Value(id),
+      profileId: Value(profileId),
+      titleId: Value(titleId),
+      shownAt: Value(shownAt),
+      dwellMs: Value(dwellMs),
+      openedDetails: Value(openedDetails),
+      heldPoster: Value(heldPoster),
+      slot: Value(slot),
+      decision: decision == null && nullToAbsent
+          ? const Value.absent()
+          : Value(decision),
+      decisionEventId: decisionEventId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(decisionEventId),
+    );
+  }
+
+  factory CardSignalRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CardSignalRow(
+      id: serializer.fromJson<String>(json['id']),
+      profileId: serializer.fromJson<String>(json['profileId']),
+      titleId: serializer.fromJson<String>(json['titleId']),
+      shownAt: serializer.fromJson<DateTime>(json['shownAt']),
+      dwellMs: serializer.fromJson<int>(json['dwellMs']),
+      openedDetails: serializer.fromJson<bool>(json['openedDetails']),
+      heldPoster: serializer.fromJson<bool>(json['heldPoster']),
+      slot: serializer.fromJson<String>(json['slot']),
+      decision: serializer.fromJson<String?>(json['decision']),
+      decisionEventId: serializer.fromJson<String?>(json['decisionEventId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'profileId': serializer.toJson<String>(profileId),
+      'titleId': serializer.toJson<String>(titleId),
+      'shownAt': serializer.toJson<DateTime>(shownAt),
+      'dwellMs': serializer.toJson<int>(dwellMs),
+      'openedDetails': serializer.toJson<bool>(openedDetails),
+      'heldPoster': serializer.toJson<bool>(heldPoster),
+      'slot': serializer.toJson<String>(slot),
+      'decision': serializer.toJson<String?>(decision),
+      'decisionEventId': serializer.toJson<String?>(decisionEventId),
+    };
+  }
+
+  CardSignalRow copyWith({
+    String? id,
+    String? profileId,
+    String? titleId,
+    DateTime? shownAt,
+    int? dwellMs,
+    bool? openedDetails,
+    bool? heldPoster,
+    String? slot,
+    Value<String?> decision = const Value.absent(),
+    Value<String?> decisionEventId = const Value.absent(),
+  }) => CardSignalRow(
+    id: id ?? this.id,
+    profileId: profileId ?? this.profileId,
+    titleId: titleId ?? this.titleId,
+    shownAt: shownAt ?? this.shownAt,
+    dwellMs: dwellMs ?? this.dwellMs,
+    openedDetails: openedDetails ?? this.openedDetails,
+    heldPoster: heldPoster ?? this.heldPoster,
+    slot: slot ?? this.slot,
+    decision: decision.present ? decision.value : this.decision,
+    decisionEventId: decisionEventId.present
+        ? decisionEventId.value
+        : this.decisionEventId,
+  );
+  CardSignalRow copyWithCompanion(CardSignalsCompanion data) {
+    return CardSignalRow(
+      id: data.id.present ? data.id.value : this.id,
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
+      titleId: data.titleId.present ? data.titleId.value : this.titleId,
+      shownAt: data.shownAt.present ? data.shownAt.value : this.shownAt,
+      dwellMs: data.dwellMs.present ? data.dwellMs.value : this.dwellMs,
+      openedDetails: data.openedDetails.present
+          ? data.openedDetails.value
+          : this.openedDetails,
+      heldPoster: data.heldPoster.present
+          ? data.heldPoster.value
+          : this.heldPoster,
+      slot: data.slot.present ? data.slot.value : this.slot,
+      decision: data.decision.present ? data.decision.value : this.decision,
+      decisionEventId: data.decisionEventId.present
+          ? data.decisionEventId.value
+          : this.decisionEventId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CardSignalRow(')
+          ..write('id: $id, ')
+          ..write('profileId: $profileId, ')
+          ..write('titleId: $titleId, ')
+          ..write('shownAt: $shownAt, ')
+          ..write('dwellMs: $dwellMs, ')
+          ..write('openedDetails: $openedDetails, ')
+          ..write('heldPoster: $heldPoster, ')
+          ..write('slot: $slot, ')
+          ..write('decision: $decision, ')
+          ..write('decisionEventId: $decisionEventId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    profileId,
+    titleId,
+    shownAt,
+    dwellMs,
+    openedDetails,
+    heldPoster,
+    slot,
+    decision,
+    decisionEventId,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CardSignalRow &&
+          other.id == this.id &&
+          other.profileId == this.profileId &&
+          other.titleId == this.titleId &&
+          other.shownAt == this.shownAt &&
+          other.dwellMs == this.dwellMs &&
+          other.openedDetails == this.openedDetails &&
+          other.heldPoster == this.heldPoster &&
+          other.slot == this.slot &&
+          other.decision == this.decision &&
+          other.decisionEventId == this.decisionEventId);
+}
+
+class CardSignalsCompanion extends UpdateCompanion<CardSignalRow> {
+  final Value<String> id;
+  final Value<String> profileId;
+  final Value<String> titleId;
+  final Value<DateTime> shownAt;
+  final Value<int> dwellMs;
+  final Value<bool> openedDetails;
+  final Value<bool> heldPoster;
+  final Value<String> slot;
+  final Value<String?> decision;
+  final Value<String?> decisionEventId;
+  final Value<int> rowid;
+  const CardSignalsCompanion({
+    this.id = const Value.absent(),
+    this.profileId = const Value.absent(),
+    this.titleId = const Value.absent(),
+    this.shownAt = const Value.absent(),
+    this.dwellMs = const Value.absent(),
+    this.openedDetails = const Value.absent(),
+    this.heldPoster = const Value.absent(),
+    this.slot = const Value.absent(),
+    this.decision = const Value.absent(),
+    this.decisionEventId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CardSignalsCompanion.insert({
+    required String id,
+    required String profileId,
+    required String titleId,
+    required DateTime shownAt,
+    required int dwellMs,
+    this.openedDetails = const Value.absent(),
+    this.heldPoster = const Value.absent(),
+    this.slot = const Value.absent(),
+    this.decision = const Value.absent(),
+    this.decisionEventId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       profileId = Value(profileId),
+       titleId = Value(titleId),
+       shownAt = Value(shownAt),
+       dwellMs = Value(dwellMs);
+  static Insertable<CardSignalRow> custom({
+    Expression<String>? id,
+    Expression<String>? profileId,
+    Expression<String>? titleId,
+    Expression<DateTime>? shownAt,
+    Expression<int>? dwellMs,
+    Expression<bool>? openedDetails,
+    Expression<bool>? heldPoster,
+    Expression<String>? slot,
+    Expression<String>? decision,
+    Expression<String>? decisionEventId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (profileId != null) 'profile_id': profileId,
+      if (titleId != null) 'title_id': titleId,
+      if (shownAt != null) 'shown_at': shownAt,
+      if (dwellMs != null) 'dwell_ms': dwellMs,
+      if (openedDetails != null) 'opened_details': openedDetails,
+      if (heldPoster != null) 'held_poster': heldPoster,
+      if (slot != null) 'slot': slot,
+      if (decision != null) 'decision': decision,
+      if (decisionEventId != null) 'decision_event_id': decisionEventId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CardSignalsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? profileId,
+    Value<String>? titleId,
+    Value<DateTime>? shownAt,
+    Value<int>? dwellMs,
+    Value<bool>? openedDetails,
+    Value<bool>? heldPoster,
+    Value<String>? slot,
+    Value<String?>? decision,
+    Value<String?>? decisionEventId,
+    Value<int>? rowid,
+  }) {
+    return CardSignalsCompanion(
+      id: id ?? this.id,
+      profileId: profileId ?? this.profileId,
+      titleId: titleId ?? this.titleId,
+      shownAt: shownAt ?? this.shownAt,
+      dwellMs: dwellMs ?? this.dwellMs,
+      openedDetails: openedDetails ?? this.openedDetails,
+      heldPoster: heldPoster ?? this.heldPoster,
+      slot: slot ?? this.slot,
+      decision: decision ?? this.decision,
+      decisionEventId: decisionEventId ?? this.decisionEventId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (profileId.present) {
+      map['profile_id'] = Variable<String>(profileId.value);
+    }
+    if (titleId.present) {
+      map['title_id'] = Variable<String>(titleId.value);
+    }
+    if (shownAt.present) {
+      map['shown_at'] = Variable<DateTime>(shownAt.value);
+    }
+    if (dwellMs.present) {
+      map['dwell_ms'] = Variable<int>(dwellMs.value);
+    }
+    if (openedDetails.present) {
+      map['opened_details'] = Variable<bool>(openedDetails.value);
+    }
+    if (heldPoster.present) {
+      map['held_poster'] = Variable<bool>(heldPoster.value);
+    }
+    if (slot.present) {
+      map['slot'] = Variable<String>(slot.value);
+    }
+    if (decision.present) {
+      map['decision'] = Variable<String>(decision.value);
+    }
+    if (decisionEventId.present) {
+      map['decision_event_id'] = Variable<String>(decisionEventId.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CardSignalsCompanion(')
+          ..write('id: $id, ')
+          ..write('profileId: $profileId, ')
+          ..write('titleId: $titleId, ')
+          ..write('shownAt: $shownAt, ')
+          ..write('dwellMs: $dwellMs, ')
+          ..write('openedDetails: $openedDetails, ')
+          ..write('heldPoster: $heldPoster, ')
+          ..write('slot: $slot, ')
+          ..write('decision: $decision, ')
+          ..write('decisionEventId: $decisionEventId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$CueDatabase extends GeneratedDatabase {
   _$CueDatabase(QueryExecutor e) : super(e);
   $CueDatabaseManager get managers => $CueDatabaseManager(this);
@@ -8648,6 +9280,7 @@ abstract class _$CueDatabase extends GeneratedDatabase {
   late final $MoodSessionsTable moodSessions = $MoodSessionsTable(this);
   late final $RecommendationStatesTable recommendationStates =
       $RecommendationStatesTable(this);
+  late final $CardSignalsTable cardSignals = $CardSignalsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -8672,6 +9305,7 @@ abstract class _$CueDatabase extends GeneratedDatabase {
     moodStates,
     moodSessions,
     recommendationStates,
+    cardSignals,
   ];
 }
 
@@ -10705,6 +11339,24 @@ final class $$ProfilesTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$CardSignalsTable, List<CardSignalRow>>
+  _cardSignalsRefsTable(_$CueDatabase db) => MultiTypedResultKey.fromTable(
+    db.cardSignals,
+    aliasName: 'profiles__id__card_signals__profile_id',
+  );
+
+  $$CardSignalsTableProcessedTableManager get cardSignalsRefs {
+    final manager = $$CardSignalsTableTableManager(
+      $_db,
+      $_db.cardSignals,
+    ).filter((f) => f.profileId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_cardSignalsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$ProfilesTableFilterComposer
@@ -11007,6 +11659,31 @@ class $$ProfilesTableFilterComposer
           }) => $$RecommendationStatesTableFilterComposer(
             $db: $db,
             $table: $db.recommendationStates,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> cardSignalsRefs(
+    Expression<bool> Function($$CardSignalsTableFilterComposer f) f,
+  ) {
+    final $$CardSignalsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.cardSignals,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CardSignalsTableFilterComposer(
+            $db: $db,
+            $table: $db.cardSignals,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -11353,6 +12030,31 @@ class $$ProfilesTableAnnotationComposer
         );
     return f(composer);
   }
+
+  Expression<T> cardSignalsRefs<T extends Object>(
+    Expression<T> Function($$CardSignalsTableAnnotationComposer a) f,
+  ) {
+    final $$CardSignalsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.cardSignals,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CardSignalsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.cardSignals,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$ProfilesTableTableManager
@@ -11380,6 +12082,7 @@ class $$ProfilesTableTableManager
             bool moodStatesRefs,
             bool moodSessionsRefs,
             bool recommendationStatesRefs,
+            bool cardSignalsRefs,
           })
         > {
   $$ProfilesTableTableManager(_$CueDatabase db, $ProfilesTable table)
@@ -11446,6 +12149,7 @@ class $$ProfilesTableTableManager
                 moodStatesRefs = false,
                 moodSessionsRefs = false,
                 recommendationStatesRefs = false,
+                cardSignalsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -11461,6 +12165,7 @@ class $$ProfilesTableTableManager
                     if (moodStatesRefs) db.moodStates,
                     if (moodSessionsRefs) db.moodSessions,
                     if (recommendationStatesRefs) db.recommendationStates,
+                    if (cardSignalsRefs) db.cardSignals,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -11685,6 +12390,26 @@ class $$ProfilesTableTableManager
                           referencedColumn: 'profile_id',
                           typedResults: items,
                         ),
+                      if (cardSignalsRefs)
+                        await $_getPrefetchedDataByColumns<
+                          Profile,
+                          $ProfilesTable,
+                          CardSignalRow,
+                          $CardSignalsTable
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ProfilesTableReferences
+                              ._cardSignalsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ProfilesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).cardSignalsRefs,
+                          currentColumn: 'id',
+                          referencedColumn: 'profile_id',
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -11717,6 +12442,7 @@ typedef $$ProfilesTableProcessedTableManager =
         bool moodStatesRefs,
         bool moodSessionsRefs,
         bool recommendationStatesRefs,
+        bool cardSignalsRefs,
       })
     >;
 typedef $$ProfileSettingsTableCreateCompanionBuilder =
@@ -16397,6 +17123,422 @@ typedef $$RecommendationStatesTableProcessedTableManager =
       RecommendationState,
       PrefetchHooks Function({bool profileId})
     >;
+typedef $$CardSignalsTableCreateCompanionBuilder =
+    CardSignalsCompanion Function({
+      required String id,
+      required String profileId,
+      required String titleId,
+      required DateTime shownAt,
+      required int dwellMs,
+      Value<bool> openedDetails,
+      Value<bool> heldPoster,
+      Value<String> slot,
+      Value<String?> decision,
+      Value<String?> decisionEventId,
+      Value<int> rowid,
+    });
+typedef $$CardSignalsTableUpdateCompanionBuilder =
+    CardSignalsCompanion Function({
+      Value<String> id,
+      Value<String> profileId,
+      Value<String> titleId,
+      Value<DateTime> shownAt,
+      Value<int> dwellMs,
+      Value<bool> openedDetails,
+      Value<bool> heldPoster,
+      Value<String> slot,
+      Value<String?> decision,
+      Value<String?> decisionEventId,
+      Value<int> rowid,
+    });
+
+final class $$CardSignalsTableReferences
+    extends BaseReferences<_$CueDatabase, $CardSignalsTable, CardSignalRow> {
+  $$CardSignalsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $ProfilesTable _profileIdTable(_$CueDatabase db) =>
+      db.profiles.createAlias('card_signals__profile_id__profiles__id');
+
+  $$ProfilesTableProcessedTableManager get profileId {
+    final $_column = $_itemColumn<String>('profile_id')!;
+
+    final manager = $$ProfilesTableTableManager(
+      $_db,
+      $_db.profiles,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_profileIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$CardSignalsTableFilterComposer
+    extends Composer<_$CueDatabase, $CardSignalsTable> {
+  $$CardSignalsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get titleId => $composableBuilder(
+    column: $table.titleId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get shownAt => $composableBuilder(
+    column: $table.shownAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get dwellMs => $composableBuilder(
+    column: $table.dwellMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get openedDetails => $composableBuilder(
+    column: $table.openedDetails,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get heldPoster => $composableBuilder(
+    column: $table.heldPoster,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get slot => $composableBuilder(
+    column: $table.slot,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get decision => $composableBuilder(
+    column: $table.decision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get decisionEventId => $composableBuilder(
+    column: $table.decisionEventId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ProfilesTableFilterComposer get profileId {
+    final $$ProfilesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableFilterComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CardSignalsTableOrderingComposer
+    extends Composer<_$CueDatabase, $CardSignalsTable> {
+  $$CardSignalsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get titleId => $composableBuilder(
+    column: $table.titleId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get shownAt => $composableBuilder(
+    column: $table.shownAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get dwellMs => $composableBuilder(
+    column: $table.dwellMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get openedDetails => $composableBuilder(
+    column: $table.openedDetails,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get heldPoster => $composableBuilder(
+    column: $table.heldPoster,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get slot => $composableBuilder(
+    column: $table.slot,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get decision => $composableBuilder(
+    column: $table.decision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get decisionEventId => $composableBuilder(
+    column: $table.decisionEventId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ProfilesTableOrderingComposer get profileId {
+    final $$ProfilesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableOrderingComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CardSignalsTableAnnotationComposer
+    extends Composer<_$CueDatabase, $CardSignalsTable> {
+  $$CardSignalsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get titleId =>
+      $composableBuilder(column: $table.titleId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get shownAt =>
+      $composableBuilder(column: $table.shownAt, builder: (column) => column);
+
+  GeneratedColumn<int> get dwellMs =>
+      $composableBuilder(column: $table.dwellMs, builder: (column) => column);
+
+  GeneratedColumn<bool> get openedDetails => $composableBuilder(
+    column: $table.openedDetails,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get heldPoster => $composableBuilder(
+    column: $table.heldPoster,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get slot =>
+      $composableBuilder(column: $table.slot, builder: (column) => column);
+
+  GeneratedColumn<String> get decision =>
+      $composableBuilder(column: $table.decision, builder: (column) => column);
+
+  GeneratedColumn<String> get decisionEventId => $composableBuilder(
+    column: $table.decisionEventId,
+    builder: (column) => column,
+  );
+
+  $$ProfilesTableAnnotationComposer get profileId {
+    final $$ProfilesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CardSignalsTableTableManager
+    extends
+        RootTableManager<
+          _$CueDatabase,
+          $CardSignalsTable,
+          CardSignalRow,
+          $$CardSignalsTableFilterComposer,
+          $$CardSignalsTableOrderingComposer,
+          $$CardSignalsTableAnnotationComposer,
+          $$CardSignalsTableCreateCompanionBuilder,
+          $$CardSignalsTableUpdateCompanionBuilder,
+          (CardSignalRow, $$CardSignalsTableReferences),
+          CardSignalRow,
+          PrefetchHooks Function({bool profileId})
+        > {
+  $$CardSignalsTableTableManager(_$CueDatabase db, $CardSignalsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CardSignalsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CardSignalsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CardSignalsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> profileId = const Value.absent(),
+                Value<String> titleId = const Value.absent(),
+                Value<DateTime> shownAt = const Value.absent(),
+                Value<int> dwellMs = const Value.absent(),
+                Value<bool> openedDetails = const Value.absent(),
+                Value<bool> heldPoster = const Value.absent(),
+                Value<String> slot = const Value.absent(),
+                Value<String?> decision = const Value.absent(),
+                Value<String?> decisionEventId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CardSignalsCompanion(
+                id: id,
+                profileId: profileId,
+                titleId: titleId,
+                shownAt: shownAt,
+                dwellMs: dwellMs,
+                openedDetails: openedDetails,
+                heldPoster: heldPoster,
+                slot: slot,
+                decision: decision,
+                decisionEventId: decisionEventId,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String profileId,
+                required String titleId,
+                required DateTime shownAt,
+                required int dwellMs,
+                Value<bool> openedDetails = const Value.absent(),
+                Value<bool> heldPoster = const Value.absent(),
+                Value<String> slot = const Value.absent(),
+                Value<String?> decision = const Value.absent(),
+                Value<String?> decisionEventId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CardSignalsCompanion.insert(
+                id: id,
+                profileId: profileId,
+                titleId: titleId,
+                shownAt: shownAt,
+                dwellMs: dwellMs,
+                openedDetails: openedDetails,
+                heldPoster: heldPoster,
+                slot: slot,
+                decision: decision,
+                decisionEventId: decisionEventId,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$CardSignalsTable, CardSignalRow>(table),
+                  $$CardSignalsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({profileId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (profileId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.profileId,
+                        referencedTable: $$CardSignalsTableReferences
+                            ._profileIdTable(db),
+                        referencedColumn: $$CardSignalsTableReferences
+                            ._profileIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$CardSignalsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$CueDatabase,
+      $CardSignalsTable,
+      CardSignalRow,
+      $$CardSignalsTableFilterComposer,
+      $$CardSignalsTableOrderingComposer,
+      $$CardSignalsTableAnnotationComposer,
+      $$CardSignalsTableCreateCompanionBuilder,
+      $$CardSignalsTableUpdateCompanionBuilder,
+      (CardSignalRow, $$CardSignalsTableReferences),
+      CardSignalRow,
+      PrefetchHooks Function({bool profileId})
+    >;
 
 class $CueDatabaseManager {
   final _$CueDatabase _db;
@@ -16442,4 +17584,6 @@ class $CueDatabaseManager {
       $$MoodSessionsTableTableManager(_db, _db.moodSessions);
   $$RecommendationStatesTableTableManager get recommendationStates =>
       $$RecommendationStatesTableTableManager(_db, _db.recommendationStates);
+  $$CardSignalsTableTableManager get cardSignals =>
+      $$CardSignalsTableTableManager(_db, _db.cardSignals);
 }
