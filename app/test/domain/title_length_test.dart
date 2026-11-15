@@ -26,19 +26,13 @@ void main() {
           _t(kind, chapters: 120, status: 'ongoing').lengthLabel,
           'Ongoing · 120+ chapters',
         );
-        expect(_t(kind).lengthLabel, 'Chapters unknown');
-        expect(
-          _t(kind, status: 'ongoing').lengthLabel,
-          'Ongoing · chapters unknown',
-        );
+        expect(_t(kind).lengthLabel, isNull);
+        expect(_t(kind, status: 'ongoing').lengthLabel, 'Ongoing');
       });
     }
 
     test('episodes never stand in for chapters', () {
-      expect(
-        _t(MediaKind.manhwa, episodes: 12).lengthLabel,
-        'Chapters unknown',
-      );
+      expect(_t(MediaKind.manhwa, episodes: 12).lengthLabel, isNull);
     });
   });
 

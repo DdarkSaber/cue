@@ -61,12 +61,12 @@ void main() {
     expect(lengthFact(t), 'Ongoing · 120+ chapters');
   });
 
-  testWidgets('manga without a count says chapters are unknown', (t) async {
+  testWidgets('manga without a count says the length is unknown', (t) async {
     await mount(
       t,
       const Title(id: 'local:g', kind: MediaKind.manga, titleEn: 'Synthetic'),
     );
-    expect(lengthFact(t), 'Chapters unknown');
+    expect(lengthFact(t), 'Unknown');
   });
 
   testWidgets('anime shows seasons and episodes', (t) async {
