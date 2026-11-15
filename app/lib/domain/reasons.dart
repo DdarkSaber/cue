@@ -109,7 +109,7 @@ String reasonFor(
             other.id != t.id &&
             other.features.intersection(t.features).length >= 2;
       })) {
-    return _fit('Shares themes with your imports; not a confirmed like.');
+    return _fit('Similar themes to titles in your library.');
   }
 
   // Cold start: describe the work, not the person.

@@ -139,8 +139,8 @@ class Title {
   /// How long the title is, for the card meta and the details sheet.
   ///
   /// Reading: "120 chapters"; while releasing the count is only the latest
-  /// known one, so "Ongoing · 120+ chapters"; "Chapters unknown" without a
-  /// count. Watching: "3 seasons · 64 episodes" when several seasons are
+  /// known one, so "Ongoing · 120+ chapters"; without a count just "Ongoing",
+  /// or null (the card shows nothing rather than "chapters unknown"). Watching: "3 seasons · 64 episodes" when several seasons are
   /// listed (episodes only when every season's count is known), else
   /// "24 episodes" / "1 episode"; "Airing" or null when unknown. Movies:
   /// null (no runtime in the catalog).
@@ -150,7 +150,7 @@ class Title {
       final ongoing = status == 'ongoing';
       final count = chapters;
       if (count == null) {
-        return ongoing ? 'Ongoing · chapters unknown' : 'Chapters unknown';
+        return ongoing ? 'Ongoing' : null;
       }
       if (ongoing) return 'Ongoing · $count+ chapters';
       return _count(count, 'chapter');

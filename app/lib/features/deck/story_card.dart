@@ -271,9 +271,14 @@ class _CardCopy extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final height = MediaQuery.sizeOf(context).height;
-    final titleSize = desktop
+    final baseTitleSize = desktop
         ? (MediaQuery.sizeOf(context).width * 0.057).clamp(52.0, 80.0)
         : (height * 0.062).clamp(32.0, 55.0);
+    // Long names step down so the title stays within two lines.
+    final long = title.displayTitle.length;
+    final titleSize = long > 40
+        ? baseTitleSize * 0.72
+        : (long > 24 ? baseTitleSize * 0.85 : baseTitleSize);
     final meta = [if (title.year != null) '${title.year}', ?title.lengthLabel];
     final era = title.artEra;
     final alt = title.altTitle;
@@ -296,7 +301,7 @@ class _CardCopy extends StatelessWidget {
         ],
         Text(
           title.displayTitle,
-          maxLines: 3,
+          maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: titleSize,

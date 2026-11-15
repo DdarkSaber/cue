@@ -1,3 +1,4 @@
+import '../../domain/country.dart';
 import '../../domain/models/deck_filters.dart';
 import '../../domain/models/title.dart';
 import '../../domain/mood_rules.dart' show moodGenres;
@@ -136,7 +137,7 @@ List<FilterMiss> filterMisses(
     check(
       open.copyWith(countries: f.countries),
       FilterMiss(
-        'Country: ${(f.countries.toList()..sort()).map((c) => _countries[c] ?? c).join(' / ')}',
+        'Country: ${(f.countries.toList()..sort()).map((c) => countryName(c)).join(' / ')}',
         (x) => x.copyWith(countries: const {}),
       ),
     );
@@ -369,13 +370,3 @@ String _genreLabel(String g) =>
         .split(' ')
         .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
         .join(' ');
-
-const _countries = {
-  'JP': 'Japan',
-  'KR': 'Korea',
-  'CN': 'China',
-  'TW': 'Taiwan',
-  'US': 'United States',
-  'GB': 'United Kingdom',
-  'IN': 'India',
-};

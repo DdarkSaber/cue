@@ -1,3 +1,5 @@
+import '../../domain/country.dart';
+
 import 'package:flutter/material.dart' hide Title;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -133,7 +135,7 @@ class _DetailsBodyState extends ConsumerState<DetailsBody> {
         ('Length', length)
       else if (t.kind != MediaKind.movie)
         ('Length', 'Unknown'),
-      if (t.country != null) ('Country', t.country!),
+      if (t.country != null) ('Country', countryName(t.country!)),
       if (t.score != null) ('Catalog score', '${t.score} / 100'),
     ];
     const muted = TextStyle(fontSize: 14, color: CueColors.textMuted);

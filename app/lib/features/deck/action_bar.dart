@@ -151,15 +151,20 @@ class _ActionItem extends StatelessWidget {
         ),
       ),
     );
-    final text = Text(
-      label,
-      textAlign: TextAlign.center,
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
-      style: const TextStyle(
-        fontSize: 12,
-        color: Color(0xFFC5CFDB),
-        height: 1.2,
+    // One line that shrinks to fit ("Not interested" never wraps under its
+    // icon on a narrow phone).
+    final text = FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        maxLines: 1,
+        softWrap: false,
+        style: const TextStyle(
+          fontSize: 12,
+          color: Color(0xFFC5CFDB),
+          height: 1.2,
+        ),
       ),
     );
     final button = PressScale(
