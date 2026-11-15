@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:cue/data/catalog_gateway.dart';
 import 'package:cue/data/catalog_repository.dart';
 import 'package:cue/data/db/database.dart';
@@ -136,7 +138,7 @@ void main() {
     await catalog.fetchSeeded(signals.tasteSeeds);
     expect(gateway.recommendationCalls, hasLength(6));
 
-    // Ranking: agreement between liked seeds earns a modest boost, the
+    // Ranking: agreement between liked seeds scores higher, the
     // reason names the seed, and the card exposes it for other surfaces.
     final ranker = Ranker();
     final pool = await catalog.pool({MediaKind.anime, MediaKind.kdrama});
@@ -144,9 +146,17 @@ void main() {
     const f = DeckFilters();
     final s10 = ranker.score(byId['anilist:10']!, signals, f);
     final s11 = ranker.score(byId['anilist:11']!, signals, f);
-    expect(s11 - s10, closeTo(Ranker.seedBoost(1), 1e-9));
-    expect(Ranker.seedBoost(0), 0);
-    expect(Ranker.seedBoost(9), 0.12);
+    // Ranks are kept per edge; seeds count by their rating and recency.
+    expect(signals.becauseRank['anilist:10'], [0]);
+    expect(signals.becauseRank['anilist:11'], [1, 0]);
+    expect(signals.seedStrength['anilist:1'], closeTo(1, 1e-9));
+    expect(signals.seedStrength['anilist:2'], closeTo(2 / 3, 1e-9));
+    final co10 = Ranker.coVisit('anilist:10', signals);
+    final co11 = Ranker.coVisit('anilist:11', signals);
+    expect(co10, closeTo(1 - exp(-1), 1e-9));
+    expect(co11, closeTo(1 - exp(-(1 / 1.2 + 2 / 3)), 1e-9));
+    expect(Ranker.coVisit('anilist:99', signals), 0);
+    expect(s11 - s10, closeTo(Ranker.coVisitWeight * (co11 - co10), 1e-9));
     final cards = ranker.deal(
       pool,
       signals,

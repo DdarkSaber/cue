@@ -23,6 +23,7 @@ import '../imports/source_names.dart';
 import 'entry_sheet.dart';
 import 'add_title_sheet.dart';
 import 'library_view.dart';
+import 'review_recheck_sheet.dart';
 import 'review_sheet.dart';
 import 'rating_deck.dart';
 
@@ -182,6 +183,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       kicker: 'Your corner of Cue',
       title: 'Library',
       children: data.when(
+        // A change keeps the list on screen while it reloads, so the page
+        // stays where the person had scrolled to.
+        skipLoadingOnReload: true,
         loading: () => const [LinearProgressIndicator(color: CueColors.accent)],
         error: (_, _) => const [Text('Your library could not be read.')],
         data: (d) => [
@@ -216,6 +220,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     if (raw == null) return null;
     final j = jsonDecode(raw) as Map;
     return (j['titleEn'] ?? j['titleRomaji'] ?? j['titleNative']) as String?;
+  }
+
+  /// Opens the entry and, each time one is answered, the next: a long queue
+  /// is worked through without finding the place in the list again.
+  Future<void> _reviewFrom(List<SourceObservation> review, int start) async {
+    for (var i = start; i < review.length && mounted; i++) {
+      if (await showReviewSheet(context, review[i]) != true) return;
+    }
   }
 
   Future<void> _acceptSimilar(List<SourceObservation> review) async {
@@ -465,13 +477,29 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       if (review.isNotEmpty)
         _Section(
           label: 'Needs review (${d.review.length})',
-          note: 'Titles Cue could not match on its own. They are saved on this device, are not yet recognised as history and may still appear in suggestions. Tap one to search and confirm its match.',
+          note: 'Titles Cue could not match on its own. They are saved on this device, are not yet recognised as history and may still appear in suggestions. Let Cue check them all again, or tap one to search and confirm its match.',
           children: [
-            for (final o in review)
+            Wrap(
+              spacing: CueSpace.md,
+              runSpacing: CueSpace.sm,
+              children: [
+                CueSecondaryButton(
+                  label: 'Check all again',
+                  onPressed: () => showRecheckSheet(context),
+                ),
+                if (d.review.any((o) => o.candidateJson != null))
+                  CueSecondaryButton(
+                    label: 'Confirm suggestions one by one',
+                    onPressed: () =>
+                        showRecheckSheet(context, confirmOnly: true),
+                  ),
+              ],
+            ),
+            for (final (i, o) in review.indexed)
               CueListRow(
                 title: o.rawTitle,
                 subtitle: _maybe(o) == null ? 'Match it' : 'Maybe ${_maybe(o)}',
-                onTap: () => showReviewSheet(context, o),
+                onTap: () => _reviewFrom(review, i),
               ),
             if (d.review.any((o) => o.candidateJson != null))
               Align(
